@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 23)
+(def layout 24)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -95,7 +95,7 @@
   (into [:packets :registries :blocks :synced :light :fire :fuel
          :brewing :dyes :sounds :potions :effects :entities
          :version :block-entities :growers
-         :attributes :spawns]
+         :attributes :spawns :lang]
         item-facts))
 
 (def ^:private ^:table tables
@@ -118,6 +118,11 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
+
+(defn lang
+  "Returns the text of each translation key in the language of the
+  server."
+  [] (:lang @tables))
 
 (defn spawns
   "Returns the facts that natural spawning reads."

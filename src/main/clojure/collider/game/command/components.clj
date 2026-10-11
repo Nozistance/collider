@@ -226,7 +226,7 @@
   (let [res (snbt/read-fully (r/reader s))
         v (first res)]
     (cond (r/error? res)
-          [:malformed (str (:key res) " at position " (:cursor res))]
+          [:malformed (r/message res)]
           (map? v) [:ok v]
           :else [:malformed (str "Expected compound tag, got "
                                  (dfu/printed v))])))

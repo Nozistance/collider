@@ -21,6 +21,8 @@
            (java.io File)
            (java.lang.reflect Field InvocationHandler Proxy)
            (java.net URI URL URLClassLoader URLConnection)
+           (java.util HashMap)
+           (java.util.function BiConsumer)
            (java.util.zip ZipFile)))
 
 (set! *warn-on-reflection* true)
@@ -528,6 +530,24 @@
      :data-pack (pack-format v "SERVER_DATA")
      :stable (call v "stable")}))
 
+(defn- translations
+  "Returns the text of each key in the language of the server, read as
+  the server loads its default one and checked against the one it uses."
+  []
+  (let [lang (cls "locale.Language")
+        m (HashMap.)]
+    (with-open [in (.getResourceAsStream lang
+                                         "/assets/minecraft/lang/en_us.json")]
+      (call-static "locale.Language" "loadFromJson" in
+                   (reify BiConsumer (accept [_ k v] (.put m k v)))))
+    (call (call-static "locale.DeprecatedTranslationsInfo"
+                       "loadFromDefaultResource")
+          "applyToMap" m)
+    (let [live (call-static "locale.Language" "getInstance")]
+      (doseq [[k v] m :when (not= v (call live "getOrDefault" k nil))]
+        (throw (unknown "translation differs from the server" {:key k}))))
+    (into (sorted-map) m)))
+
 (defn- from-classes [loader]
   (binding [*loader* loader]
     (call-static "SharedConstants" "tryDetectVersion")
@@ -539,7 +559,7 @@
               :dyes (dye-colors) :synced (synced-registries)
               :entities (entities/entities)
               :version (version-facts) :growers (growers)
-              :attributes (attributes/attributes)}
+              :attributes (attributes/attributes) :lang (translations)}
              (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j

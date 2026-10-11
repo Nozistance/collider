@@ -1,7 +1,9 @@
 (ns collider.game.command.reader
   "Command text read at a cursor."
   (:refer-clojure :exclude [read-string])
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [collider.data :as data])
+  (:import (java.util.regex Matcher)))
 
 (set! *warn-on-reflection* true)
 
@@ -43,6 +45,43 @@
 
 (defn error? [x]
   (and (map? x) (contains? x :key) (contains? x :cursor)))
+
+(def ^:private format-spec #"%(?:(\d+)\$)?([A-Za-z%]|$)")
+
+(defn- plain? [^String s] (neg? (.indexOf s "%")))
+
+(defn- arg-text [x] (if (nil? x) "null" (str x)))
+
+(defn- filled
+  "Returns template t with args in its places, or nil when they do not
+  fit."
+  [^String t args]
+  (let [^Matcher m (re-matcher format-spec t)]
+    (loop [out "" at 0 n 0]
+      (if (.find m (int at))
+        (let [pre (subs t at (.start m))
+              pos (.group m 1)
+              i (if pos (dec (parse-long pos)) n)]
+          (when (plain? pre)
+            (cond
+              (= "%%" (.group m)) (recur (str out pre "%") (.end m) n)
+              (and (= "s" (.group m 2)) (< -1 i (count args)))
+              (recur (str out pre (arg-text (nth args i))) (.end m)
+                     (if pos n (inc n))))))
+        (let [tail (subs t at)]
+          (when (plain? tail) (str out tail)))))))
+
+(defn message
+  "Returns the text of error e and the input up to its cursor, as its
+  exception tells them."
+  [{:keys [key args cursor input]}]
+  (let [t (get (data/lang) key key)
+        text (or (filled t args) t)
+        c (min (count input) (long cursor))]
+    (if (or (nil? input) (neg? (long cursor)))
+      text
+      (str text " at position " cursor ": " (when (> c 10) "...")
+           (subs input (max 0 (- c 10)) c) "<--[HERE]"))))
 
 (defn- between? [c lo hi] (<= (int lo) (int c) (int hi)))
 
