@@ -26,7 +26,7 @@
         d (^[double] Math/abs (rem (+ (- yaw a) 540.0) 360.0))]
     (< (^[double] Math/abs (- d 180.0)) 90.0)))
 
-(defn- stand-up-offsets [forward side]
+(defn- ring-offsets [forward side]
   (let [[fx fz] (step forward) [sx sz] (step side)]
     [[sx sz]
      [(- sx fx) (- sz fz)]
@@ -37,21 +37,31 @@
      [(- sx) (- sz)]
      [(+ (- sx) fx) (+ (- sz) fz)]
      [fx fz]
-     [(+ sx fx) (+ sz fz)]
-     [0 0]
-     [(- fx) (- fz)]]))
+     [(+ sx fx) (+ sz fz)]]))
+
+(defn- top-offsets [forward]
+  (let [[fx fz] (step forward)]
+    [[0 0] [(- fx) (- fz)]]))
 
 (defn- box-top ^double [st]
   (reduce (fn [^double m [_ _ _ _ y1 _]]
             (max m (/ (double y1) 16.0)))
           Double/NEGATIVE_INFINITY (block/collision-boxes st)))
 
+(defn- climbable? [st]
+  (or (block/tagged? st "climbable")
+      (and (= :trapdoor (block/type-of st))
+           (= :true (:open (block/props-of st))))))
+
+(defn- floor-top ^double [st]
+  (if (climbable? st) Double/NEGATIVE_INFINITY (box-top st)))
+
 (defn- floor-below [chunks [x y z]]
-  (let [below (box-top (chunk/at chunks [x (dec (long y)) z]))]
-    (when (> below Double/NEGATIVE_INFINITY) (- below 1.0))))
+  (let [below (floor-top (chunk/at chunks [x (dec (long y)) z]))]
+    (when (>= below 1.0) (- below 1.0))))
 
 (defn- floor-height [chunks pos]
-  (let [here (box-top (chunk/at chunks pos))]
+  (let [here (floor-top (chunk/at chunks pos))]
     (cond
       (>= here 1.0) nil
       (> here Double/NEGATIVE_INFINITY) here
@@ -99,8 +109,14 @@
 (defn- dangerous-below? [chunks [x y z]]
   (dangerous? (chunk/at chunks [x (dec (long y)) z])))
 
+(defn- spawn-inside? [chunks [x y z :as cell]]
+  (or (block/tagged? (chunk/at chunks cell) "invalid_spawn_inside")
+      (block/tagged? (chunk/at chunks [x (inc (long y)) z])
+                     "invalid_spawn_inside")))
+
 (defn- dismount-position [chunks [x y z :as cell] safe?]
-  (when-not (and safe? (dangerous? (chunk/at chunks cell)))
+  (when-not (or (and safe? (dangerous? (chunk/at chunks cell)))
+                (spawn-inside? chunks cell))
     (when-let [h (floor-height chunks cell)]
       (when-not (and safe? (<= (double h) 0.0)
                      (dangerous-below? chunks cell))
@@ -121,10 +137,16 @@
         forward (block/facing-of st)
         right (dir/clockwise forward)
         side (if (looks-toward? yaw right) (dir/opposite right) right)
-        cells (mapv #(shifted pos %) (stand-up-offsets forward side))
-        found (or (some #(dismount-position chunks % true) cells)
-                  (some #(dismount-position chunks % false) cells))]
-    (or found (above-bed pos))))
+        ring (ring-offsets forward side)
+        top (top-offsets forward)
+        below (update pos 1 dec)
+        at (fn [[p offsets safe?]]
+             (some #(dismount-position chunks (shifted p %) safe?) offsets))
+        tries (if (= :bed (block/type-of (chunk/at chunks below)))
+                [[pos ring true] [below ring true] [pos top true]
+                 [pos ring false] [below ring false] [pos top false]]
+                (let [all (into ring top)] [[pos all true] [pos all false]]))]
+    (or (some at tries) (above-bed pos))))
 
 (defn look-yaw
   "Returns the yaw in degrees from -180 to 180 that points from the
