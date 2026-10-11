@@ -335,7 +335,7 @@
     [(phys/pos mv) u (phys/on-ground? mv) sup nb? h d (phys/vel mv)
      mv]))
 
-(defn- glide
+(defn- flight
   "Returns how flying body e moves through fluid f. It is :glide on
   its wings, :ladder when a climbable block stops it, and nil when it
   does not fly or swims."
@@ -387,7 +387,7 @@
   [world e vel half height og? {:keys [water lava] :as f}]
   (cond (pos? (double water)) (travel-water world e vel half height)
         (pos? (double lava)) (travel-lava world e vel half height f)
-        (= :glide (glide world e f))
+        (= :glide (flight world e f))
         (travel-glide world e vel half height f)
         :else (travel-air world e vel half height og? f)))
 
@@ -589,8 +589,8 @@
     (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
 
 (defn body-moved
-  "Returns [pos vel on-ground stuck glide hit] of living body e with
-  no will of its own after one tick of travel from its speed. Glide
+  "Returns [pos vel on-ground stuck flight hit] of living body e with
+  no will of its own after one tick of travel from its speed. Flight
   is :glide or :ladder for a body that flies on wings, and hit is
   true when it ran into a block sideways."
   [world e half height]
@@ -600,5 +600,5 @@
         tr (physics-move world e (:vel e) h ht f)]
     [(nth tr 0) (nth tr 1) (nth tr 2)
      (motion/stuck-speed (:chunks world) (nth tr 0) half height true)
-     (glide world e f)
+     (flight world e f)
      (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))]))

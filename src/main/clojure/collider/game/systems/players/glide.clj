@@ -3,9 +3,9 @@
   (:require [collider.game.entity.metadata :as metadata]
             [collider.game.glide :as glide]
             [collider.game.inventory :as inventory]
+            [collider.game.out :as out]
             [collider.random :as random]
-            [collider.vec :as v]
-            [collider.game.out :as out]))
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
@@ -32,10 +32,12 @@
 
 (defn player-deltas
   "Returns the deltas of player eid, e, gliding this tick. A glider
-  that falls slower than half a block a tick falls a block at most."
+  that sinks slower than half a block a tick has its fall cut to a
+  block."
   [world [eid e]]
   (let [gliding? (and (:fall-flying e) (glide/can-glide? e))]
-    (cond-> (if gliding? (vec (wear-deltas (:tick world) eid e)) [])
+    (cond-> []
+      gliding? (into (wear-deltas (:tick world) eid e))
       (and (:fall-flying e) (> (double (:fall e 0.0)) 1.0)
            (> (double (v/y (:vel e [0.0 0.0 0.0]))) -0.5))
       (conj [:merge-entity eid {:fall 1.0}])

@@ -86,14 +86,15 @@
   (let [n (stars e)]
     (when (pos? n)
       (let [amount (num/f32 (+ 5.0 (* 2.0 n)))
+            src (source world eid e at)
             cid (:attached e)
             c (get-in world [:entities cid])
-            near (for [[oid t] (near world at cid)
-                       :let [d (distance at t)
-                             k (Math/sqrt (/ (- 5.0 d) 5.0))]]
-                   [oid t (num/f32 (* amount (num/f32 k)))])]
-        (mapcat #(hit-deltas world (source world eid e at) %)
-                (cond->> near c (cons [cid c amount])))))))
+            around (for [[oid t] (near world at cid)
+                         :let [d (distance at t)
+                               k (Math/sqrt (/ (- 5.0 d) 5.0))]]
+                     [oid t (num/f32 (* amount (num/f32 k)))])]
+        (mapcat #(hit-deltas world src %)
+                (cond->> around c (cons [cid c amount])))))))
 
 (defn- explosion [world eid e at]
   (concat [(out/all (out/status eid :fireworks))]
@@ -109,7 +110,8 @@
     [(:pos e) d (assoc (moved world e d) :vel d) nil]))
 
 (defn- hand
-  "Returns where glider c holds a rocket, off its feet."
+  "Returns the offset from the feet of glider c to the hand that
+  holds its rocket."
   [c]
   (let [held? #(= :firework-rocket (:item (player/hand-stack c %)))
         off? (and (held? :off) (not (held? :main)))
@@ -119,8 +121,8 @@
     (mapv #(* 0.5 (double %)) (glide/look 0.0 yaw))))
 
 (defn- carried-motion
-  "Returns where rocket e rides on its carrier, its motion, what it
-  becomes and the boost it gives a gliding carrier."
+  "Returns where rocket e rides on its carrier, its motion, the
+  changes to merge into it and the boost it gives a gliding carrier."
   [world e]
   (let [cid (:attached e) c (get-in world [:entities cid])]
     (cond
@@ -154,8 +156,8 @@
           [from d m boost] (if (:attached e)
                              (carried-motion world e)
                              (free-motion world e))
-          seen (assoc e :pos from :left-owner? left?)
-          hit (projectile/clip world eid seen d)
+          placed (assoc e :pos from :left-owner? left?)
+          hit (projectile/clip world eid placed d)
           met? (goes-off? e hit)
           at (:pos m from)]
       (concat

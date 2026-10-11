@@ -21,22 +21,25 @@
         still? (< (+ (* x x) (* z z)) still-sq)]
     [(if still? 0.0 x) (if (< (Math/abs y) least-y) 0.0 y) (if still? 0.0 z)]))
 
-(defn- across ^double [vel]
+(defn- flat-speed ^double [vel]
   (let [x (double (v/x vel)) z (double (v/z vel))]
     (Math/sqrt (+ (* x x) (* z z)))))
 
-(def ^:private wall {:type :fly-into-wall})
+(def ^:private fly-into-wall {:type :fly-into-wall})
 
 (defn- wall-deltas
   "Returns the deltas of player eid, e, flying into a wall at pos,
   slowed from speed vel to vel'."
   [world eid e pos vel vel']
-  (let [n (float (- (* (- (across vel) (across vel')) 10.0) 3.0))]
+  (let [lost (- (flat-speed vel) (flat-speed vel'))
+        n (float (- (* lost 10.0) 3.0))]
     (when (pos? n)
       (let [kind (if (> (long n) 4) :entity.player.big-fall
-                     :entity.player.small-fall)]
-        (cons (out/except eid (out/sound kind pos 1.0 1.0 :players))
-              (hurt/damage-deltas world eid e (double n) wall))))))
+                     :entity.player.small-fall)
+            fx (out/sound kind pos 1.0 1.0 :players)]
+        (cons (out/except eid fx)
+              (hurt/damage-deltas world eid e (double n)
+                                  fly-into-wall))))))
 
 (defn player-deltas
   "Returns the deltas that move the kept speed of player eid, e, on
@@ -45,14 +48,14 @@
   [world [eid e]]
   (let [vel (dead-banded (or (:vel e) [0.0 0.0 0.0]))
         [half height] (entity/pose-box (:pose e :standing))
-        [pos moved _ stuck glide hit?]
+        [pos moved _ stuck flight hit?]
         (travel/body-moved world (assoc e :vel vel) half height)
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
                moved)]
     (cond-> [[:merge-entity eid
               {:vel (mapv double vel') :stuck stuck}]]
-      (= :ladder glide)
+      (= :ladder flight)
       (conj [:merge-entity eid {:fall-flying false}])
-      (and (= :glide glide) hit?)
+      (and (= :glide flight) hit?)
       (into (wall-deltas world eid e pos vel vel')))))
