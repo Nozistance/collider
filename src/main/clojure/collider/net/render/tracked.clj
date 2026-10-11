@@ -72,7 +72,11 @@
           (contains? meta :absorption)
           (assoc :absorption (double (or (:absorption meta) 0.0)))
           (contains? meta :score)
-          (assoc :score (long (or (:score meta) 0)))))
+          (assoc :score (long (or (:score meta) 0)))
+          (contains? meta :skin-parts)
+          (assoc :mode-customisation (long (or (:skin-parts meta) 0)))
+          (contains? meta :main-hand)
+          (assoc :main-hand (if (= :left (:main-hand meta)) 0 1))))
 
 (defn- color-byte ^long [meta]
   (bit-or (bit-and (long (or (:color meta) 0)) 15)

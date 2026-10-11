@@ -415,6 +415,9 @@
    :block-ack         (fn [_ m] [(block-ack-packet m)])
    :inventory         (fn [_ m] [(own-content-packet m)])
    :tab-add           (fn [_ m] [(tab-add-packet m)])
+   :tab-hat           (fn [_ m]
+                        [{:packet :player-info-update :action :hat
+                          :players [(select-keys m [:uuid :hat?])]}])
    :tab-remove        (fn [_ m] [(tab-remove-packet m)])
    :tab-game-mode     (fn [_ m] [(tab-game-mode-packet m)])
    :tab-latency       (fn [_ m] [(tab-latency-packet m)])

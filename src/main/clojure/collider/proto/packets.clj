@@ -125,7 +125,8 @@
    [:name {:optional true} :string]
    [:properties {:optional true} Properties]
    [:gamemode {:optional true} [:maybe :int]]
-   [:ping {:optional true} [:maybe :int]]])
+   [:ping {:optional true} [:maybe :int]]
+   [:hat? {:optional true} :boolean]])
 
 (def ^:private Stonecutting
   [:map [:in [:sequential :keyword]]
@@ -221,9 +222,16 @@
 
 (def ^:private ^:const latency-bit 0x10)
 
+(def ^:private ^:const hat-bit 0x80)
+
+(defn- write-hat-entry! [^Buf buf {:keys [uuid hat?]}]
+  (c/write-uuid buf uuid)
+  (buf/write-boolean! buf (boolean hat?)))
+
 (def ^:private info-actions
   {:latency [latency-bit write-latency-entry!]
-   :game-mode [game-mode-bit write-mode-entry!]})
+   :game-mode [game-mode-bit write-mode-entry!]
+   :hat [hat-bit write-hat-entry!]})
 
 (def ^:private add-action
   [(bit-or add-player-bit game-mode-bit listed-bit latency-bit)

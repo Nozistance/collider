@@ -98,11 +98,19 @@
                 {:translate "chat.type.text"
                  :with [(reply/entity-name e) text]}))]))
 
+(def ^:private chat-off
+  (assoc (out/system-chat {:translate "chat.disabled.options" :color "red"})
+         :always? true))
+
+(defn- muted? [world eid]
+  (= :hidden (get-in world [:entities eid :chat-visibility])))
+
 (defn- said-deltas [world eid raw]
   (let [text (str/trim (str raw))]
     (cond
       (str/blank? text) nil
       (str/starts-with? text "/") (command-deltas world eid text)
+      (muted? world eid) [(out/to eid chat-off)]
       :else (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text id]

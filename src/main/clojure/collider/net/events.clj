@@ -4,10 +4,15 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:private chat-modes [:full :system :hidden])
+
 (defn client-settings
   "Returns the settings of a player that client information m holds."
   [m]
-  {:view-distance (:view-distance m) :skin-parts (:skin-parts m)})
+  {:view-distance (:view-distance m) :skin-parts (:skin-parts m)
+   :main-hand (if (= 0 (:main-hand m)) :left :right)
+   :chat-visibility (get chat-modes (:chat-visibility m) :full)
+   :allows-listing (:allows-listing m true)})
 
 (defn- on-ground? [m] (bit-test (long (:flags m)) 0))
 

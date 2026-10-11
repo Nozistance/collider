@@ -58,12 +58,20 @@
   (for [eid (audience/audience sight m)]
     [eid (fx/explode-packet m eid)]))
 
+(defn- hears? [sight m eid]
+  (let [v (:chat-visibility (player-of sight eid) :full)]
+    (case (:msg m)
+      :system-chat (or (:always? m) (not= :hidden v))
+      :player-chat (= :full v)
+      true)))
+
 (defn- msg-packets [sight viewers m]
   (if (= :explosion (:msg m))
     (explosion-packets sight m)
     (let [pkts (fx/fx-packets (audience/level-of sight (:dim m)) m)]
       (when (seq pkts)
         (for [eid (audience/recipients sight viewers m)
+              :when (hears? sight m eid)
               p pkts]
           [eid p])))))
 

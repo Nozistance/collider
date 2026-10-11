@@ -59,6 +59,7 @@
            :swimming?   (boolean (:swimming? e))
            :pose        (or (:pose e) :standing)
            :skin-parts  (long (or (:skin-parts e) 0))
+           :main-hand   (or (:main-hand e) :right)
            :health      (num/f32 (double (:health e 20.0)))}
           (:sleeping e)
           (assoc :sleeping-pos (get-in e [:sleeping :pos]))

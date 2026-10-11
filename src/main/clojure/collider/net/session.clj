@@ -40,10 +40,29 @@
 (defn- login-kick-packet [reason]
   {:packet :login-disconnect :json (json/write-str reason)})
 
+(def ^:private anonymous
+  {:name "Anonymous Player" :id "00000000-0000-0000-0000-000000000000"})
+
+(defn- listed [conn]
+  (let [{nm :name :keys [settings profile]} (server/info conn)]
+    (if (:allows-listing settings true)
+      {:name nm :id (str (:uuid profile))}
+      anonymous)))
+
+(defn- sample
+  "Returns up to twelve players for the server list, a run of them
+  from a random start, shuffled, as MinecraftServer.buildPlayerStatus."
+  [conns]
+  (let [ps (mapv val (sort-by key conns))
+        n (min 12 (count ps))
+        at (rand-int (inc (- (count ps) n)))]
+    (shuffle (mapv listed (subvec ps at (+ at n))))))
+
 (defn- status-body [{:keys [conns settings]}]
-  (let [s @settings]
+  (let [s @settings cs @conns]
     {:version     {:name c/game-version :protocol c/protocol-version}
-     :players     {:max (:max-players s) :online (count @conns)}
+     :players     (cond-> {:max (:max-players s) :online (count cs)}
+                    (seq cs) (assoc :sample (sample cs)))
      :description {:text (:motd s)}}))
 
 (def ^:private known-pack ["minecraft" "core" c/game-version])
@@ -285,6 +304,8 @@
     [:login :key] (key! conn io @settings m)
     [:login :login-acknowledged] (login-acknowledged! conn)
     [:configuration :client-information] (client-information! conn m)
+    [:play :client-information]
+    (do (client-information! conn m) (play-packet! conn io m))
     [:configuration :select-known-packs] (finish-configuration! conn)
     [:configuration :finish-configuration]
     (do-login! conn io @settings)

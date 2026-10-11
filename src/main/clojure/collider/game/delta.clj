@@ -330,6 +330,7 @@
      :tab-latency [[:entries [:sequential :map]]]
      :tab-header [[:header Text] [:footer Text]]
      :tab-game-mode [[:uuid :uuid] [:mode :keyword]]
+     :tab-hat [[:uuid :uuid] [:hat? :boolean]]
      :game-mode [[:mode :keyword]]
      :camera [[:id :int]]
      :abilities [[:invulnerable? :boolean] [:flying? :boolean]

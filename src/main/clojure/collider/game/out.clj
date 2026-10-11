@@ -216,6 +216,12 @@
   [text]
   {:msg :player-chat :text text})
 
+(defn tab-hat
+  "Returns the effect that shows or hides the hat of player uuid in
+  the player list."
+  [uuid hat?]
+  {:msg :tab-hat :uuid uuid :hat? hat?})
+
 (defn tab-add [entries]
   {:msg :tab-add :entries entries})
 

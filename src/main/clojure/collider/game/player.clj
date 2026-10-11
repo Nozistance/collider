@@ -567,10 +567,25 @@
 
 (defn client-settings
   "Returns w after the event [:client-settings eid settings]."
-  [w [_ eid {:keys [view-distance skin-parts]}]]
+  [w [_ eid {:keys [view-distance chat-visibility]}]]
   (update-entity w eid assoc
                  :view-distance (long (or view-distance 2))
-                 :skin-parts (long (or skin-parts 0))))
+                 :chat-visibility (or chat-visibility :full)))
+
+(defn- hat? [skin] (bit-test (long (or skin 0)) 6))
+
+(defn settings-deltas
+  "Returns the deltas of the event [:client-settings eid settings].
+  Player eid shows its skin parts and main hand, and the player list
+  of everyone its hat when it came or went."
+  [world [tag eid {:keys [skin-parts main-hand]}]]
+  (when (= :client-settings tag)
+    (when-let [e (get-in world [:entities eid])]
+      (let [skin (long (or skin-parts 0))]
+        (cond-> [[:merge-entity eid {:skin-parts skin
+                                     :main-hand (or main-hand :right)}]]
+          (not= (hat? skin) (hat? (:skin-parts e)))
+          (conj (out/all (out/tab-hat (:uuid e) (hat? skin)))))))))
 
 (defn infinite-materials?
   "Returns true when the player builds without spending items.
