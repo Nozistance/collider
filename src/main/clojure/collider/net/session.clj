@@ -51,7 +51,7 @@
 
 (defn- sample
   "Returns up to twelve players for the server list, a run of them
-  from a random start, shuffled, as MinecraftServer.buildPlayerStatus."
+  from a random start, shuffled."
   [conns]
   (let [ps (mapv val (sort-by key conns))
         n (min 12 (count ps))
