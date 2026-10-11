@@ -11,6 +11,7 @@
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.climb :as climb]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
@@ -49,6 +50,10 @@
 (def ^:private ^:const out-of-fluid-reach (double (float 0.6)))
 
 (def ^:private ^:const walk-drive (double (float 0.21600002)))
+
+(def ^:private ^:const glide-drag (double (float 0.99)))
+
+(def ^:private ^:const vertical-glide-drag (double (float 0.98)))
 
 (def ^:private ^:const air-drag
   (modified-friction (double (float 0.91))))
@@ -265,7 +270,7 @@
         c (phys/context e)
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
-        sf (speed-factor world (phys/pos mv) sup)
+        sf (if (:flying e) 1.0 (speed-factor world (phys/pos mv) sup))
         free? (:discard-friction? e)
         k (if free? 1.0 (num/fmul bf air-drag))
         [h u] (moved-fluid world e d mv half height f)]
@@ -274,6 +279,79 @@
            (* (lifted e (v/y u)) (if free? 1.0 vertical-drag))
            (* (* (v/z u) sf) k))
      (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
+
+(defn- view
+  "Returns the unit vector a body looks along at pitch and yaw."
+  [^double pitch ^double yaw]
+  (let [xr (num/fmul (num/f32 pitch) deg->rad)
+        yr (num/fmul (- (num/f32 yaw)) deg->rad)
+        xc (v/cos xr)]
+    [(num/fmul (v/sin yr) xc) (- (v/sin xr))
+     (num/fmul (v/cos yr) xc)]))
+
+(defn- dived
+  "Returns speed v of a glider falling, turned along its flat look
+  lx, lz of length n."
+  [[x y z :as v] lx lz n lift]
+  (if (and (< y 0.0) (> n 0.0))
+    (let [k (* y -0.1 lift)]
+      [(+ x (/ (* lx k) n)) (+ y k) (+ z (/ (* lz k) n))])
+    v))
+
+(defn- pulled-up
+  "Returns speed v of a glider leaning back by lean, trading its
+  flat speed for height."
+  [[x y z :as v] lx lz n lean speed]
+  (if (and (< lean 0.0) (> n 0.0))
+    (let [k (* (* speed (- (v/sin (double lean)))) 0.04)]
+      [(- x (/ (* lx k) n)) (+ y (* k 3.2)) (- z (/ (* lz k) n))])
+    v))
+
+(defn- steered
+  "Returns speed v of a glider turned toward its flat look."
+  [[x y z :as v] lx lz n speed]
+  (if (> n 0.0)
+    [(+ x (* (- (* (/ lx n) speed) x) 0.1)) y
+     (+ z (* (- (* (/ lz n) speed) z) 0.1))]
+    v))
+
+(defn- glide-vel
+  "Returns the speed vel of glider e after a tick of gravity, lift
+  and turning toward where it looks."
+  [e vel]
+  (let [pitch (double (:pitch e 0.0))
+        [lx _ lz] (view pitch (double (:yaw e 0.0)))
+        n (Math/sqrt (+ (* lx lx) (* lz lz)))
+        lean (num/fmul (num/f32 pitch) deg->rad)
+        c (Math/cos lean) lift (* c c)
+        x (v/x vel) z (v/z vel)
+        speed (Math/sqrt (+ (* x x) (* z z)))
+        g (fall-gravity e (v/y vel))
+        y (+ (v/y vel) (* g (+ -1.0 (* lift 0.75))))
+        [x y z] (-> [x y z] (dived lx lz n lift)
+                    (pulled-up lx lz n lean speed)
+                    (steered lx lz n speed))]
+    (v/v3 (* x glide-drag) (* y vertical-glide-drag)
+          (* z glide-drag))))
+
+(defn- travel-glide [world e vel half height f]
+  (let [d (glide-vel e vel)
+        c (phys/context e)
+        ^Move mv (stepped world e d half height c)
+        [sup nb?] (supported world e mv half c)
+        [h u] (moved-fluid world e d mv half height f)]
+    [(phys/pos mv) u (phys/on-ground? mv) sup nb? h d (phys/vel mv)
+     mv]))
+
+(defn- glide
+  "Returns how flying body e moves through fluid f. It is :glide on
+  its wings, :ladder when a climbable block stops it, and nil when it
+  does not fly or swims."
+  [world e f]
+  (when (and (:fall-flying e) (not (in-fluid? f)))
+    (if (climb/on-climbable? (:chunks world) (:pos e))
+      :ladder
+      :glide)))
 
 (defn- travel-water [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
@@ -317,6 +395,8 @@
   [world e vel half height og? {:keys [water lava] :as f}]
   (cond (pos? (double water)) (travel-water world e vel half height)
         (pos? (double lava)) (travel-lava world e vel half height f)
+        (= :glide (glide world e f))
+        (travel-glide world e vel half height f)
         :else (travel-air world e vel half height og? f)))
 
 (defn- jump-share ^double [e]
@@ -517,12 +597,16 @@
     (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
 
 (defn body-moved
-  "Returns [pos vel on-ground stuck] of living body e with no will of
-  its own after one tick of travel from its speed."
+  "Returns [pos vel on-ground stuck glide hit] of living body e with
+  no will of its own after one tick of travel from its speed. Glide
+  is :glide or :ladder for a body that flies on wings, and hit is
+  true when it ran into a block sideways."
   [world e half height]
   (let [h (num/f32 half) ht (num/f32 height)
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
         tr (physics-move world e (:vel e) h ht f)]
     [(nth tr 0) (nth tr 1) (nth tr 2)
-     (motion/stuck-speed (:chunks world) (nth tr 0) half height true)]))
+     (motion/stuck-speed (:chunks world) (nth tr 0) half height true)
+     (glide world e f)
+     (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))]))

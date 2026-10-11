@@ -4,6 +4,7 @@
             [collider.game.glide :as glide]
             [collider.game.inventory :as inventory]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
@@ -30,10 +31,14 @@
       (inventory/hurt-slot-deltas t eid e i (parts part part) 1))))
 
 (defn player-deltas
-  "Returns the deltas of player eid, e, gliding this tick."
+  "Returns the deltas of player eid, e, gliding this tick. A glider
+  that falls slower than half a block a tick falls a block at most."
   [world [eid e]]
   (let [gliding? (and (:fall-flying e) (glide/can-glide? e))]
     (cond-> (if gliding? (vec (wear-deltas (:tick world) eid e)) [])
+      (and (:fall-flying e) (> (double (:fall e 0.0)) 1.0)
+           (> (double (v/y (:vel e [0.0 0.0 0.0]))) -0.5))
+      (conj [:merge-entity eid {:fall 1.0}])
       (:glide-shown? e) (into (shown eid e))
       (:glide-shown? e) (conj [:merge-entity eid {:glide-shown? nil}])
       (and (:fall-flying e) (not gliding?))

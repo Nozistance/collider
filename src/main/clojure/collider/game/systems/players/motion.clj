@@ -3,7 +3,9 @@
   send. Every tick it moves on as the speed of a body with no input,
   while the body stays where the client says it is."
   (:require [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.mob.travel :as travel]
+            [collider.game.out :as out]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -19,14 +21,38 @@
         still? (< (+ (* x x) (* z z)) still-sq)]
     [(if still? 0.0 x) (if (< (Math/abs y) least-y) 0.0 y) (if still? 0.0 z)]))
 
+(defn- across ^double [vel]
+  (let [x (double (v/x vel)) z (double (v/z vel))]
+    (Math/sqrt (+ (* x x) (* z z)))))
+
+(def ^:private wall {:type :fly-into-wall})
+
+(defn- wall-deltas
+  "Returns the deltas of player eid, e, flying into a wall at pos,
+  slowed from speed vel to vel'."
+  [world eid e pos vel vel']
+  (let [n (float (- (* (- (across vel) (across vel')) 10.0) 3.0))]
+    (when (pos? n)
+      (let [kind (if (> (long n) 4) :entity.player.big-fall
+                     :entity.player.small-fall)]
+        (cons (out/except eid (out/sound kind pos 1.0 1.0 :players))
+              (hurt/damage-deltas world eid e (double n) wall))))))
+
 (defn player-deltas
-  "Returns the delta that moves the kept speed of player eid, e, on by
-  a tick."
+  "Returns the deltas that move the kept speed of player eid, e, on
+  by a tick. A glider hurts itself on the walls it flies into, and a
+  ladder takes it off its wings."
   [world [eid e]]
   (let [vel (dead-banded (or (:vel e) [0.0 0.0 0.0]))
         [half height] (entity/pose-box (:pose e :standing))
-        [_ moved _ stuck] (travel/body-moved world (assoc e :vel vel) half height)
+        [pos moved _ stuck glide hit?]
+        (travel/body-moved world (assoc e :vel vel) half height)
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
                moved)]
-    [[:merge-entity eid {:vel (mapv double vel') :stuck stuck}]]))
+    (cond-> [[:merge-entity eid
+              {:vel (mapv double vel') :stuck stuck}]]
+      (= :ladder glide)
+      (conj [:merge-entity eid {:fall-flying false}])
+      (and (= :glide glide) hit?)
+      (into (wall-deltas world eid e pos vel vel')))))
