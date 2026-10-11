@@ -837,7 +837,7 @@
   who struck the blow counts the kind of mob it killed."
   [world eid e]
   (let [[kid k] (kill-credit world e)
-        src (:struck-by e)
+        src (:killed-by e)
         player? (entity/player? e)]
     (concat
       (when (and k player?)
