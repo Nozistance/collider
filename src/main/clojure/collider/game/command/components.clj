@@ -313,7 +313,9 @@
   (let [l (dfu/listed f)] (fn [tag] (l (or (dfu/as-list tag) tag)))))
 
 (defn- string-to [most]
-  (dfu/checked dfu/string-of #(<= (count %) most) (constantly nil)))
+  (dfu/checked dfu/string-of #(<= (count %) most)
+               #(str "String \"" % "\" is too long: " (count %)
+                     ", expected range [0-" most "]")))
 
 (def ^:private tag-data
   (dfu/mapped #(dfu/settled % (dfu/either (compound %) (snbt-compound %)))
