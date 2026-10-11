@@ -4,6 +4,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
             [collider.game.enchantment :as enchantment]
+            [collider.game.item-predicate :as ip]
             [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.world.block :as block]))
@@ -54,39 +55,10 @@
     (and (>= (long v) (long (:min r Long/MIN_VALUE)))
          (<= (long v) (long (:max r Long/MAX_VALUE))))))
 
-(defn- enchanted?
-  "Returns true when enchantment predicate p finds a match in the
-  enchantment levels m."
-  [p m]
-  (let [r (:levels p)
-        fits? #(and (pos? (long %)) (or (nil? r) (in-range? r %)))]
-    (cond
-      (:enchantments p)
-      (boolean (some #(fits? (get m % 0))
-                     (members "enchantment" (:enchantments p))))
-      (:levels p) (boolean (some fits? (vals m)))
-      :else (boolean (seq m)))))
-
-(defn- item-part? [s [k v]]
-  (case k
-    (:enchantments :stored-enchantments)
-    (let [m (stack/component s k)]
-      (and (some? m) (every? #(enchanted? % m) v)))
-    (fail "unknown item predicate" {:predicate k})))
-
-(defn- item-matches? [p s]
-  (every? (fn [[k v]]
-            (case k
-              :items (contains? (members "item" v) (:item s))
-              :count (in-range? v (stack/size s))
-              :predicates (every? #(item-part? s %) v)
-              (fail "unknown item field" {:field k})))
-          p))
-
 (defn- equipped? [v e]
   (and (:living? e)
        (every? (fn [[slot p]]
-                 (item-matches? p (get (:equipment e) slot)))
+                 (ip/matches? p (get (:equipment e) slot)))
                v)))
 
 (defn- flag? [k v e]
@@ -231,7 +203,7 @@
     :entity-properties (properties? c ctx)
     :damage-source-properties (damage? (:predicate c) ctx)
     :match-tool (boolean (and (:tool ctx)
-                              (item-matches? (:predicate c) (:tool ctx))))
+                              (ip/matches? (:predicate c) (:tool ctx))))
     :block-state-property
     (and (= (:block c) (block/block-of (:state ctx)))
          (state-fits? (:state ctx) (:properties c)))

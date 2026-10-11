@@ -313,7 +313,7 @@
 (defn- string-to [most]
   (dfu/checked dfu/string-of #(<= (count %) most) (constantly nil)))
 
-(def ^:private tag-data
+(def tag-data
   (dfu/mapped #(dfu/settled % (dfu/either (compound %) (snbt-compound %)))
               nbt-tree))
 
@@ -809,3 +809,15 @@
 (defn decode
   [k tag]
   (if-let [f (decoders k)] (dfu/settled tag (f tag)) [:raw tag]))
+
+(defn- json-tag [x]
+  (cond (map? x) (update-vals (update-keys x keyword) json-tag)
+        (vector? x) (mapv json-tag x)
+        (boolean? x) (byte (if x 1 0))
+        :else x))
+
+(defn default-value
+  "Returns the default of component k on item, decoded, or nil."
+  [item k]
+  (when-some [d (get-in (data/items) [item :defaults k])]
+    (let [[op v] (decode k (json-tag d))] (when (= :ok op) v))))

@@ -7,6 +7,7 @@
             [collider.game.command.decode :as dfu]
             [collider.game.command.reader :as r]
             [collider.game.command.snbt :as snbt]
+            [collider.game.item-predicate :as ip]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -126,19 +127,11 @@
   []
   {:id "minecraft:item_stack" :parse parse-stack})
 
-(defn- json-tag [x]
-  (cond (map? x) (update-vals (update-keys x keyword) json-tag)
-        (vector? x) (mapv json-tag x)
-        (boolean? x) (byte (if x 1 0))
-        :else x))
-
-(defn- default? [item k v]
-  (let [d (get-in (data/items) [item :defaults k] ::none)]
-    (and (not= ::none d) (= [:ok v] (cs/decode k (json-tag d))))))
-
 (defn- patched [s [k op v]]
   (case op
-    :ok (if (default? (:item s) k v) (stack/unpatched s k) (stack/put s k v))
+    :ok (if (= v (cs/default-value (:item s) k))
+          (stack/unpatched s k)
+          (stack/put s k v))
     :remove (stack/put s k nil)
     :raw s))
 
@@ -248,22 +241,13 @@
         :raw [:ok [:raw k v]]
         [op v]))))
 
-(def ^:private map-predicates
-  "The predicate types whose value is a record."
-  #{:damage})
-
-(defn- record-test? [c]
-  (and (vector? c)
-       (or (= :exists (first c)) (map-predicates (peek c)))))
-
 (defn- predicate-test [c tag]
-  (let [[op v] (when (and (record-test? c) (not (map? tag)))
-                 (dfu/not-map tag))]
-    (cond (= :count c) (bounds tag)
-          (= :malformed op) [op v]
-          (= :predicate (first c)) [:ok [:raw (peek c) tag]]
-          (map? tag) [:ok [:has (peek c)]]
-          :else [:ok [:raw (peek c) tag]])))
+  (cond (= :count c) (bounds tag)
+        (= :predicate (first c))
+        (let [k (peek c) [op v :as r] (dfu/settled tag ((ip/kind k) tag))]
+          (if (= :ok op) [:ok [:predicate k v]] r))
+        (map? tag) [:ok [:has (peek c)]]
+        :else (dfu/not-map tag)))
 
 (defn- test-id [c]
   (cond (= :count c) count-id
@@ -338,9 +322,10 @@
 (defn- passes?
   [s [kind k v :as t]]
   (case kind
-    :has (stack/has? s k)
-    :equals (= v (stack/component s k))
+    :has (some? (ip/component s k))
+    :equals (= v (ip/component s k))
     :count (in-bounds? k v (stack/size s))
+    :predicate (ip/kind-matches? k v s)
     :raw false
     (throw (ex-info "unknown item test" {:test t}))))
 
