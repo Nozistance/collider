@@ -3,6 +3,7 @@
   (:require [collider.game.block.campfire :as campfire]
             [collider.game.item :as item]
             [collider.game.out :as out]
+            [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -37,10 +38,9 @@
       e)))
 
 (defn- drop-deltas [world pos [i stack]]
-  (let [salt [:campfire i]]
-    (map (fn [part]
-           [:spawn-entity (item/popped world pos part salt)])
-         (item/split-drop world pos stack salt))))
+  (let [t (:tick world)
+        roll #(random/of-key t pos [:campfire i] %)]
+    (map (fn [it] [:spawn-entity it]) (item/scattered pos stack roll))))
 
 (defn- cook-deltas [world pos e]
   (let [[e' drops] (reduce step [e []] (range slots))]

@@ -80,17 +80,6 @@
                  (entity/pop-velocity [t pos salt])
                  stack)))
 
-(defn split-drop
-  "Returns the stack split into the piles a broken block drops."
-  [world pos stack salt]
-  (loop [n (long (:count stack 1)) i 0 acc []]
-    (if-not (pos? n)
-      acc
-      (let [k [(:tick world) pos salt :split i]
-            got (min n (+ 10 (long (* 21.0 (random/of-key k)))))]
-        (recur (- n got) (inc i)
-               (conj acc (assoc stack :count got)))))))
-
 (def ^:private ^:const scatter-spread 0.11485000171139836)
 
 (defn- scatter-spot [pos roll]
