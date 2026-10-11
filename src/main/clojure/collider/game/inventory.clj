@@ -125,32 +125,37 @@
       (remainder-deltas world eid e hand stack left)
       (consume-deltas eid e hand 1))))
 
-(defn- broken-deltas [eid e hand stack]
-  (let [fx (out/status eid (if (= :off hand) :break-off :break-main))]
-    [[:set-slot eid (player/hand-slot e hand) (shrunk stack 1)]
+(defn- broken-deltas [eid i part stack]
+  (let [fx (out/status eid (keyword (str "break-" (name part))))]
+    [[:set-slot eid i (shrunk stack 1)]
      (out/all fx) (out/to eid fx)
      [:award eid (keyword "broken" (name (:item stack))) 1]]))
 
 (defn- wear-of [t eid stack n]
   (enchantment/item-damage stack n #(random/of-key t eid :unbreaking %)))
 
-(defn hurt-item-deltas
-  "Returns the deltas of wearing the item in hand by n points at
-  tick t. Its enchantments may save some points. An item worn past
-  its last point breaks and leaves the hand. A player with infinite
-  materials wears nothing out."
-  [t eid e hand n]
-  (let [stack (player/hand-stack e hand)]
+(defn hurt-slot-deltas
+  "Returns the deltas of wearing the item in inventory slot i, worn
+  on part, by n points at tick t. Its enchantments may save some
+  points. An item worn past its last point breaks and leaves the
+  slot. A player with infinite materials wears nothing out."
+  [t eid e i part n]
+  (let [stack (get-in e [:inventory i])]
     (when (and (stack/damageable? stack)
                (not (player/infinite-materials? e)))
       (let [n (wear-of t eid stack n)
             worn (+ n (stack/damage stack))]
         (cond
           (zero? n) nil
-          (>= worn (stack/max-damage stack))
-          (broken-deltas eid e hand stack)
-          :else [[:set-slot eid (player/hand-slot e hand)
-                  (stack/with-damage stack worn)]])))))
+          (>= worn (stack/max-damage stack)) (broken-deltas eid i part stack)
+          :else [[:set-slot eid i (stack/with-damage stack worn)]])))))
+
+(defn hurt-item-deltas
+  "Returns the deltas of wearing the item in hand by n points at
+  tick t, as hurt-slot-deltas."
+  [t eid e hand n]
+  (hurt-slot-deltas t eid e (player/hand-slot e hand)
+                    (if (= :off hand) :off :main) n))
 
 (defn- used-award [eid e hand]
   (when-let [item (:item (player/hand-stack e hand))]

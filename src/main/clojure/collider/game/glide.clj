@@ -6,7 +6,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private worn
-  {5 :head 6 :chest 7 :legs 8 :feet 45 :offhand})
+  [[45 :offhand] [8 :feet] [7 :legs] [6 :chest] [5 :head]])
 
 (defn- given [s k]
   (let [d (get-in (data/items) [(:item s) :defaults k])]
@@ -32,11 +32,11 @@
 
 (defn glider-slots
   "Returns the inventory slots of player e that hold a glider it can
-  glide on."
+  glide on, with the part each is worn on, in vanilla slot order."
   [e]
   (let [held (+ 36 (long (:held-slot e 0)))]
     (filterv (fn [[i slot]] (glider? (get-in e [:inventory i]) slot))
-             (assoc worn held :mainhand))))
+             (cons [held :mainhand] worn))))
 
 (defn can-glide?
   "Returns true when player e may glide, off the ground, under no
