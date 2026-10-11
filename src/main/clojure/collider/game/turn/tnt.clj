@@ -217,7 +217,7 @@
   [s eid e pos]
   (let [src (source s eid e)]
     {:center [(v/x pos) (+ (v/y pos) (/ (tnt-height) 16.0)) (v/z pos)]
-     :power 4.0 :source :tnt :fire? false :by eid :src src
+     :power tnt/power :source :tnt :fire? false :by eid :src src
      :causer (some->> (:cause src) (get (:cur s)))
      :primed (:primed s)}))
 

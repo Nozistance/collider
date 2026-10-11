@@ -39,22 +39,6 @@
          (or (and (= x1 x0) (= z1 z0))
              (full-cube? chunks x1 yb z1)))))
 
-(defn fence-at?
-  "Returns true when a fence or a fence gate stands at x y z."
-  [chunks x y z]
-  (let [st (chunk/block-state chunks x y z)]
-    (or (block/fence? st) (= :gate (block/shape-of st)))))
-
-(defn solid?
-  "Returns true when x y z stops a walking body. Nothing outside
-  the world height does."
-  [chunks x y z]
-  (let [y (long y)]
-    (and (chunk/in-range? y)
-         (or (block/solid? (chunk/block-state chunks x y z))
-             (and (> y chunk/min-y)
-                  (fence-at? chunks x (dec y) z))))))
-
 (defn pos
   ^V3 [^Move m] (.pos m))
 

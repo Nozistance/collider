@@ -203,13 +203,6 @@
   [^Exposure e]
   (Exposure/frozen e))
 
-(defn affected-blocks
-  "Returns what the rays of a blast of power at center through rg
-  reach, as reached does."
-  [^SectionGrid rg center power seed]
-  (reached (rays rg (exposure rg center) center power seed 1)
-           center))
-
 (defn exposed
   "Returns the share, 0.0 to 1.0, of a body at p that the blast of e
   reaches without a block in the way. The body is a box of half width
