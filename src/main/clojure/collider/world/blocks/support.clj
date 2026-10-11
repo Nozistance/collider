@@ -97,8 +97,15 @@
   (or (block/tagged? below "support_override_cactus_flower")
       (center-below? chunks pos nil)))
 
-(defn- vegetation-tag [t]
-  (get vegetation-tags t "supports_vegetation"))
+(def ^:private own-tags
+  {:warped-fungus  "supports_warped_fungus"
+   :crimson-fungus "supports_crimson_fungus"
+   :warped-roots   "supports_warped_roots"
+   :crimson-roots  "supports_crimson_roots"})
+
+(defn- vegetation-tag [t ^long st]
+  (or (own-tags (block/block-of st))
+      (get vegetation-tags t "supports_vegetation")))
 
 (defn- vegetation-held? [chunks pos ^long st]
   (let [t (block/type-of st) b (below chunks pos)]
@@ -106,7 +113,7 @@
       (halved-vegetation t) (halved-held? t st b)
       (= :seagrass t) (seagrass-base? b)
       (= :cactus-flower t) (cactus-flower-held? chunks pos b)
-      :else (block/tagged? b (vegetation-tag t)))))
+      :else (block/tagged? b (vegetation-tag t st)))))
 
 (def kelp-types
   "The block types of kelp."
