@@ -37,9 +37,9 @@
   They all run before the level tick."
   [#'players/player-list
    #'landing/landings
+   #'containers/containers
    #'packets/packets
-   #'inventory/inventory
-   #'containers/containers])
+   #'inventory/inventory])
 
 (def entity-systems
   "The systems that step the entities of the level."
