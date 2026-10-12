@@ -490,9 +490,11 @@
 
 (defn- met-fire-deltas
   "Returns the deltas of the fire, lava and water mob eid, e, met on
-  its moves this tick, step by step."
+  its moves this tick, step by step. With no moves it stays where it
+  is."
   [world eid e moves]
   (let [r0 (long (or (:fire e) 0))
+        moves (or (seq moves) [[(:pos e) (:pos e) nil]])
         [r hurts] (reduce (stepped-fire fire-lit identity) [r0 []]
                           (met-by world e moves))
         r (if (rained-on? world e) (min 0 (long r)) (long r))
