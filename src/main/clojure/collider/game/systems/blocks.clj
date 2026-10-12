@@ -4,7 +4,6 @@
             [collider.game.apply :as apply]
             [collider.game.book :as book]
             [collider.game.changes :as changes]
-            [collider.game.deltas :as deltas]
             [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.mob.mobs :as mobs]
@@ -313,24 +312,15 @@
 (defn- item-use-args [[eid hand]]
   [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand])
 
-(defn- edit-deltas [world i [tag & args :as ev] origins]
-  (case tag
-    :dig (dig/dig-deltas (input/as-came world i ev) args)
-    :place (placed-deltas world args (get origins i))
-    :use-item
-    (place-deltas world (item-use-args args) (get origins i))
-    :sign-update (use/sign-update-deltas world args)
-    nil))
-
-(defn- block-edits-deltas [world events]
+(defn edit-deltas
+  "Returns the deltas of dig, place, item use or sign edit event ev,
+  the i-th of the tick."
+  [world [i [tag & args :as ev]]]
   (let [origins (get-in world [:input :use-origins])]
-    (apply/fold-events world (map-indexed vector events)
-                       (fn [w [i ev]] (edit-deltas w i ev origins))
-                       second)))
-
-(defn block-edits
-  "Returns the deltas of the digs, places and sign edits of the tick."
-  {:wake {:events #{:dig :place :use-item :sign-update}}}
-  [world d]
-  (let [events (:input d)]
-    (deltas/of-vec (block-edits-deltas world events))))
+    (case tag
+      :dig (dig/dig-deltas (input/as-came world i ev) args)
+      :place (placed-deltas world args (get origins i))
+      :use-item
+      (place-deltas world (item-use-args args) (get origins i))
+      :sign-update (use/sign-update-deltas world args)
+      nil)))

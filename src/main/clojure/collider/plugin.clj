@@ -301,7 +301,7 @@
 
 (defn- listener [{:keys [plugin]}]
   (when-let [hs (not-empty (:on-event plugin))]
-    [[:chat (hooks/on-event hs)]]))
+    [[:packets (hooks/on-event hs)]]))
 
 (defn- invalid! [tag d]
   (let [e (ex-info (str "invalid delta " tag) {:delta d})

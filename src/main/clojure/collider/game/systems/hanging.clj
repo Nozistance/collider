@@ -1,8 +1,7 @@
 (ns collider.game.systems.hanging
   "Hanging, use, breaking and support checks of paintings and item
   frames."
-  (:require [collider.game.apply :as apply]
-            [collider.game.areas :as areas]
+  (:require [collider.game.areas :as areas]
             [collider.game.deltas :as deltas]
             [collider.game.hanging :as hanging]
             [collider.game.hanging.drops :as drops]
@@ -174,14 +173,9 @@
   (and (#{:interact :attack} (nth ev 0))
        (hanging/types (get-in world [:entities (nth ev 2) :type]))))
 
-(defn hanging-uses
-  "Returns the deltas of the players using and hitting paintings and
-  item frames this tick, one after another."
-  {:wake {:events #{:interact :attack}}}
-  [world d]
-  (let [evs (into [] (keep-indexed
-                       (fn [i ev] (when (aimed? world ev) [i ev])))
-                 (:input d))
-        f (fn [w [i ev]] (event-deltas (input/as-came w i ev) ev))]
-    (deltas/of-vec (when (seq evs)
-                     (apply/fold-events world evs f second)))))
+(defn input-deltas
+  "Returns the deltas of event ev, the i-th of the tick, when it uses
+  or hits a painting or an item frame."
+  [world [i ev]]
+  (when (aimed? world ev)
+    (event-deltas (input/as-came world i ev) ev)))

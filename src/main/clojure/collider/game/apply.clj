@@ -321,11 +321,21 @@
   (try (vec (authored (f w x) ev))
        (catch Throwable t (dropped! f ev t) [])))
 
-(defn- event-step [f event-of w x more]
+(defn- event-step [f event-of slots? w x more]
   (let [ev (event-of x)
-        w (entities w (player/slot-part w ev))
+        sp (player/slot-part w ev)
+        w (entities w sp)
         ds (event-deltas f w x ev)]
-    [(if (and more (seq ds)) (first (applied w ds)) w) ds]))
+    [(if (and more (seq ds)) (first (applied w ds)) w)
+     (if slots? (into (vec sp) ds) ds)]))
+
+(defn- folded [world events f event-of slots?]
+  (loop [w world evs (seq events) acc []]
+    (if-not evs
+      acc
+      (let [more (next evs)
+            [w ds] (event-step f event-of slots? w (first evs) more)]
+        (recur w more (into acc ds))))))
 
 (defn fold-events
   "Returns the deltas f gives for each event in order.
@@ -333,13 +343,14 @@
   before it. An event that f fails on gives no deltas. The player
   of an event is the author of the block changes it makes."
   ([world events f] (fold-events world events f identity))
-  ([world events f event-of]
-   (loop [w world evs (seq events) acc []]
-     (if-not evs
-       acc
-       (let [more (next evs)
-             [w ds] (event-step f event-of w (first evs) more)]
-         (recur w more (into acc ds)))))))
+  ([world events f event-of] (folded world events f event-of false)))
+
+(defn fold-input
+  "Returns the deltas of the events of the tick in the order they
+  came, as fold-events, with the slot deltas of each event too. f
+  takes the world and the index and event, [i ev]."
+  [world events f]
+  (folded world (map-indexed vector events) f second true))
 
 (defn then
   "Returns world with deltas ds applied, and deltas d with ds added."

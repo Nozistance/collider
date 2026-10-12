@@ -15,7 +15,6 @@
             [collider.game.block.lid :as lid]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
-            [collider.game.apply :as apply]
             [collider.game.player :as player]
             [collider.random :as random]
             [collider.vec :as v]))
@@ -382,7 +381,9 @@
     (when (and m (not (container/lectern? m)) (screen/valid? world m))
       (selected-bundle-deltas world eid e m slot i))))
 
-(defn- event-deltas [world [tag :as ev]]
+(defn event-deltas
+  "Returns the deltas of one menu event of its player."
+  [world [tag :as ev]]
   (case tag
     :menu-click (click-deltas world ev)
     :menu-close (close-event-deltas world ev)
@@ -391,16 +392,12 @@
     :bundle-select (bundle-select-deltas world ev)
     nil))
 
-(defn- containers-deltas [world events]
+(defn- containers-deltas [world]
   (concat
     (lid/animate-deltas world)
-    (quit-deltas world)
-    (apply/fold-events world events event-deltas)))
+    (quit-deltas world)))
 
 (defn containers
-  {:wake {:events #{:menu-click :menu-close :menu-button
-                    :rename-item :bundle-select}
-          :keys [:shulker-anim [:input :quits]]}}
-  [world d]
-  (let [events (:input d)]
-    (deltas/of-vec (containers-deltas world events))))
+  {:wake {:keys [:shulker-anim [:input :quits]]}}
+  [world _]
+  (deltas/of-vec (containers-deltas world)))

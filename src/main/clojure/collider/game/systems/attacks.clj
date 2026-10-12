@@ -1,9 +1,7 @@
 (ns collider.game.systems.attacks
   "Players hitting entities when the attack packet comes."
   (:require [collider.data :as data]
-            [collider.game.apply :as apply]
             [collider.game.attribute :as attribute]
-            [collider.game.deltas :as deltas]
             [collider.game.input :as input]
             [collider.game.entity :as entity]
             [collider.game.entity.damage :as damage]
@@ -284,19 +282,11 @@
     (attack-deltas world ev)
     (swing-deltas world ev)))
 
-(defn attacks
-  "Returns the deltas of the players hitting entities and swinging
-  their arms this tick, one packet after another."
-  {:wake {:events #{:attack :swing}}}
-  [world d]
-  (let [evs (into [] (keep-indexed
-                       (fn [i ev]
-                         (when (contains? #{:attack :swing} (nth ev 0))
-                           [i ev])))
-                 (:input d))
-        f (fn [w [i ev]] (event-deltas (input/as-came w i ev) ev))]
-    (deltas/of-vec (when (seq evs)
-                     (apply/fold-events world evs f second)))))
+(defn input-deltas
+  "Returns the deltas of attack or swing event ev, the i-th of the
+  tick, its player as it was when the event came."
+  [world [i ev]]
+  (event-deltas (input/as-came world i ev) ev))
 
 (defn wielded
   "Returns the deltas that restart the attack ticker of player eid

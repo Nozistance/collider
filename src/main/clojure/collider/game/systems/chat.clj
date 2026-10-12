@@ -1,7 +1,6 @@
 (ns collider.game.systems.chat
   "Chat lines, commands and tab completion."
   (:require [clojure.string :as str]
-            [collider.game.apply :as apply]
             [collider.game.command.forms :as forms]
             [collider.game.command.tree :as cmd]
             [collider.game.commands :as commands]
@@ -10,7 +9,6 @@
             [collider.game.commands.reply :as reply]
             [collider.game.commands.teleport :as teleport]
             [collider.game.delta :as delta]
-            [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.vec :as v]))
@@ -133,15 +131,14 @@
     :teleport-to-entity (teleport/spectator-teleport world eid text)
     nil))
 
-(defn- one-deltas [world ev]
+(defn input-deltas
+  "Returns the deltas of one chat, command or config event."
+  [world ev]
   (let [ds (concat (event-deltas world ev)
                    (config/event-deltas world ev))]
     (delta/authored (vec ds) (commands/author ev))))
 
-(defn chat
-  {:wake {:events #{:chat :tab-complete :change-game-mode
-                    :teleport-to-entity :rules-request :set-rules
-                    :config-loaded :config-failed :commit-synced
-                    :hooks-set}}}
-  [world d]
-  (deltas/of-vec (apply/fold-events world (:input d) one-deltas)))
+(def tags
+  #{:chat :tab-complete :change-game-mode :teleport-to-entity
+    :rules-request :set-rules :config-loaded :config-failed
+    :commit-synced :hooks-set})

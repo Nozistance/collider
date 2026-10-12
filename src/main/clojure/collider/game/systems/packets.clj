@@ -1,52 +1,52 @@
 (ns collider.game.systems.packets
-  "Packet events that touch only their own player."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.apply :as apply]
+  "The packet events of the tick, one after another in the order they
+  came."
+  (:require [collider.game.apply :as apply]
+            [collider.game.camera :as camera]
+            [collider.game.deltas :as deltas]
+            [collider.game.mob.interact :as interact]
             [collider.game.player :as player]
+            [collider.game.systems.attacks :as attacks]
+            [collider.game.systems.blocks :as blocks]
+            [collider.game.systems.chat :as chat]
+            [collider.game.systems.containers :as containers]
+            [collider.game.systems.hanging :as hanging]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.players :as players]))
 
 (set! *warn-on-reflection* true)
 
-(def own-systems
-  "The systems whose packet events touch the acting player only."
-  [#'player/settings-deltas
-   #'player/slot-deltas
-   #'inventory/event-deltas
-   #'items/event-deltas
-   #'players/swing-deltas])
+(defn- own [f]
+  (fn [w [_ ev]] (when (number? (nth ev 1 nil)) (f w ev))))
 
-(def ^:private own-tags
-  #{:click :menu-click :pick :dig :creative-slot :swing :held-item
-    :edit-book :bundle-select :client-settings})
+(defn- spectated [w [_ [_ eid tid]]] (camera/spectate-deltas w eid tid))
 
-(defn- own? [ev]
-  (and (contains? own-tags (nth ev 0))
-       (number? (nth ev 1 nil))))
+(def ^:private handlers
+  [[#{:spectate} spectated]
+   [#{:dig :place :use-item :sign-update} blocks/edit-deltas]
+   [#{:client-settings} (own player/settings-deltas)]
+   [#{:click :menu-click :pick :bundle-select} (own inventory/event-deltas)]
+   [#{:dig :creative-slot} (own items/event-deltas)]
+   [#{:swing} (own players/swing-deltas)]
+   [#{:menu-click :menu-close :menu-button :rename-item :bundle-select}
+    (fn [w [_ ev]] (containers/event-deltas w ev))]
+   [chat/tags (fn [w [_ ev]] (chat/input-deltas w ev))]
+   [#{:interact :attack} hanging/input-deltas]
+   [#{:attack :swing} attacks/input-deltas]
+   [#{:interact} interact/input-deltas]])
 
-(defn- grouped [events]
-  (let [eid-of (fn [ev] (long (nth ev 1)))]
-    (sort-by key (group-by eid-of (filter own? events)))))
+(def ^:private tags
+  (into #{:held-item :edit-book} (mapcat first) handlers))
 
-(defn- one-deltas [world ev]
-  (try (into [] (mapcat (fn [f] (f world ev))) own-systems)
-       (catch Throwable t
-         (apply/dropped! #'one-deltas ev t)
-         (vec (player/slot-part world ev)))))
+(defn- handled [w [_ ev :as x]]
+  (let [tag (nth ev 0)]
+    (into [] (mapcat (fn [[ts f]] (when (contains? ts tag) (f w x))))
+          handlers)))
 
-(defn- fold-deltas [world events]
-  (loop [w world evs (seq events) acc []]
-    (if-not evs
-      acc
-      (let [ds (one-deltas w (first evs))
-            more (next evs)]
-        (recur (if (and more (seq ds)) (apply/entities w ds) w)
-               more (into acc ds))))))
-
-(defn by-player
-  "Returns the deltas of the events of each player in their order."
-  {:wake {:events own-tags}}
+(defn packets
+  "Returns the deltas of the packet events of the tick in the order
+  they came, each seeing the world after the ones before it."
+  {:wake {:events tags}}
   [world d]
-  (deltas/fold (fn [[_ events]] (fold-deltas world events))
-               (vec (grouped (:input d)))))
+  (deltas/of-vec (apply/fold-input world (:input d) handled)))

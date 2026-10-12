@@ -1,7 +1,6 @@
 (ns collider.game.mob.interact
   "The answers of mobs to the clicks of players on them."
-  (:require [collider.game.apply :as apply]
-            [collider.game.entity :as entity]
+  (:require [collider.game.entity :as entity]
             [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.mob.animal :as animal]
@@ -78,13 +77,8 @@
     (answered ctx (or (some (fn [f] (f ctx)) chain) {:result :pass}))
     []))
 
-(defn clicks
-  "Returns the deltas of the answers of mobs to the clicks of players
-  in events at tick t, one click after another."
-  [world events t]
-  (apply/fold-events world
-                     (keep-indexed
-                       (fn [i ev] (when (= :interact (first ev)) [i ev]))
-                       events)
-                     (fn [w [i ev]] (interact (input/as-came w i ev) ev t))
-                     second))
+(defn input-deltas
+  "Returns the deltas of the answer of a mob to click event ev, the
+  i-th of the tick."
+  [world [i ev]]
+  (interact (input/as-came world i ev) ev (long (:tick world))))

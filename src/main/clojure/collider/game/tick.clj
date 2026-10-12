@@ -8,15 +8,10 @@
             [collider.game.detector :as detector]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
-            [collider.game.systems.attacks :as attacks]
             [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.updates :as block-updates]
-            [collider.game.systems.blocks :as blocks]
             [collider.game.systems.landing :as landing]
-            [collider.game.systems.camera :as camera]
-            [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
-            [collider.game.systems.clicks :as clicks]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.damage :as damage]
             [collider.game.systems.daynight :as daynight]
@@ -41,13 +36,10 @@
   "The systems a player event drives.
   They all run before the level tick."
   [#'players/player-list
-   #'camera/camera
-   #'blocks/block-edits
    #'landing/landings
-   #'packets/by-player
+   #'packets/packets
    #'inventory/inventory
-   #'containers/containers
-   #'chat/chat])
+   #'containers/containers])
 
 (def entity-systems
   "The systems that step the entities of the level."
@@ -65,8 +57,6 @@
   [[#'spawning/placing]
    [#'chunks/chunk-loading]
    packet-systems
-   [#'hanging/hanging-uses #'attacks/attacks]
-   [#'clicks/clicks]
    [#'daynight/daynight #'weather-system/weather]
    [#'sleep/sleep]
    [#'block-updates/block-updates]
