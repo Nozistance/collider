@@ -4,6 +4,7 @@
   while the body stays where the client says it is."
   (:require [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.input :as input]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.travel :as travel]
             [collider.game.out :as out]
@@ -57,9 +58,7 @@
   "Returns the moves [from to d] the packets of player eid, e, made
   this tick. A block that held it holds the first of them only."
   [world eid e half height]
-  (let [ms (for [{f :from t :to :as m} (get-in world [:input :moves])
-                 :when (= eid (:eid m))]
-             [f t (mapv - t f)])]
+  (let [ms (input/moves-of world eid)]
     (if (and (:stuck e) (seq ms))
       (cons (stuck-move world e half height (first ms)) (rest ms))
       ms)))

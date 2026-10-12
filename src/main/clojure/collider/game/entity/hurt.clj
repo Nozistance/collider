@@ -7,6 +7,7 @@
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.experience :as xp]
+            [collider.game.input :as input]
             [collider.game.item :as item]
             [collider.game.level :as level]
             [collider.game.loot :as loot]
@@ -310,8 +311,9 @@
   [world e]
   (if (all-air? (:chunks world) e)
     []
-    (filterv #(= :powder-snow (block/type-of (cell-state (:chunks world) %)))
-             (inside-cells e))))
+    (let [chunks (:chunks world)]
+      (filterv #(= :powder-snow (block/type-of (cell-state chunks %)))
+               (inside-cells e)))))
 
 (defn- rained-on? [world e]
   (let [p (:pos e)
@@ -355,8 +357,9 @@
 (defn- stepped-fire
   "Returns the fn that takes fire r of a body and its hurts on to
   after the blocks met of one step of its move, in the order a step
-  applies them. Fn lit lights a fire r, cap caps one."
-  [lit cap]
+  applies them. Fn lit lights a fire r, cap caps one, and water puts
+  it out unless dry? is true."
+  [lit cap dry?]
   (fn [[r hurts] met]
     (let [fires (keep #(fire-cell-damage (nth % 3)) met)
           lavas (filter #(= :lava (nth % 5)) met)
@@ -367,8 +370,15 @@
               (long (cap (max r (* ticks-per-second lava-seconds))))
               r)
           hurts (into hurts (map (fn [_] [lava-damage in-lava])) lavas)
-          r (if (some #(= :water (nth % 5)) met) (min 0 r) r)]
+          r (if (and (not dry?) (some #(= :water (nth % 5)) met))
+              (min 0 r)
+              r)]
       [r hurts])))
+
+(defn- hurt-deltas
+  "Returns the deltas of hurts [amount source] of entity eid, e."
+  [world eid e hurts]
+  (mapcat (fn [[d src]] (damage-deltas world eid e d src)) hurts))
 
 (defn- met-by
   "Returns the blocks body e met on moves this tick, by step, none when
@@ -384,22 +394,17 @@
   "Returns the moves the packets of player eid, e, made this tick, or
   its stay where it is when they made none."
   [world eid e]
-  (or (seq (for [{f :from t :to :as m} (get-in world [:input :moves])
-                 :when (= eid (:eid m))]
-             [f t (mapv - t f)]))
-      [[(:pos e) (:pos e) nil]]))
+  (or (seq (input/moves-of world eid)) [[(:pos e) (:pos e) nil]]))
 
 (defn- player-fire [world eid e snow groups]
   (let [cap (capper e)
         added (added-ticks world eid)
-        step (stepped-fire #(fire-touched cap % added) cap)
-        dry (map (fn [g] (map #(assoc (vec %) 5 (when (= :lava (nth % 5)) :lava))
-                              g))
-                 groups)
+        lit #(fire-touched cap % added)
         f0 (long (or (:fire e) 0))
         f1 (if (pos? f0) (long (cap (dec f0))) f0)
-        [f hurts] (reduce step [f1 []] groups)
-        lit (long (first (reduce step [f1 []] dry)))
+        [f hurts] (reduce (stepped-fire lit cap false) [f1 []] groups)
+        lit (long (first (reduce (stepped-fire lit cap true) [f1 []]
+                                 groups)))
         wet? (or (seq snow) (rained-on? world e))
         f (if wet? (min 0 (long f)) (long f))]
     [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f) hurts]))
@@ -477,7 +482,7 @@
   (let [snow (snow-cells world e)
         groups (met-by world e (player-moves world eid e))
         [f0 f1 lit f hurts] (player-fire world eid e snow groups)]
-    (concat (mapcat (fn [[d src]] (damage-deltas world eid e d src)) hurts)
+    (concat (hurt-deltas world eid e hurts)
             (burning-flag eid e f1)
             (when (not= f f0) [[:merge-entity eid {:fire f}]])
             (when (pos? (long lit))
@@ -495,12 +500,12 @@
   [world eid e moves]
   (let [r0 (long (or (:fire e) 0))
         moves (or (seq moves) [[(:pos e) (:pos e) nil]])
-        [r hurts] (reduce (stepped-fire fire-lit identity) [r0 []]
+        [r hurts] (reduce (stepped-fire fire-lit identity false) [r0 []]
                           (met-by world e moves))
         r (if (rained-on? world e) (min 0 (long r)) (long r))
         r (if (and (<= r 0) (<= r r0)) 0 r)]
     (concat (burning-flag eid e r0)
-            (mapcat (fn [[d src]] (damage-deltas world eid e d src)) hurts)
+            (hurt-deltas world eid e hurts)
             (when (not= r r0) [[:merge-entity eid {:fire r}]])
             (when (and (pos? r0) (<= r 0)) [(put-out-sound world eid e)]))))
 

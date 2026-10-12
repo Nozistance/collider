@@ -28,6 +28,14 @@
              :climbing?
              (climb/climbing? (:chunks w') e')))))
 
+(defn moves-of
+  "Returns the moves [from to d] the packets of player eid made in the
+  tick of world."
+  [world eid]
+  (for [{f :from t :to :as m} (get-in world [:input :moves])
+        :when (= eid (:eid m))]
+    [f t (mapv - t f)]))
+
 (defn- quit-of
   [w [tag eid]]
   (when (= :player-quit tag)

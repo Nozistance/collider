@@ -36,9 +36,8 @@
   [chunks mv sup vy g drag living?]
   (let [w (phys/vel mv)
         up (when (phys/on-ground? mv)
-             (let [[x y z] (on-pos chunks (phys/pos mv) sup)]
-               (motion/bounce (chunk/at chunks [x y z]) vy
-                              (phys/moved-y mv) g drag living?)))]
+             (motion/bounce (chunk/at chunks (on-pos chunks (phys/pos mv) sup))
+                            vy (phys/moved-y mv) g drag living?))]
     (if up (v/v3 (v/x w) up (v/z w)) w)))
 
 (defn- spike-landing [^long st ^double fall]

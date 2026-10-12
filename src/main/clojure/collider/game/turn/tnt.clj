@@ -13,9 +13,9 @@
             [collider.game.turn.overlay :as overlay]
             [collider.parallel :as par]
             [collider.vec :as v]
+            [collider.world.blocks.fall :as fall]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
-            [collider.world.blocks.fall :as fall]
             [collider.world.phys :as phys])
   (:import (collider.world Move)))
 

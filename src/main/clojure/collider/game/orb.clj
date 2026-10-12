@@ -8,10 +8,10 @@
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.fall :as fall]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
-            [collider.world.blocks.fall :as fall]
             [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)

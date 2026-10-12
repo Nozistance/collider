@@ -4,8 +4,8 @@
             [collider.num :as num]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.phys :as phys]
             [collider.world.blocks.inside :as inside]
+            [collider.world.phys :as phys]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -37,19 +37,18 @@
 
 (def ^:private unberried #{:fox :bee})
 
-(defn- held-by ^long [^long st snow? berry?]
+(defn- holds
+  "Returns the factor block st holds a body by, nil when it does not
+  hold it."
+  [st snow? berry?]
   (case (block/type-of st)
-    :web 1
-    :powder-snow (if snow? 2 0)
-    :sweet-berry-bush (if berry? 3 0)
-    0))
+    :web web-speed
+    :powder-snow (when snow? snow-speed)
+    :sweet-berry-bush (when berry? berry-speed)
+    nil))
 
 (def ^:private ^:table snowy
-  (delay (let [n (data/block-state-count) a (boolean-array n)]
-           (dotimes [st n]
-             (when (= :powder-snow (block/type-of st))
-               (aset a st true)))
-           a)))
+  (delay (block/state-table :boolean #(= :powder-snow (block/type-of %)))))
 
 (defn in-powder-snow?
   "Returns true when a body at pos of half width half and height
@@ -69,11 +68,7 @@
                               (num/floor (double z))))))
 
 (def ^:private ^:table holding
-  (delay (let [n (data/block-state-count) a (boolean-array n)]
-           (dotimes [st n]
-             (when (pos? (held-by st true true))
-               (aset a st true)))
-           a)))
+  (delay (block/state-table :boolean #(some? (holds % true true)))))
 
 (defn stuck-speed
   "Returns the factor the blocks a body met on its moves this tick
@@ -88,15 +83,9 @@
    (let [end (nth (peek (vec moves)) 1)
          snow? (or (nil? type) (snow-at-feet? chunks end))
          berry? (and (some? type) (not (contains? unberried type)))
-         found (reduce (fn [found [_ _ _ st]]
-                         (let [h (long (held-by st snow? berry?))]
-                           (if (pos? h) h found)))
-                       0 (inside/met chunks moves half height @holding))]
-     (case (long found)
-       1 web-speed
-       2 snow-speed
-       3 berry-speed
-       nil))))
+         met (inside/met chunks moves half height @holding)]
+     (reduce (fn [found [_ _ _ st]] (or (holds st snow? berry?) found))
+             nil met))))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))

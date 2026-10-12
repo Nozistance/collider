@@ -242,10 +242,8 @@
   [world index eid e [e1 look ds say-ds pre later] t cram live?]
   (let [[half height] (mobs/box-of e)
         more [look e cram live?]
-        [e2 shoves hit? ls]
+        [e2 shoves hit? ls moves]
         (travel/moved world index eid e1 half height more)
-        moves (:moved e2)
-        e2 (dissoc e2 :moved)
         [e2 own] (if-let [f (:ai-step (spec/of (:type e)))]
                    (f eid e2 t)
                    [e2 nil])

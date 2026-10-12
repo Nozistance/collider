@@ -285,10 +285,10 @@
   dry cells keeps the fluid it had, and so does a player, whose
   client has the say, with no push after its move."
   [world e d ^Move mv half height f]
-  (cond (or (dry-still? e mv half height f) (= :player (:type e)))
-        [f (after-vel e mv)]
-        :else (let [g (fluid-after world e (phys/pos mv) half height d)]
-                [g (carried d (after-vel e mv) (:push g))])))
+  (if (or (dry-still? e mv half height f) (= :player (:type e)))
+    [f (after-vel e mv)]
+    (let [g (fluid-after world e (phys/pos mv) half height d)]
+      [g (carried d (after-vel e mv) (:push g))])))
 
 (defn- climbing? [world e pos]
   (climb/climbing? (:chunks world) e pos))
@@ -662,9 +662,9 @@
 
 (defn moved
   "Returns mob e after one tick of its move, the shoves it gave,
-  whether cramming hurt it, and the deltas of its landing. The look
-  it turns to, its start state, its cram and the bodies alive now
-  come in more."
+  whether cramming hurt it, the deltas of its landing and its moves
+  [from to d] this tick. The look it turns to, its start state, its
+  cram and the bodies alive now come in more."
   [world index eid e half height more]
   (let [h (num/f32 half) ht (num/f32 height)
         tr (travel-of world index eid e h ht)
@@ -680,18 +680,15 @@
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]
         [look prev cram live?] more]
-    (update (shoved-move world index eid e tr box fall ls
-                         [look prev cram live? st])
-            0 assoc :moved moves)))
+    (conj (shoved-move world index eid e tr box fall ls
+                       [look prev cram live? st])
+          moves)))
 
 (defn current-pushed
   "Returns speed vel of body e with the push of the current it stands
   in, as its tick begins."
   [world e vel half height]
-  (let [p (:push (fluid-of world e (num/f32 half) (num/f32 height)))]
-    (v/v3 (+ (double (v/x vel)) (double (nth p 0)))
-          (+ (double (v/y vel)) (double (nth p 1)))
-          (+ (double (v/z vel)) (double (nth p 2))))))
+  (v/add vel (:push (fluid-of world e (num/f32 half) (num/f32 height)))))
 
 (defn body-moved
   "Returns the move of living body e with no will of its own after
