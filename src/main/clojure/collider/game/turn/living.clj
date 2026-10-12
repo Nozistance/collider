@@ -33,11 +33,11 @@
 
 (defn touched
   "Returns living entity eid after the hurts ls of its landing in its
-  move, the blocks it touches at the end of its move, the hurts cs of
-  its push and ds, with their deltas and the show of each hurt of its
-  turn. It is wet as it was when its turn began."
-  [world eid e wet? ds ls cs]
-  (let [fd (hurt/fire-deltas world eid e wet?)
+  move, the blocks it met on its moves this tick, the hurts cs of its
+  push and ds, with their deltas and the show of each hurt of its
+  turn."
+  [world eid e moves ds ls cs]
+  (let [fd (hurt/fire-deltas world eid e moves)
         fs (if (or ls cs) (-> (vec ls) (into fd) (into cs)) fd)]
     (if (seq fs)
       (shown world eid (hurt/hurt-now world eid e fs)

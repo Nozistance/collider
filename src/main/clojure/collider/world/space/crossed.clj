@@ -63,15 +63,13 @@
                (< pc (+ (double max-c) 1.0E-7)))
       (aset s 0 t))))
 
-(defn- clip
-  "Returns where the segment from f to t first enters the cell at
-  x y z, or nil when it misses it."
-  [x y z [fx fy fz] [tx ty tz]]
+(defn box-clip
+  "Returns where the segment from f to t first enters box b, or nil
+  when it misses it."
+  [[x0 y0 z0 x1 y1 z1] [fx fy fz] [tx ty tz]]
   (let [s (double-array [1.0]) hit (boolean-array 1)
         dx (- (double tx) (double fx)) dy (- (double ty) (double fy))
         dz (- (double tz) (double fz))
-        x0 (double x) y0 (double y) z0 (double z)
-        x1 (+ x0 1.0) y1 (+ y0 1.0) z1 (+ z0 1.0)
         mark (fn [r] (when r (aset hit 0 true)))]
     (cond (> dx 1.0E-7)
           (mark (clip-axis s dx dy dz x0 y0 y1 z0 z1 fx fy fz))
@@ -89,6 +87,10 @@
       (let [k (aget s 0)]
         [(+ (double fx) (* k dx)) (+ (double fy) (* k dy))
          (+ (double fz) (* k dz))]))))
+
+(defn- clip [x y z f t]
+  (let [x (double x) y (double y) z (double z)]
+    (box-clip [x y z (+ x 1.0) (+ y 1.0) (+ z 1.0)] f t)))
 
 (defn- clamp ^double [^double a ^double lo ^double hi]
   (if (< a lo) lo (Math/min a hi)))

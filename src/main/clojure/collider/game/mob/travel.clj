@@ -672,17 +672,17 @@
         ls (when (lands? tr f0 f1)
              (landing/landed world eid e (nth tr 0) (nth tr 4) f0 f1))
         pos (if ls (nth ls 0) (nth tr 0))
-        st (motion/stuck-speed (:chunks world)
-                               (cond-> [[(:pos e) (nth tr 0) (nth tr 9 nil)]]
-                                 (and ls (> (v/dist-sq pos (nth tr 0))
-                                            gap-sq))
-                                 (conj [(nth tr 0) pos nil]))
-                               half height (:type e))
+        moves (cond-> [[(:pos e) (nth tr 0) (nth tr 9 nil)]]
+                (and ls (> (v/dist-sq pos (nth tr 0)) gap-sq))
+                (conj [(nth tr 0) pos nil]))
+        st (motion/stuck-speed (:chunks world) moves half height
+                               (:type e))
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]
         [look prev cram live?] more]
-    (shoved-move world index eid e tr box fall ls
-                 [look prev cram live? st])))
+    (update (shoved-move world index eid e tr box fall ls
+                         [look prev cram live? st])
+            0 assoc :moved moves)))
 
 (defn current-pushed
   "Returns speed vel of body e with the push of the current it stands

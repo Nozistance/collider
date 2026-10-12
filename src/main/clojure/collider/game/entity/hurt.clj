@@ -20,6 +20,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.inside :as inside]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
@@ -163,8 +164,6 @@
 
 (def ^:private ^:const lava-bit 2)
 
-(def ^:private ^:const sunk-bit 4)
-
 (def ^:private ^:const soul-bit 8)
 
 (defn- any-bit? [^long flags ^long mask]
@@ -214,8 +213,8 @@
                      [sunk-shrink-xz sunk-shrink-y])]
      (phys/burns (:chunks world) @burn-bits outer inner))))
 
-(defn- burning-flag [eid e ^long fire sunk?]
-  (let [lit? (boolean (or (pos? fire) sunk?))]
+(defn- burning-flag [eid e ^long fire]
+  (let [lit? (pos? fire)]
     (when (not= lit? (boolean (:burning? e)))
       [[:merge-entity eid {:burning? lit?}]])))
 
@@ -252,24 +251,9 @@
     (cons [:merge-entity eid {:fire 0 :burning? false}]
           [(out/all (out/fizz (fizz-cell e)))])))
 
-(defn- lit-by-deltas [eid e fire wet? flags]
-  (let [touch (any-bit? flags (bit-or fire-bit lava-bit))
-        sunk? (any-bit? flags sunk-bit)
-        ignite (fn [d s src] (ignite-deltas eid fire wet? d s src))]
-    (concat (burning-flag eid e fire sunk?)
-            (when touch (ignite (fire-damage flags) fire-seconds in-fire))
-            (when sunk? (ignite lava-damage lava-seconds in-lava))
-            (douse-deltas eid e fire wet?))))
-
-(defn- lit-deltas [eid e fire wet? flags]
-  (when (or (pos? (long fire)) (pos? (long flags)) (:burning? e))
-    (lit-by-deltas eid e fire wet? flags)))
-
 (def ^:private ^:const fire-rest -20)
 
 (def ^:private ^:const inside-margin 1.0E-5)
-
-(def ^:private ^:const fluid-slack 1.0E-7)
 
 (defn- capped ^long [^long f] (min f 1))
 
@@ -286,10 +270,6 @@
           cy (cell-span y (+ y (double height)))
           cz (cell-span (- z h) (+ z h))]
       [cx cy cz])))
-
-(defn- in-fluid? [chunks e cls c]
-  (when-let [top (liquid/surface chunks cls c)]
-    (< (v/y (:pos e)) (- (double top) fluid-slack))))
 
 (defn- cell-state ^long [chunks [x y z]]
   (chunk/block-state chunks x y z))
@@ -325,26 +305,13 @@
 (defn- all-air? [chunks e]
   (not (some-inside? chunks e @occupied)))
 
-(def ^:private calm
-  {:fire? false :soul? false :lava? false :water? false :snow []})
-
-(defn- touched [world e]
-  (let [chunks (:chunks world)
-        cs (inside-cells e)
-        of (fn [pred] (boolean (some pred cs)))]
-    {:fire? (of #(contains? #{:fire :soul-fire}
-                            (block/type-of (cell-state chunks %))))
-     :soul? (of #(= :soul-fire (block/type-of (cell-state chunks %))))
-     :lava? (of #(in-fluid? chunks e :lava %))
-     :water? (of #(in-fluid? chunks e :water %))
-     :snow (filterv #(= :powder-snow
-                        (block/type-of (cell-state chunks %)))
-                    cs)}))
-
-(defn- contact [world e]
+(defn- snow-cells
+  "Returns the cells of powder snow entity e is in."
+  [world e]
   (if (all-air? (:chunks world) e)
-    calm
-    (touched world e)))
+    []
+    (filterv #(= :powder-snow (block/type-of (cell-state (:chunks world) %)))
+             (inside-cells e))))
 
 (defn- rained-on? [world e]
   (let [p (:pos e)
@@ -373,20 +340,69 @@
       f
       (long (cap (max f (* ticks-per-second fire-seconds)))))))
 
-(defn- lit-by ^long [cap ^long f c ^long added]
-  (let [f (if (:fire? c) (fire-touched cap f added) f)]
-    (if (:lava? c)
-      (long (cap (max f (* ticks-per-second lava-seconds))))
-      f)))
+(defn- fire-cell-damage [st]
+  (case (block/type-of st) :fire 1.0 :soul-fire 2.0 nil))
 
-(defn- player-fire [world eid e c]
+(def ^:private ^:table burners
+  (delay (block/state-table
+           :boolean #(or (some? (fire-cell-damage %))
+                         (some? (block/liquid-class %))))))
+
+(defn- fire-lit ^long [^long r]
+  (let [r (if (neg? r) (inc r) r)]
+    (if (neg? r) r (max r (* ticks-per-second fire-seconds)))))
+
+(defn- stepped-fire
+  "Returns the fn that takes fire r of a body and its hurts on to
+  after the blocks met of one step of its move, in the order a step
+  applies them. Fn lit lights a fire r, cap caps one."
+  [lit cap]
+  (fn [[r hurts] met]
+    (let [fires (keep #(fire-cell-damage (nth % 3)) met)
+          lavas (filter #(= :lava (nth % 5)) met)
+          r (long r)
+          r (if (seq fires) (long (lit r)) r)
+          hurts (into hurts (map (fn [d] [d in-fire])) fires)
+          r (if (seq lavas)
+              (long (cap (max r (* ticks-per-second lava-seconds))))
+              r)
+          hurts (into hurts (map (fn [_] [lava-damage in-lava])) lavas)
+          r (if (some #(= :water (nth % 5)) met) (min 0 r) r)]
+      [r hurts])))
+
+(defn- met-by
+  "Returns the blocks body e met on moves this tick, by step, none when
+  it is dead."
+  [world e moves]
+  (let [[half height] (box-of e)]
+    (when (pos? (double (:health e)))
+      (partition-by #(nth % 4)
+                    (inside/met (:chunks world) moves half height
+                                @burners)))))
+
+(defn- player-moves
+  "Returns the moves the packets of player eid, e, made this tick, or
+  its stay where it is when they made none."
+  [world eid e]
+  (or (seq (for [{f :from t :to :as m} (get-in world [:input :moves])
+                 :when (= eid (:eid m))]
+             [f t (mapv - t f)]))
+      [[(:pos e) (:pos e) nil]]))
+
+(defn- player-fire [world eid e snow groups]
   (let [cap (capper e)
+        added (added-ticks world eid)
+        step (stepped-fire #(fire-touched cap % added) cap)
+        dry (map (fn [g] (map #(assoc (vec %) 5 (when (= :lava (nth % 5)) :lava))
+                              g))
+                 groups)
         f0 (long (or (:fire e) 0))
         f1 (if (pos? f0) (long (cap (dec f0))) f0)
-        lit (lit-by cap f1 c (added-ticks world eid))
-        wet? (or (:water? c) (seq (:snow c)) (rained-on? world e))
-        f (if wet? (min 0 lit) lit)]
-    [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f)]))
+        [f hurts] (reduce step [f1 []] groups)
+        lit (long (first (reduce step [f1 []] dry)))
+        wet? (or (seq snow) (rained-on? world e))
+        f (if wet? (min 0 (long f)) (long f))]
+    [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f) hurts]))
 
 (defn- melt-effect [chunks c]
   (out/all (out/break-effect c (cell-state chunks c))))
@@ -405,13 +421,6 @@
     (out/all (out/sound :generic/extinguish-fire (:pos e) 0.7
                         (+ 1.6 (* 0.4 r))
                         (if (entity/player? e) :players :neutral)))))
-
-(defn- contact-hurts
-  [world eid e c]
-  (concat (when (:fire? c)
-            (damage-deltas world eid e (if (:soul? c) 2.0 1.0) in-fire))
-          (when (:lava? c)
-            (damage-deltas world eid e lava-damage in-lava))))
 
 (def ^:private ^:const freeze-ticks 140)
 
@@ -465,37 +474,44 @@
               (damage-deltas world eid e 1.0 freezing)))))
 
 (defn- player-fire-deltas [world eid e]
-  (let [c (contact world e)
-        [f0 f1 lit f] (player-fire world eid e c)]
-    (concat (contact-hurts world eid e c)
-            (burning-flag eid e f1 false)
+  (let [snow (snow-cells world e)
+        groups (met-by world e (player-moves world eid e))
+        [f0 f1 lit f hurts] (player-fire world eid e snow groups)]
+    (concat (mapcat (fn [[d src]] (damage-deltas world eid e d src)) hurts)
+            (burning-flag eid e f1)
             (when (not= f f0) [[:merge-entity eid {:fire f}]])
             (when (pos? (long lit))
               (delta/authored
-                (melt-deltas world (:snow c))
+                (melt-deltas world snow)
                 (delta/entity-author eid e)))
             (when (and (pos? (long f1)) (<= (long f) 0))
               [(put-out-sound world eid e)])
-            (freeze-deltas world eid e (boolean (seq (:snow c)))))))
+            (freeze-deltas world eid e (boolean (seq snow))))))
 
-(defn- cool? [world e half height]
-  (phys/cool? (:chunks world) @burn-bits (:pos e) half height))
+(defn- met-fire-deltas
+  "Returns the deltas of the fire, lava and water mob eid, e, met on
+  its moves this tick, step by step."
+  [world eid e moves]
+  (let [r0 (long (or (:fire e) 0))
+        [r hurts] (reduce (stepped-fire fire-lit identity) [r0 []]
+                          (met-by world e moves))
+        r (if (rained-on? world e) (min 0 (long r)) (long r))
+        r (if (and (<= r 0) (<= r r0)) 0 r)]
+    (concat (burning-flag eid e r0)
+            (mapcat (fn [[d src]] (damage-deltas world eid e d src)) hurts)
+            (when (not= r r0) [[:merge-entity eid {:fire r}]])
+            (when (and (pos? r0) (<= r 0)) [(put-out-sound world eid e)]))))
 
 (defn fire-deltas
-  "Returns the deltas of the fire, lava and frost entity eid touches,
-  wet as wet? tells or as it is."
-  ([world eid e] (fire-deltas world eid e (:wet? e)))
-  ([world eid e wet?]
+  "Returns the deltas of the fire, lava and frost entity eid touches.
+  A mob meets them on its moves this tick."
+  ([world eid e] (fire-deltas world eid e nil))
+  ([world eid e moves]
    (if (entity/player? e)
      (player-fire-deltas world eid e)
-     (let [fire (long (or (:fire e) 0))
-           [half height :as box] (box-of e)]
-       (concat
-         (when-not (and (zero? fire) (not (:burning? e))
-                        (cool? world e half height))
-           (lit-deltas eid e fire (boolean wet?) (probe world e box)))
-         (freeze-deltas world eid e
-                        (some-inside? (:chunks world) e @snowy)))))))
+     (concat (met-fire-deltas world eid e moves)
+             (freeze-deltas world eid e
+                            (some-inside? (:chunks world) e @snowy))))))
 
 (def ^:private ^:const burn-volume 0.4)
 
@@ -519,7 +535,7 @@
         wet? (boolean (and touched? (item-wet? world e)))
         lava? (pos? (bit-and flags lava-bit))
         ignite (fn [d s] (ignite-deltas eid fire wet? d s nil))]
-    (concat (burning-flag eid e fire false)
+    (concat (burning-flag eid e fire)
             (burn-tick-deltas eid fire wet? lava?)
             (when (pos? (bit-and flags fire-bit))
               (ignite (fire-damage flags) fire-seconds))
@@ -968,7 +984,7 @@
       (if (entity/player? e)
         (player-burn-deltas world eid e fire)
         (let [lava? (any-bit? (probe world e) lava-bit)]
-          (burn-tick-deltas eid fire (boolean (:wet? e)) lava?))))))
+          (burn-tick-deltas eid fire false lava?))))))
 
 (defn burnt-deltas
   "Returns the deltas of the fire living entity eid burns in,

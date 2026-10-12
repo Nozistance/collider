@@ -5,7 +5,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys]
-            [collider.world.space.crossed :as crossed]
+            [collider.world.blocks.inside :as inside]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -44,59 +44,6 @@
     :sweet-berry-bush (if berry? 3 0)
     0))
 
-(def ^:private shrink (double (float 1.0E-5)))
-
-(def ^:private ^:const max-steps 16)
-
-(defn- box-at [[x y z] half height]
-  (let [x (double x) y (double y) z (double z)
-        half (double half) height (double height)]
-    [(+ (- x half) shrink) (+ y shrink) (+ (- z half) shrink)
-     (- (+ x half) shrink) (- (+ y height) shrink) (- (+ z half) shrink)]))
-
-(defn- walked
-  "Returns hold acc after the box of a body passes from point from to
-  point to, meeting no more than steps cells, and the steps it took.
-  The fn held tells what a block state does to it."
-  [chunks acc from to half height held steps]
-  (let [cs (take-while #(< (long (nth % 3)) (long steps))
-                       (crossed/cells from to (box-at to half height)))
-        acc (reduce (fn [[_ seen :as acc] [x y z]]
-                      (let [h (long (held (state-at chunks x y z)))
-                            k [x y z]]
-                        (if (or (zero? h) (contains? seen k))
-                          acc
-                          [h (conj seen k)])))
-                    acc cs)]
-    [acc (inc (long (if-let [c (last cs)] (nth c 3) 0)))]))
-
-(defn- walked-move
-  "Returns hold acc after one move [from to d] of a body, cut along
-  the axes of d, the move it asked for, when it has one."
-  [chunks acc [from to d] half height held]
-  (let [delta (mapv - to from)
-        axes (if (< (Math/abs (double (nth d 0 0.0)))
-                    (Math/abs (double (nth d 2 0.0))))
-               [1 2 0]
-               [1 0 2])
-        [acc left]
-        (if (and d (pos? (double (reduce + (map * delta delta)))))
-          (reduce (fn [[acc left p] i]
-                    (let [a (double (delta i))]
-                      (if (zero? a)
-                        [acc left p]
-                        (let [q (update p i + a)
-                              [acc n] (walked chunks acc p q half height
-                                              held left)]
-                          [acc (- (long left) (long n)) q]))))
-                  [acc max-steps (vec from)] axes)
-          (let [[acc n] (walked chunks acc from to half height held
-                                max-steps)]
-            [acc (- max-steps (long n))]))]
-    (if (<= (long left) 0)
-      (first (walked chunks acc to to half height held 1))
-      acc)))
-
 (def ^:private ^:table snowy
   (delay (let [n (data/block-state-count) a (boolean-array n)]
            (dotimes [st n]
@@ -128,26 +75,6 @@
                (aset a st true)))
            a)))
 
-(defn- near-holder?
-  "Returns true when a block that may hold a body lies in the cells
-  its box covers on any of moves, at either end of each."
-  [chunks moves half height]
-  (let [half (double half) height (double height)]
-    (loop [ps (mapcat #(subvec (vec %) 0 2) moves)
-           x0 Double/MAX_VALUE y0 Double/MAX_VALUE z0 Double/MAX_VALUE
-           x1 (- Double/MAX_VALUE) y1 (- Double/MAX_VALUE)
-           z1 (- Double/MAX_VALUE)]
-      (if-let [p (first ps)]
-        (let [x (double (v/x p)) y (double (v/y p)) z (double (v/z p))]
-          (recur (rest ps) (Math/min x0 x) (Math/min y0 y) (Math/min z0 z)
-                 (Math/max x1 x) (Math/max y1 y) (Math/max z1 z)))
-        (phys/some-cell? chunks @holding
-                         (num/floor (- x0 half)) (num/floor y0)
-                         (num/floor (- z0 half))
-                         (inc (num/floor (+ x1 half)))
-                         (inc (num/floor (+ y1 height)))
-                         (inc (num/floor (+ z1 half))))))))
-
 (defn stuck-speed
   "Returns the factor the blocks a body met on its moves this tick
   apply to its next move, or nil when none of them holds it. Each
@@ -158,18 +85,18 @@
   of a living body, nil for any other."
   ([chunks moves half height] (stuck-speed chunks moves half height nil))
   ([chunks moves half height type]
-   (when (near-holder? chunks moves half height)
-     (let [end (nth (peek (vec moves)) 1)
-           snow? (or (nil? type) (snow-at-feet? chunks end))
-           berry? (and (some? type) (not (contains? unberried type)))
-           held #(held-by % snow? berry?)
-           [found] (reduce #(walked-move chunks %1 %2 half height held)
-                           [0 #{}] moves)]
-       (case (long found)
-         1 web-speed
-         2 snow-speed
-         3 berry-speed
-         nil)))))
+   (let [end (nth (peek (vec moves)) 1)
+         snow? (or (nil? type) (snow-at-feet? chunks end))
+         berry? (and (some? type) (not (contains? unberried type)))
+         found (reduce (fn [found [_ _ _ st]]
+                         (let [h (long (held-by st snow? berry?))]
+                           (if (pos? h) h found)))
+                       0 (inside/met chunks moves half height @holding))]
+     (case (long found)
+       1 web-speed
+       2 snow-speed
+       3 berry-speed
+       nil))))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))

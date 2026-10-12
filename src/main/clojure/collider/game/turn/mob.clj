@@ -244,12 +244,14 @@
         more [look e cram live?]
         [e2 shoves hit? ls]
         (travel/moved world index eid e1 half height more)
+        moves (:moved e2)
+        e2 (dissoc e2 :moved)
         [e2 own] (if-let [f (:ai-step (spec/of (:type e)))]
                    (f eid e2 t)
                    [e2 nil])
         e2 (overlay/took t e2 later)
         ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
-    [e2 (joined-into ds own) shoves hit? ls]))
+    [e2 (joined-into ds own) shoves hit? ls moves]))
 
 (defn- hand
   "Returns the delta that adds the shove sh to the speed of mob e in
@@ -329,11 +331,11 @@
   [world index t slots es i mind]
   (let [[eid e] (nth es i)
         cram (cram-of world index slots es eid t)
-        [e2 ds shoves hit? ls]
+        [e2 ds shoves hit? ls moves]
         (step-mob world index eid e mind t cram
                   (live-of (:chunks world) slots es))
         cs (when hit? [[:damage eid push/cramming-damage crush]])
-        [e2 ds] (living/touched world eid e2 (:wet? e) ds ls cs)]
+        [e2 ds] (living/touched world eid e2 moves ds ls cs)]
     [e2 ds shoves]))
 
 (defn- live
