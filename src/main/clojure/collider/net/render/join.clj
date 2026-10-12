@@ -181,10 +181,14 @@
 (defn respawn-packets
   "Returns the packets of a player respawning in level lv."
   [lv m]
-  (let [e (get-in lv [:entities (:to m)])]
-    [(assoc (spawn-info lv e) :packet :respawn :keep 0)
-     (clock-sync-packet lv)
-     (game-event-packet :level-chunks-load-start 0.0)]))
+  (let [eid (:to m) e (get-in lv [:entities eid])]
+    (concat
+      [(assoc (spawn-info lv e) :packet :respawn :keep 0)
+       (spawn-pos-packet lv)
+       difficulty-packet]
+      (effect-packets eid e)
+      (level-info-packets lv)
+      (permission-packets lv eid e))))
 
 (defn- rule-flags [lv]
   (let [on? #(boolean (get-in lv [:rules %]))]
