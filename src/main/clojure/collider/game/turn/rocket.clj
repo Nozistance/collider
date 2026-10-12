@@ -121,21 +121,34 @@
         yaw (num/f32 (+ (num/f32 (:yaw c 0.0)) turn))]
     (mapv #(* 0.5 (double %)) (glide/look 0.0 yaw))))
 
+(defn- carrier
+  "Returns what rocket e knows of its carrier: where it stands, its
+  motion, its look, the hand that holds the rocket and whether it
+  glides. A carrier gone from the world stays as it left, or as the
+  rocket last knew it."
+  [world e]
+  (if-let [c (or (get-in world [:entities (:attached e)])
+                 (some #(when (= (:attached e) (:eid %)) %)
+                       (get-in world [:input :quits])))]
+    {:pos (:pos c) :vel (:vel c [0.0 0.0 0.0])
+     :look (glide/look (double (:pitch c 0.0)) (double (:yaw c 0.0)))
+     :hand (hand c) :fall-flying (:fall-flying c) :here? true}
+    (:carrier e)))
+
 (defn- carried-motion
   "Returns where rocket e rides on its carrier, its motion, the
   changes to merge into it and the boost it gives a gliding carrier."
   [world e]
-  (let [cid (:attached e) c (get-in world [:entities cid])]
+  (let [{:keys [pos vel look here?] :as c} (carrier world e)
+        kept #(assoc (dissoc c :here?) :vel %)]
     (cond
       (nil? c) [(:pos e) (:vel e) {} nil]
       (:fall-flying c)
-      (let [l (glide/look (double (:pitch c 0.0))
-                          (double (:yaw c 0.0)))
-            at (mapv + (:pos c) (hand c))
-            vel (glide/boosted (:vel c [0.0 0.0 0.0]) l)]
-        [at vel {:pos at :vel vel} [[:boost cid l]]])
-      :else (let [vel (:vel c [0.0 0.0 0.0])]
-              [(:pos c) vel {:pos (:pos c) :vel vel} nil]))))
+      (let [at (mapv + pos (:hand c))
+            vel (glide/boosted vel look)]
+        [at vel {:pos at :vel vel :carrier (kept vel)}
+         (when here? [[:boost (:attached e) look]])])
+      :else [pos vel {:pos pos :vel vel :carrier (kept vel)} nil])))
 
 (defn- goes-off? [e hit]
   (or (= :entity (:kind hit))
