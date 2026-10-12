@@ -16,8 +16,6 @@
 
 (def ^:private ^:const sprint-push 0.2)
 
-(def ^:private deg->rad (double (float (/ Math/PI 180.0))))
-
 (defn- block-factor ^double [chunks e]
   (let [p (:pos e)
         feet (chunk/at chunks [(long (Math/floor (v/x p))) (long (Math/floor (v/y p)))
@@ -45,7 +43,7 @@
       vel
       (let [v [(v/x vel) (Math/max p (double (v/y vel))) (v/z vel)]]
         (if (:sprinting? e)
-          (let [a (num/f32 (* (num/f32 (double (:yaw e 0.0))) deg->rad))]
+          (let [a (num/f32 (* (num/f32 (double (:yaw e 0.0))) num/deg->rad))]
             [(+ (double (v/x v)) (* (- (v/sin a)) sprint-push)) (v/y v)
              (+ (double (v/z v)) (* (v/cos a) sprint-push))])
           v)))))

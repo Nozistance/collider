@@ -21,10 +21,8 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const deg->rad (double (float (/ Math/PI 180.0))))
-
 (defn- yaw-radians ^double [^double yaw]
-  (double (float (* (double (float yaw)) deg->rad))))
+  (double (float (* (double (float yaw)) num/deg->rad))))
 
 (defn- modified-friction ^double [^double f]
   (Math/clamp (num/fsub 1.0 (num/fsub 1.0 f)) 0.0 1.0))
@@ -375,7 +373,7 @@
   (let [pitch (double (:pitch e 0.0))
         [lx _ lz] (glide/look pitch (double (:yaw e 0.0)))
         n (Math/sqrt (+ (* lx lx) (* lz lz)))
-        lean (num/fmul (num/f32 pitch) deg->rad)
+        lean (num/fmul (num/f32 pitch) num/deg->rad)
         c (Math/cos lean) lift (* c c)
         x (v/x vel) z (v/z vel)
         speed (Math/sqrt (+ (* x x) (* z z)))

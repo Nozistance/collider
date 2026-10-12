@@ -16,7 +16,7 @@
 
 (def ^:private ^:const rolling-ticks 10)
 
-(def ^:private ^:const danger-ticks 80)
+(def ^:const danger-ticks 80)
 
 (def ^:private ^:const unscared-head-y-rot 32.0)
 

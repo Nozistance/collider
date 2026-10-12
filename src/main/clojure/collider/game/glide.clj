@@ -7,14 +7,12 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const deg->rad (double (float (/ Math/PI 180.0))))
-
 (defn look
   "Returns the unit vector a body looks along at pitch and yaw in
   degrees, at the precision of the game."
   [^double pitch ^double yaw]
-  (let [xr (num/fmul (num/f32 pitch) deg->rad)
-        yr (num/fmul (- (num/f32 yaw)) deg->rad)
+  (let [xr (num/fmul (num/f32 pitch) num/deg->rad)
+        yr (num/fmul (- (num/f32 yaw)) num/deg->rad)
         xc (v/cos xr)]
     [(num/fmul (v/sin yr) xc) (- (v/sin xr))
      (num/fmul (v/cos yr) xc)]))

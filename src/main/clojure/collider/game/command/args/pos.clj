@@ -3,6 +3,7 @@
   point for a command source."
   (:require [clojure.string :as str]
             [collider.game.command.reader :as r]
+            [collider.num :as num]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -114,8 +115,6 @@
    :parse #(pair % (repeat 2 (double-coord false))
                  "argument.rotation.incomplete" identity)})
 
-(def ^:private deg (unchecked-float (/ Math/PI 180.0)))
-
 (defn- f* ^double [^double a ^double b] (unchecked-float (* a b)))
 
 (defn- f+ ^double [^double a ^double b] (unchecked-float (+ a b)))
@@ -125,9 +124,9 @@
    (- (* ax by) (* ay bx))])
 
 (defn- basis [yaw pitch]
-  (let [ya (f* (f+ yaw 90.0) deg)
-        xa (f* (- (double pitch)) deg)
-        ua (f* (f+ (- (double pitch)) 90.0) deg)
+  (let [ya (f* (f+ yaw 90.0) num/deg->rad)
+        xa (f* (- (double pitch)) num/deg->rad)
+        ua (f* (f+ (- (double pitch)) 90.0) num/deg->rad)
         yc (v/cos ya) ys (v/sin ya)
         xc (v/cos xa) xs (v/sin xa)
         uc (v/cos ua) us (v/sin ua)

@@ -46,8 +46,6 @@
 
 (def ^:private ^:const bottle-xp-color -13083194)
 
-(def ^:private ^:const radians (float (/ Math/PI 180.0)))
-
 (def ^:private ^:const base-potion-color -13083194)
 
 (def ^:private ^:const splash-range-sq 16.0)
@@ -156,7 +154,7 @@
 
 (defn- f* ^double [^double a ^double b] (f32 (* a b)))
 
-(defn- rad ^double [^double deg] (f* (f32 deg) radians))
+(defn- rad ^double [^double deg] (f* (f32 deg) num/deg->rad))
 
 (defn- aim [^double yaw ^double pitch ^double off]
   (let [y (rad yaw) p (rad pitch)
@@ -323,6 +321,8 @@
      :radius-per-tick (/ -3.0 600.0) :radius-on-use -0.5
      :victims {}}))
 
+(defn- floored [at] (mapv #(long (Math/floor (double %))) at))
+
 (defn- potion-deltas [world e at hit]
   (let [stack (:stack e) water? (water-potion? stack)]
     (concat (when (and water? (= :block (:kind hit)))
@@ -333,10 +333,8 @@
               [[:spawn-entity (cloud-spec e at)]])
             [(out/all (out/level-event
                         (break-event stack)
-                        (mapv #(long (Math/floor (double %))) at)
+                        (floored at)
                         (potion-color stack)))])))
-
-(defn- floored [at] (mapv #(long (Math/floor (double %))) at))
 
 (defn- bottle-deltas [world eid d at hit]
   (let [roll #(random/of-key (:tick world) eid [:xp %])

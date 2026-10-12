@@ -34,8 +34,6 @@
 
 (def ^:private ^:const range-buffer 3.0)
 
-(def ^:private ^:const degree (double (float (/ Math/PI 180.0))))
-
 (defn- held [a] (:item (player/hand-stack a :main)))
 
 (defn- attr
@@ -104,7 +102,7 @@
 (defn- facing
   "Returns the sine and the negated cosine of the yaw of player a."
   [a]
-  (let [r (num/f32 (* (num/f32 (:yaw a)) degree))]
+  (let [r (num/f32 (* (num/f32 (:yaw a)) num/deg->rad))]
     [(v/sin r) (- (v/cos r))]))
 
 (defn- hurt-of

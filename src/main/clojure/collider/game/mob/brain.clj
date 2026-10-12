@@ -29,15 +29,20 @@
   [e k t]
   (when (present? e k t) ((get (memories e) k) 0)))
 
+(defn- ttl-left
+  "Returns the ticks memory m has after tick t, nil when it never
+  ends, or a negative number when it is gone."
+  [m ^long t]
+  (cond (== 3 (count m)) (m 2)
+        (== forever (long (m 1))) nil
+        :else (- (long (m 1)) t)))
+
 (defn ttl-of
   "Returns how many ticks after t memory k of mob e stays. A memory
   that never ends or is not there gives forever."
   ^long [e k t]
   (let [m (get (memories e) k)]
-    (cond (nil? m) forever
-          (== 3 (count m)) (long (m 2))
-          (== forever (long (m 1))) forever
-          :else (- (long (m 1)) (long t)))))
+    (long (or (when m (ttl-left m (long t))) forever))))
 
 (defn erase
   "Returns mob e without memory k."
@@ -469,14 +474,6 @@
    :walk-target ["walk_target" false]})
 
 (defn- kept? [k] (true? (get-in memory-types [k 1])))
-
-(defn- ttl-left
-  "Returns the ticks memory m has after tick t, nil when it never
-  ends, or a negative number when it is gone."
-  [m ^long t]
-  (cond (== 3 (count m)) (m 2)
-        (== forever (long (m 1))) nil
-        :else (- (long (m 1)) t)))
 
 (defn saved
   "Returns the memories of mob e a save at tick t keeps, each as its

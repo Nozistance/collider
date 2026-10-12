@@ -1,13 +1,12 @@
 (ns collider.world.feature.table
   "The features that bone meal reaches, read from the datapack."
   (:require [clojure.string :as str]
-            [collider.data :as data]))
+            [collider.data :as data]
+            [collider.data.pack :as pack]))
 
 (set! *warn-on-reflection* true)
 
 (defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
-
-(defn- kw [s] (keyword (str/replace (plain s) "_" "-")))
 
 (defn- by-key [kvs] (into {} (sort-by first kvs)))
 
@@ -15,18 +14,18 @@
 
 (defn- state-value [m]
   (let [props (get m "Properties")
-        prop (fn [[k v]] [(kw k) (keyword v)])]
-    (cond-> {:block (kw (get m "Name"))}
+        prop (fn [[k v]] [(pack/kw k) (keyword v)])]
+    (cond-> {:block (pack/kw (get m "Name"))}
       props (assoc :props (by-key (map prop props))))))
 
 (defn- feature-value [v]
   (cond
     (and (map? v) (contains? v "Name")) (state-value v)
-    (map? v) (by-key (map (fn [[k x]] [(kw k) (feature-value x)]) v))
+    (map? v) (by-key (map (fn [[k x]] [(pack/kw k) (feature-value x)]) v))
     (vector? v) (mapv feature-value v)
     (not (string? v)) v
     (str/starts-with? v "#") {:tag (plain (subs v 1))}
-    :else (kw v)))
+    :else (pack/kw v)))
 
 (def ^:private selector-types
   #{"minecraft:random_selector" "minecraft:weighted_random_selector"
@@ -69,7 +68,7 @@
 (defn- bone-meal-biomes [reg tagged]
   (by-key (keep (fn [[nm j]]
                   (let [fs (biome-features reg tagged j)]
-                    (when (seq fs) [(kw nm) (mapv kw fs)])))
+                    (when (seq fs) [(pack/kw nm) (mapv pack/kw fs)])))
                 (:biomes reg))))
 
 (defn- closure [reg cs ps]
@@ -79,7 +78,7 @@
     (if (and (= cs cs') (= ps ps')) [cs' ps'] (recur reg cs' ps'))))
 
 (defn- feature-set [reg kind names]
-  (by-key (map (fn [n] [(kw n) (feature-value (get (kind reg) n))])
+  (by-key (map (fn [n] [(pack/kw n) (feature-value (get (kind reg) n))])
                names)))
 
 (defn- bone-meal-tagged []

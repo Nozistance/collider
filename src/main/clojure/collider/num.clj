@@ -44,6 +44,8 @@
   (let [pi (double (unchecked-float Math/PI))]
     (double (unchecked-float (/ 180.0 pi)))))
 
+(def ^:const deg->rad (double (unchecked-float (/ Math/PI 180.0))))
+
 (defn degrees
   "Returns radians r as degrees, multiplied by a float constant."
   ^double [^double r]

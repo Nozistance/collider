@@ -275,6 +275,9 @@
 
 (defn baby? [e] (some? (:baby-until e)))
 
+(defn drops-loot? [world e]
+  (and (not (baby? e)) (get-in world [:rules :mob-drops] true)))
+
 (def ^:const death-ticks 20)
 
 (defn death-ends?

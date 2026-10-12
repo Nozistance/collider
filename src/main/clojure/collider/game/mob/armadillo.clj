@@ -22,9 +22,6 @@
   (gift/gift-deltas t eid e :armadillo-shed :armadillo/scute-drop
                     :shed))
 
-(defn- drops-loot? [world e]
-  (and (not (mobs/baby? e)) (get-in world [:rules :mob-drops] true)))
-
 (defn- timed [eid e at]
   [(assoc e :scute-at at) [[:merge-entity eid {:scute-at at}]]])
 
@@ -37,7 +34,7 @@
     (cond
       (nil? at) (timed eid e (+ (long t) -1 (scute-time t eid)))
       (< (long t) (long at)) [e nil]
-      (not (drops-loot? world e)) [e nil]
+      (not (mobs/drops-loot? world e)) [e nil]
       :else (let [next-at (+ (long t) (scute-time t eid))
                   [e ds] (timed eid e next-at)]
               [e (concat (shed-deltas t eid e) ds)]))))

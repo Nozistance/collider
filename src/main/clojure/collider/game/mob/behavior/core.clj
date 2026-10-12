@@ -159,7 +159,7 @@
                    forever)))})
 
 (defn- look-vec [^double pitch ^double yaw]
-  (let [r (num/f32 (/ Math/PI 180.0)) pi (num/f32 Math/PI)
+  (let [r num/deg->rad pi (num/f32 Math/PI)
         ya (num/fsub (num/fmul (- yaw) r) pi)
         xa (num/fmul (- pitch) r)
         xc (- (v/cos xa))]

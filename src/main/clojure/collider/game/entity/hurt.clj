@@ -738,9 +738,7 @@
   "Returns true when e drops loot. A baby does not, nor any body while
   the mob drops rule is off."
   [world e]
-  (and (get @drop-tables (:type e))
-       (not (mobs/baby? e))
-       (get-in world [:rules :mob-drops] true)))
+  (and (get @drop-tables (:type e)) (mobs/drops-loot? world e)))
 
 (defn- drop-deltas [world eid e]
   (when (drops-loot? world e)
@@ -753,8 +751,7 @@
 (defn- keeps? [world] (get-in world [:rules :keep-inventory] false))
 
 (defn- mob-reward [world eid e]
-  (when (and (killed-by-player? world e) (not (mobs/baby? e))
-             (get-in world [:rules :mob-drops] true))
+  (when (and (killed-by-player? world e) (mobs/drops-loot? world e))
     (let [r (random/of-key (:tick world) eid :xp-reward)]
       (inc (long (* 3.0 r))))))
 

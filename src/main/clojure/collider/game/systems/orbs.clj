@@ -50,9 +50,6 @@
     (orb/merged eid e (seq (dissoc orbs eid)))
     [e []]))
 
-(defn- shoved [chunks e vel roll]
-  (shove/shoved chunks (:pos e) (orb/height) vel (roll :shove)))
-
 (defn- drawn [world e vel players hit? roll]
   (let [pid (orb/followed e players)
         chunks (:chunks world)]
@@ -60,7 +57,8 @@
       pid [pid (orb/pulled vel (:pos e) (get (into {} players) pid))
            false]
       (and hit? (orb/colliding? chunks (:pos e) vel))
-      [nil (shoved chunks e vel roll) true]
+      [nil (shove/shoved chunks (:pos e) (orb/height) vel (roll :shove))
+           true]
       :else [nil vel false])))
 
 (defn- travelled [world e vel pid sync?]

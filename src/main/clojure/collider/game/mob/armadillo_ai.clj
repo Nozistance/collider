@@ -17,8 +17,6 @@
 
 (def ^:private danger :danger-detected-recently)
 
-(def ^:private ^:const danger-ticks 80)
-
 (def ^:private ^:const hurt-by-mob-ticks 100)
 
 (def ^:private ^:const scared-ticks 50)
@@ -161,7 +159,7 @@
   [(sensor/nearest-living) (sensor/hurt-by)
    (sensor/tempting sensor/food-lure?) (sensor/adult)
    (sensor/mob-sensor 5 scared-by? shell/can-stay-rolled-up? danger
-                      danger-ticks)])
+                      shell/danger-ticks)])
 
 (def breed
   (b/breed

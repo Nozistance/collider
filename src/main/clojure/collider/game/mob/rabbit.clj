@@ -45,8 +45,6 @@
 
 (def ^:private jump-strength (double (float 0.42)))
 
-(def ^:private rad-per-deg (double (float (/ Math/PI 180.0))))
-
 (def ^:private origin (steer/wanted nil 0.0 0.0 0.0 0.0))
 
 (defn- hop [e] (or (:hop e) {}))
@@ -211,7 +209,7 @@
   (let [up (if (mobs/baby? e) 0.5 1.5)
         d (Math/sqrt (+ (* up up) 1.0))
         yaw (double (float (:yaw e)))
-        r (double (float (* yaw (double rad-per-deg))))]
+        r (double (float (* yaw num/deg->rad)))]
     [(* (/ up d) hop-push) (* (/ 1.0 d) hop-push)
      (double (float (v/sin r))) (double (float (v/cos r)))]))
 
