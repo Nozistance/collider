@@ -122,7 +122,7 @@
     (mapv #(* 0.5 (double %)) (glide/look 0.0 yaw))))
 
 (defn- carrier
-  "Returns what rocket e knows of its carrier: where it stands, its
+  "Returns what rocket e knows of its carrier, where it stands, its
   motion, its look, the hand that holds the rocket and whether it
   glides. A carrier gone from the world stays as it left, or as the
   rocket last knew it."
