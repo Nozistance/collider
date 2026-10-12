@@ -338,7 +338,7 @@
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) (if free? 1.0 vertical-drag))
            (* (* (v/z u) sf) k))
-     (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
+     (phys/on-ground? mv) sup nb? h d mv]))
 
 (defn- dived
   "Returns speed v of a glider falling, turned along its flat look
@@ -392,8 +392,7 @@
         [sup nb?] (supported world e mv half c)
         [h u] (moved-fluid world e d mv half height f)
         u (bounced world e d mv sup u)]
-    [(phys/pos mv) u (phys/on-ground? mv) sup nb? h d (phys/vel mv)
-     mv]))
+    [(phys/pos mv) u (phys/on-ground? mv) sup nb? h d mv]))
 
 (defn- flight
   "Returns how flying body e moves through fluid f. It is :glide on
@@ -420,7 +419,7 @@
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d (phys/vel mv)))
-     (phys/on-ground? mv) sup nb? nil d (phys/vel mv) mv]))
+     (phys/on-ground? mv) sup nb? nil d mv]))
 
 (defn- lava-slowed [x y z g falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
@@ -443,7 +442,7 @@
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d (phys/vel mv)))
-     (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
+     (phys/on-ground? mv) sup nb? h d mv]))
 
 (defn- travelled
   [world e vel half height og? {:keys [water lava] :as f}]
@@ -503,15 +502,17 @@
         [v jumped?] (if (:jump e)
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
-        [pos w ground? sup nb? h d u mv]
+        [pos w ground? sup nb? h d mv]
         (travelled world e v half height og? f)
         vy (liquid/bubble-push (:chunks world) pos (v/y w))]
-    [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
-     sup nb? h f false d u mv]))
+    {:pos pos :vel (v/v3 (v/x w) vy (v/z w)) :on-ground ground?
+     :jump-cd (jump-delay e t jumped?) :support sup :no-blocks? nb?
+     :fluid f :fluid-after h :movement d :move mv}))
 
 (defn- rest-move [e f]
-  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f
-   f true])
+  {:pos (:pos e) :vel (rest-vel-of e) :on-ground true
+   :support (:support e) :no-blocks? (:no-blocks? e)
+   :fluid f :fluid-after f :rest? true})
 
 (defn- kept-flag [old now]
   (if (= (boolean old) now) old now))
@@ -564,8 +565,8 @@
     (if rest? (rest-move e f) (physics-move world e vel h ht f))))
 
 (defn- settled
-  [e [_ _ og cd sup nb?] pos fall v g rest? [yaw hy body] look
-   walked came st]
+  [e {og :on-ground cd :jump-cd sup :support nb? :no-blocks?} pos fall
+   v g rest? [yaw hy body] look walked came st]
   (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
     (gen/with e {:pos pos :vel v :on-ground og :jump-cd cd
                  :fall fall
@@ -595,14 +596,14 @@
     [v shoves (some? hurt)]))
 
 (defn- moved-y ^double [tr]
-  (if-let [mv (nth tr 11 nil)] (phys/moved-y mv) 0.0))
+  (if-let [mv (:move tr)] (phys/moved-y mv) 0.0))
 
 (defn- dry?
   "Returns true when the mob that moved by tr was out of water when
   its move began and is out of it after."
   [tr]
-  (and (zero? (double (:water (nth tr 7))))
-       (zero? (double (:water (nth tr 6))))))
+  (and (zero? (double (:water (:fluid tr))))
+       (zero? (double (:water (:fluid-after tr))))))
 
 (defn- holds-on?
   "Returns true when body e, about to move through the air in fluid
@@ -611,20 +612,20 @@
   (and (not (in-fluid? f)) (climbing? world e (:pos e))))
 
 (defn- fall-before ^double [world e tr]
-  (if (and (dry? tr) (not (holds-on? world e (nth tr 7))))
-    (landing/cleared world (:pos e) (nth tr 0)
-                     (landing/before-move e (nth tr 7)))
+  (if (and (dry? tr) (not (holds-on? world e (:fluid tr))))
+    (landing/cleared world (:pos e) (:pos tr)
+                     (landing/before-move e (:fluid tr)))
     0.0))
 
 (defn- fall-after ^double [tr ^double f0]
   (if (dry? tr) (phys/fallen f0 (moved-y tr)) 0.0))
 
 (defn- lands? [tr ^double f0 ^double f1]
-  (and (nth tr 2) (or (pos? f0) (pos? f1))))
+  (and (:on-ground tr) (or (pos? f0) (pos? f1))))
 
 (defn- bumped [e e2 tr]
   (if-let [f (:bump (spec/of (:type e)))]
-    (f e2 (nth tr 9 nil) (nth tr 10 nil))
+    (f e2 (:movement tr) (some-> (:move tr) phys/vel))
     e2))
 
 (defn- snowed?
@@ -648,10 +649,10 @@
   (let [[half height pos] box
         h (num/f32 half) ht (num/f32 height)
         [v shoves hit?] (pushed-back world index eid e box cram live?)
-        g (or (nth tr 6) (fluid-after world e pos h ht v))
+        g (or (:fluid-after tr) (fluid-after world e pos h ht v))
         hd (body-of-move world e pos look)
         came (push/arrived e pos (:tick world) eid)
-        e2 (settled e tr pos fall v g (nth tr 8) hd look
+        e2 (settled e tr pos fall v g (:rest? tr) hd look
                     (walk-of e prev pos) came st)
         e2 (snow-marked e2 (snowed? world (:pos e) pos half height))]
     [(bumped e e2 tr) shoves hit? (when ls (nth ls 1))]))
@@ -668,15 +669,15 @@
         tr (travel-of world index eid e h ht)
         f0 (fall-before world e tr) f1 (fall-after tr f0)
         ls (when (lands? tr f0 f1)
-             (landing/landed world eid e (nth tr 0) (nth tr 4) f0 f1))
-        pos (if ls (nth ls 0) (nth tr 0))
-        moves (cond-> [[(:pos e) (nth tr 0) (nth tr 9 nil)]]
-                (and ls (> (v/dist-sq pos (nth tr 0)) gap-sq))
-                (conj [(nth tr 0) pos nil]))
+             (landing/landed world eid e (:pos tr) (:support tr) f0 f1))
+        pos (if ls (nth ls 0) (:pos tr))
+        moves (cond-> [[(:pos e) (:pos tr) (:movement tr)]]
+                (and ls (> (v/dist-sq pos (:pos tr)) gap-sq))
+                (conj [(:pos tr) pos nil]))
         st (motion/stuck-speed (:chunks world) moves half height
                                (:type e))
-        fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
-        box [half height pos (nth tr 1)]
+        fall (landing/kept e (if (or st (:on-ground tr)) 0.0 f1))
+        box [half height pos (:vel tr)]
         [look prev cram live?] more]
     (conj (shoved-move world index eid e tr box fall ls
                        [look prev cram live? st])
@@ -700,14 +701,14 @@
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
         tr (physics-move world e (:vel e) h ht f)
-        pos (nth tr 0)]
-    {:pos pos :vel (nth tr 1) :on-ground (nth tr 2)
+        pos (:pos tr)]
+    {:pos pos :vel (:vel tr) :on-ground (:on-ground tr)
      :stuck (when-not (:flying e)
               (motion/stuck-speed (:chunks world)
                                   (conj (vec moves)
-                                        [(:pos e) pos (nth tr 9)])
+                                        [(:pos e) pos (:movement tr)])
                                   half height (:type e)))
      :flight (flight world e f)
-     :hit? (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))
+     :hit? (hit-wall? (held e (:movement tr)) (phys/vel (:move tr)))
      :holds-on? (holds-on? world e f)
      :snowed? (snowed? world (:pos e) pos half height)}))
