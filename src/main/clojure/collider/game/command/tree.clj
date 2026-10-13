@@ -18,7 +18,8 @@
             [collider.game.command.suggest :as suggest]
             [collider.game.command.text :as tc]
             [collider.game.mode :as game-mode]
-            [collider.game.schema :as schema]))
+            [collider.game.schema :as schema]
+            [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
 
@@ -110,6 +111,12 @@
     (let [e (or (str/index-of s " " n) (count s))]
       [{:name (subs s n e)} [s e]])))
 
+(defn- team-color-read [rd]
+  (let [[v end :as res] (r/read-unquoted rd)]
+    (if (some #{v} team/color-names)
+      res
+      (r/error-at end "argument.color.invalid" v))))
+
 (defn- int-reader [lo hi] (:parse (r/int-arg lo hi)))
 
 (defn- rule-value-read [{:keys [type min max]}]
@@ -129,6 +136,7 @@
     :anchor anchor-read
     :bool r/read-boolean
     (:word :team) r/read-unquoted
+    :team-color team-color-read
     (:greedy :text) r/read-greedy
     :component component-read
     :dimension args/read-id

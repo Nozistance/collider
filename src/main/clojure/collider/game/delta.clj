@@ -106,6 +106,9 @@
    :team-join
    {:scope :world :schema [:cat :string [:vector :string]]
     :apply (fn [w [_ nm ms]] (update w :teams team/joined nm ms))}
+   :team-set
+   {:scope :world :schema [:cat :string :map]
+    :apply (fn [w [_ nm m]] (update w :teams team/changed nm m))}
    :team-leave
    {:scope :world :schema [:cat [:vector :string]]
     :apply (fn [w [_ ms]] (update w :teams team/left ms))}

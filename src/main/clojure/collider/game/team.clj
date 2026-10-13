@@ -4,6 +4,12 @@
 
 (set! *warn-on-reflection* true)
 
+(def color-names
+  "The colours a team takes, by the names commands read."
+  ["black" "dark_blue" "dark_green" "dark_aqua" "dark_red" "dark_purple"
+   "gold" "gray" "dark_gray" "blue" "green" "aqua" "red" "light_purple"
+   "yellow" "white"])
+
 (defn made
   "Returns a new team of name, shown as display."
   [name display]
@@ -46,6 +52,11 @@
            (update % :players into nms)
            %)
         (left teams nms)))
+
+(defn changed
+  "Returns teams with the fields of m set on the team called name."
+  [teams name m]
+  (mapv #(if (= name (:name %)) (merge % m) %) teams))
 
 (defn- styled [display name]
   (let [style {:insertion name :hover {:action :show-text :value name}}]

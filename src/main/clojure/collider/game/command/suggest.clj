@@ -8,7 +8,8 @@
             [collider.game.command.reader :as r]
             [collider.game.command.selector :as sel]
             [collider.game.mode :as game-mode]
-            [collider.game.schema :as schema]))
+            [collider.game.schema :as schema]
+            [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
 
@@ -120,6 +121,7 @@
     :item (sugg start (starting-with w (item-names)))
     :game-mode (sugg start (starting-with w @mode-names))
     :anchor (sugg start (starting-with w ["eyes" "feet"]))
+    :team-color (sugg start (starting-with w team/color-names))
     (:bool :rule-value)
     (sugg start (if (= :int (:type opts))
                   []

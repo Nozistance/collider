@@ -38,7 +38,8 @@
    :compound [:nbt-compound-tag nil]
    :nbt-path [:nbt-path nil]
    :double [(keyword "brigadier:double") nil]
-   :team [:team nil]})
+   :team [:team nil]
+   :team-color [:team-color nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

@@ -130,6 +130,10 @@
 
 (def ^:private team-arg [:team [:team {}]])
 
+(def ^:private team-visibility
+  [:visibility [:enum {:values #{"always" "never" "hideForOtherTeams"
+                                 "hideForOwnTeam"}}]])
+
 (def ^:private team-form
   [:team "make teams, list them and move players and mobs in and out"
    [(lit "list")] [:world :team-list]
@@ -140,7 +144,28 @@
    [(lit "empty") team-arg] [:world :team-empty]
    [(lit "join") team-arg [:members [:score-holder {:default nil}]]]
    [:world :team-join]
-   [(lit "leave") [:members [:score-holder {}]]] [:world :team-leave]])
+   [(lit "leave") [:members [:score-holder {}]]] [:world :team-leave]
+   [(lit "modify") team-arg (lit "displayName")
+    [:displayName [:component {}]]] [:world :team-display]
+   [(lit "modify") team-arg (lit "color") (lit "reset")]
+   [:world :team-color-reset]
+   [(lit "modify") team-arg (lit "color") [:value [:team-color {}]]]
+   [:world :team-color]
+   [(lit "modify") team-arg (lit "friendlyFire") [:allowed [:bool {}]]]
+   [:world :team-friendly-fire]
+   [(lit "modify") team-arg (lit "seeFriendlyInvisibles")
+    [:allowed [:bool {}]]] [:world :team-see-invisible]
+   [(lit "modify") team-arg (lit "nametagVisibility") team-visibility]
+   [:world :team-nametag]
+   [(lit "modify") team-arg (lit "deathMessageVisibility") team-visibility]
+   [:world :team-death-message]
+   [(lit "modify") team-arg (lit "collisionRule")
+    [:rule [:enum {:values #{"always" "never" "pushOtherTeams"
+                             "pushOwnTeam"}}]]] [:world :team-collision]
+   [(lit "modify") team-arg (lit "prefix") [:prefix [:component {}]]]
+   [:world :team-prefix]
+   [(lit "modify") team-arg (lit "suffix") [:suffix [:component {}]]]
+   [:world :team-suffix]])
 
 (def ^:private players-arg
   [:targets [:targets {:players? true}]])
