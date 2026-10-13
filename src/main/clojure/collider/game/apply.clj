@@ -149,7 +149,7 @@
 
 (defn- world-step [[w removes] delta]
   (if (identical? :remove-entity (nth delta 0))
-    [w (conj removes (nth delta 1))]
+    [w (conj removes [(nth delta 1) (nth delta 2 nil)])]
     [(apply-world-delta w delta) removes]))
 
 (defn- checked! [w]
@@ -195,7 +195,8 @@
         inp (deltas/input-of d)
         applied (if (seq inp) (applied-input lv1 inp) lv1)
         folded (folded-in applied (deltas/entities-of d))
-        quit (arrived lv (reduce player/quit folded removes))]
+        gone (fn [w [eid why]] (player/quit w eid why))
+        quit (arrived lv (reduce gone folded removes))]
     (indexed (areas/with-areas (typed quit)))))
 
 (defn- inhabited? [world dim]

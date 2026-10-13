@@ -154,7 +154,7 @@
       (let [m (placed-props e pos yaw pitch rel)]
         (targets/in-level world from [[:merge-entity id m]]))
       (concat
-        (targets/in-level world from [[:remove-entity id]])
+        (targets/in-level world from [[:remove-entity id :moved]])
         (arrived world id e to pos turn rel)))))
 
 (defn- moved

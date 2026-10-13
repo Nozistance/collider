@@ -1,12 +1,10 @@
 (ns collider.game.commands.team
   "The team command, which makes, removes and lists teams."
   (:require [clojure.string :as str]
-            [collider.game.command.targets :as targets]
+            [collider.game.commands.holders :as holders]
             [collider.game.commands.reply :refer [answer fail name-list say]]
-            [collider.game.entity :as entity]
             [collider.game.out :as out]
-            [collider.game.team :as team])
-  (:import (java.util UUID)))
+            [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
 
@@ -55,40 +53,6 @@
                       :with [(team/shown t) (count ps)
                              (name-list (map member (sort ps)))]}))))))
 
-(defn- of-entity [world [id _ e]]
-  (let [nm (entity/scoreboard-name id e)
-        shown (entity/display-name id e (team/of-entity (:teams world) id e))]
-    {:name nm :shown (assoc shown :hover {:action :show-text :value nm})}))
-
-(defn- uuid-of [^String s]
-  (try (UUID/fromString s) (catch IllegalArgumentException _ nil)))
-
-(defn- named [world eid ^String s]
-  (let [only {:name s :shown s}]
-    (cond
-      (.startsWith s "#") [only]
-      (uuid-of s)
-      (if-let [x (targets/by-uuid world false (uuid-of s))]
-        [(of-entity world x)] [only])
-      :else (if-let [x (first (targets/selected world eid {:name s}))]
-              [(of-entity world x)] [only]))))
-
-(defn- holders
-  "Returns the members that arg names, or the error deltas."
-  [world eid arg]
-  (let [hs (cond
-             (nil? arg)
-             (map #(of-entity world %)
-                  (targets/selected world eid {:self? true :entities? true}))
-             (:selector arg)
-             (map #(of-entity world %)
-                  (targets/selected world eid (:selector arg)))
-             (= "*" (:name arg)) :none
-             :else (named world eid (:name arg)))]
-    (cond (= :none hs) {:error (fail eid "argument.scoreHolder.empty")}
-          (empty? hs) {:error (fail eid "argument.entity.notfound.entity")}
-          :else {:ok (vec hs)})))
-
 (defn- moved [teams t nms]
   (loop [[nm & more] nms ts teams fx []]
     (if-not nm
@@ -107,7 +71,9 @@
 (defn- join-deltas [world eid [nm arg]]
   (known world eid nm
          (fn [t]
-           (let [{:keys [ok error]} (holders world eid arg)]
+           (let [{:keys [ok error]}
+                 (holders/holders world eid arg
+                                  (holders/tracked world))]
              (or error
                  (let [nms (mapv :name ok)]
                    (concat [[:team-join nm nms]]
@@ -124,7 +90,8 @@
                (cond-> fx old (conj (out/all (out/team 4 old [nm])))))))))
 
 (defn- leave-deltas [world eid [arg]]
-  (let [{:keys [ok error]} (holders world eid arg)]
+  (let [{:keys [ok error]} (holders/holders world eid arg
+                                  (holders/tracked world))]
     (or error
         (let [nms (mapv :name ok)]
           (concat [[:team-leave nms]]

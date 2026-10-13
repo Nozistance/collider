@@ -234,10 +234,17 @@
   [slot nm]
   {:packet :set-display-objective :slot slot :name (or nm "")})
 
-(defn- score-packet [m]
+(defn score-packet
+  "Returns the packet of a score effect m."
+  [m]
   (case (:msg m)
     :objective (objective-packet (:method m) (:objective m))
-    :display-slot (display-packet (:slot m) (:name m))))
+    :display-slot (display-packet (:slot m) (:name m))
+    :score {:packet :set-score :owner (:holder m)
+            :objective (:objective m) :value (:value m)
+            :display (:display m) :format (:format m)}
+    :score-reset {:packet :reset-score :owner (:holder m)
+                  :objective (:objective m)}))
 
 (defn- join-world-packets [world e eid motd]
   (concat

@@ -24,7 +24,7 @@
   {"health" :hearts "food" :integer "air" :integer "armor" :integer
    "xp" :integer "level" :integer})
 
-(def ^:private written
+(def ^:private writable
   (into #{"dummy" "trigger" "deathCount" "playerKillCount"
           "totalKillCount"}
         (mapcat #(vector (str "teamkill." %) (str "killedByTeam." %)))
@@ -61,7 +61,12 @@
   "Returns the name of the criterion nm names, or nil. A statistic
   goes by its full name."
   [nm]
-  (if (or (contains? written nm) (contains? kept nm)) nm (stat nm)))
+  (if (or (contains? writable nm) (contains? kept nm)) nm (stat nm)))
+
+(defn read-only?
+  "Returns true when the game alone sets the scores of objective o."
+  [o]
+  (contains? kept (:criteria o)))
 
 (defn made
   "Returns a new objective of name and criterion, shown as display."
@@ -90,10 +95,18 @@
   [sb nm]
   (filter #(= nm (get (:slots sb) %)) (range (count slot-names))))
 
+(defn tracked?
+  "Returns true when a slot of sb shows the objective called nm."
+  [sb nm]
+  (boolean (seq (slots-of sb nm))))
+
+(defn- score-fx [sb nm]
+  (map (fn [[h s]] (out/score h nm s)) (get-in sb [:scores nm])))
+
 (defn- tracking [sb nm method]
-  (into [(out/objective method (named sb nm))]
-        (map #(out/display-slot % nm))
-        (slots-of sb nm)))
+  (concat [(out/objective method (named sb nm))]
+          (map #(out/display-slot % nm) (slots-of sb nm))
+          (when (zero? (long method)) (score-fx sb nm))))
 
 (defn shows
   "Returns sb with slot showing the objective called nm, none when nm
@@ -127,10 +140,86 @@
     (first (reduce step [[] sb] (slots-of sb nm)))))
 
 (defn removed
-  "Returns sb without the objective called nm."
+  "Returns sb without the objective called nm. The holders of its
+  scores stay."
   [sb nm]
   (-> (reduce #(shows %1 %2 nil) sb (slots-of sb nm))
-      (update :objectives #(filterv (fn [o] (not= nm (:name o))) %))))
+      (update :objectives #(filterv (fn [o] (not= nm (:name o))) %))
+      (update :scores dissoc nm)))
+
+(defn score
+  "Returns the score of holder h on the objective called nm, or nil."
+  [sb nm h]
+  (get-in sb [:scores nm h]))
+
+(defn holders
+  "Returns the names that hold scores of sb, or held them since."
+  [sb]
+  (:holders sb #{}))
+
+(defn scored
+  "Returns sb with score s of holder h on the objective called nm."
+  [sb nm h s]
+  (-> (assoc-in sb [:scores nm h] s)
+      (update :holders (fnil conj #{}) h)))
+
+(defn- of-holder [sb h]
+  (keep (fn [[nm ss]] (when (contains? ss h) nm)) (:scores sb)))
+
+(defn unscored
+  "Returns sb without the score of holder h on the objective called
+  nm."
+  [sb nm h]
+  (update-in sb [:scores nm] dissoc h))
+
+(defn forgotten
+  "Returns sb without holder h and its scores."
+  [sb h]
+  (-> (update sb :scores update-vals #(dissoc % h))
+      (update :holders (fnil disj #{}) h)))
+
+(defn stored
+  "Returns sb as a save keeps it, without the holders of no score."
+  [sb _]
+  (cond-> sb
+    (contains? sb :holders)
+    (assoc :holders (set (mapcat keys (vals (:scores sb)))))))
+
+(defn- new-score [] {:value 0 :locked true})
+
+(defn written
+  "Returns the deltas of the score of holder h on objective o set to
+  v. An objective that updates the display takes display, the name
+  h shows by, when there is one."
+  [sb o h display v]
+  (let [nm (:name o) old (score sb nm h)
+        shown (when (and (:auto-update o) display
+                         (not= display (:display old)))
+                display)
+        s (cond-> (assoc (or old (new-score)) :value v)
+            shown (assoc :display shown))]
+    (when (or (nil? old) shown (not= v (:value old)))
+      (cons [:score-set nm h s]
+            (when (tracked? sb nm) [(out/all (out/score h nm s))])))))
+
+(defn reset-all
+  "Returns the deltas of holder h of sb losing all its scores."
+  [sb h]
+  (when (contains? (holders sb) h)
+    [[:holder-reset h] (out/all (out/score-reset h nil))]))
+
+(defn reset-one
+  "Returns the deltas of holder h of sb losing its score on the
+  objective called nm."
+  [sb nm h]
+  (let [had? (some? (score sb nm h))
+        left (remove #{nm} (of-holder sb h))]
+    (cond (and (contains? (holders sb) h) (empty? left))
+          (reset-all sb h)
+          (not had?) nil
+          :else (cons [:score-reset nm h]
+                      (when (tracked? sb nm)
+                        [(out/all (out/score-reset h nm))])))))
 
 (defn changed
   "Returns sb with the fields of m set on the objective called nm."

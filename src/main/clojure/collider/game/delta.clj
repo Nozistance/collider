@@ -59,7 +59,7 @@
         s (if (seq add) (into s add) s)]
     (if (seq drop) (lm/difference s (lm/long-set drop)) s)))
 
-(defn- quit [w [_ eid]] (player/quit w eid))
+(defn- quit [w [_ eid why]] (player/quit w eid why))
 
 (def registry
   "Every delta tag with its scope, its schema and how it applies.
@@ -124,6 +124,18 @@
    {:scope :world :schema [:cat :string :map]
     :apply (fn [w [_ nm m]]
              (update w :scoreboard scoreboard/changed nm m))}
+   :score-set
+   {:scope :world :schema [:cat :string :string :map]
+    :apply (fn [w [_ nm h s]]
+             (update w :scoreboard scoreboard/scored nm h s))}
+   :score-reset
+   {:scope :world :schema [:cat :string :string]
+    :apply (fn [w [_ nm h]]
+             (update w :scoreboard scoreboard/unscored nm h))}
+   :holder-reset
+   {:scope :world :schema [:cat :string]
+    :apply (fn [w [_ h]]
+             (update w :scoreboard scoreboard/forgotten h))}
    :display-slot
    {:scope :world :schema [:cat :int [:maybe :string]]
     :apply (fn [w [_ slot nm]]
@@ -180,7 +192,8 @@
    {:scope :level :schema [:cat Vec3 :int :any [:? Vec3]]
     :apply writes/xp-award}
    :remove-entity
-   {:scope :level :schema [:cat Eid] :by-eid true :apply quit}
+   {:scope :level :schema [:cat Eid [:? [:= :moved]]] :by-eid true
+    :apply quit}
    :level-deltas
    {:scope :world :schema [:cat :keyword [:sequential :any]]}
    :change-dimension
@@ -303,6 +316,8 @@
      :team [[:method :int] [:team :map] [:members [:maybe [:vector :string]]]]
      :objective [[:method :int] [:objective :map]]
      :display-slot [[:slot :int] [:name [:maybe :string]]]
+     :score [[:holder :string] [:objective :string] [:value :int]]
+     :score-reset [[:holder :string] [:objective [:maybe :string]]]
      :experience [[:progress number?] [:level :int] [:total :int]]
      :respawn []
      :change-dimension [[:pos Vec3] [:yaw number?] [:pitch number?]

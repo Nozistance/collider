@@ -50,6 +50,19 @@
   [method o]
   {:msg :objective :method method :objective o})
 
+(defn score
+  "Returns the effect that shows score s of holder h on the objective
+  called nm."
+  [h nm s]
+  {:msg :score :holder h :objective nm :value (:value s)
+   :display (:display s) :format (:format s)})
+
+(defn score-reset
+  "Returns the effect that takes away the score of holder h on the
+  objective called nm, or all its scores when nm is nil."
+  [h nm]
+  {:msg :score-reset :holder h :objective nm})
+
 (defn display-slot
   "Returns the effect that shows the objective called nm in slot, or
   empties it when nm is nil."

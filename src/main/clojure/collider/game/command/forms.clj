@@ -314,6 +314,25 @@
 (defn- modifying [& more]
   (into [(lit "objectives") (lit "modify") objective-arg] more))
 
+(def ^:private targets-arg [:targets [:score-holder {}]])
+
+(def ^:private target-arg [:target [:score-holder {:single? true}]])
+
+(def ^:private player-forms
+  [[(lit "players") (lit "list")] [:world :holders-list]
+   [(lit "players") (lit "list") target-arg] [:world :holder-scores]
+   [(lit "players") (lit "set") targets-arg objective-arg
+    [:score [:int {:min int-min :max int-max}]]] [:world :score-set]
+   [(lit "players") (lit "get") target-arg objective-arg]
+   [:world :score-get]
+   [(lit "players") (lit "add") targets-arg objective-arg
+    [:score [:int {:min 0 :max int-max}]]] [:world :score-add]
+   [(lit "players") (lit "remove") targets-arg objective-arg
+    [:score [:int {:min 0 :max int-max}]]] [:world :score-remove]
+   [(lit "players") (lit "reset") targets-arg] [:world :scores-reset]
+   [(lit "players") (lit "reset") targets-arg objective-arg]
+   [:world :score-reset]])
+
 (def ^:private scoreboard-form
   [:scoreboard "keep objectives and show them in display slots"
    [(lit "objectives") (lit "list")] [:world :objectives-list]
@@ -342,8 +361,10 @@
     [:objective [:objective {:default nil}]]]
    [:world :objective-display]])
 
+(def ^:private scoreboard-forms (into scoreboard-form player-forms))
+
 (def ^:private base-forms
-  [time-form team-form scoreboard-form
+  [time-form team-form scoreboard-forms
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]

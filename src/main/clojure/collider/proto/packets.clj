@@ -564,6 +564,21 @@
    [:play :set-objective]
    {:schema [:map [:name :string] [:method :int]]
     :write write-objective!}
+   [:play :set-score]
+   {:schema [:map [:owner :string] [:objective :string] [:value :int]]
+    :write (fn [^Buf buf {:keys [owner objective value] :as m}]
+             (c/write-string buf owner)
+             (c/write-string buf objective)
+             (c/write-varint buf value)
+             (buf/write-boolean! buf (some? (:display m)))
+             (when-let [d (:display m)] (text/write-component buf d))
+             (write-number-format! buf (:format m)))}
+   [:play :reset-score]
+   {:schema [:map [:owner :string] [:objective [:maybe :string]]]
+    :write (fn [^Buf buf {:keys [owner objective]}]
+             (c/write-string buf owner)
+             (buf/write-boolean! buf (some? objective))
+             (when objective (c/write-string buf objective)))}
    [:play :set-display-objective]
    {:schema [:map [:slot :int] [:name :string]]
     :write (fn [^Buf buf {:keys [slot name]}]

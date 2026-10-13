@@ -196,6 +196,8 @@
                     [(join/objective-packet method objective)])
    :display-slot  (fn [_ {:keys [slot name]}]
                     [(join/display-packet slot name)])
+   :score         (fn [_ m] [(join/score-packet m)])
+   :score-reset   (fn [_ m] [(join/score-packet m)])
    :combat-kill   (fn [_ m]
                     [{:packet :player-combat-kill :eid (:eid m)
                       :text (:text m)}])

@@ -15,6 +15,7 @@
             [collider.game.schema :as schema]
             [collider.game.slots :as slots]
             [collider.game.stack :as stack]
+            [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]
             [collider.game.using :as using]
             [collider.random :as random]
@@ -177,18 +178,27 @@
   (let [dim (:dim w :overworld)]
     (assoc-in w [:profiles name] (stored-profile e dim))))
 
+(defn- gone [w e eid]
+  (let [nm (str (entity/uuid-of eid e))
+        held? (contains? (scoreboard/holders (:scoreboard w)) nm)]
+    (cond-> w
+      (seq (:teams w)) (update :teams team/left [nm])
+      held? (update :scoreboard scoreboard/forgotten nm))))
+
 (defn quit
   "Returns level w without entity eid. A player keeps its profile,
-  and any other entity leaves its team."
-  [w eid]
-  (let [{:keys [name] :as e} (get-in w [:entities eid])]
-    (cond-> (-> w
-                (update :spawning dissoc eid)
-                (update :entities dissoc eid)
-                (update :players forget-player name eid))
-      name (kept-profile name e)
-      (and e (not (entity/player? e)) (seq (:teams w)))
-      (update :teams team/left [(str (entity/uuid-of eid e))]))))
+  and any other entity that goes for good, not moved to another
+  level, leaves its team and its scores."
+  ([w eid] (quit w eid nil))
+  ([w eid why]
+   (let [{:keys [name] :as e} (get-in w [:entities eid])]
+     (cond-> (-> w
+                 (update :spawning dissoc eid)
+                 (update :entities dissoc eid)
+                 (update :players forget-player name eid))
+       name (kept-profile name e)
+       (and e (not (entity/player? e)) (not= :moved why))
+       (gone e eid)))))
 
 (def ^:private ^:table swords
   (delay (set (data/tag-values "item" "swords"))))

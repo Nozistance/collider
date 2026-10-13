@@ -7,6 +7,7 @@
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.game.schedule :as schedule]
+            [collider.game.scoreboard :as scoreboard]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather])
@@ -223,8 +224,8 @@
    :shulker-anim       {:default {} :scope :level}
    :teams              {:default [] :store store-same :load identity
                         :schema [:vector :map] :scope :shared}
-   :scoreboard         {:default {} :store store-same :load identity
-                        :schema :map :scope :shared}
+   :scoreboard         {:default {} :store scoreboard/stored
+                        :load identity :schema :map :scope :shared}
    :players            {:default {} :scope :shared}
    :spawning           {:default (lm/long-map) :scope :shared}
    :listed             {:default {} :scope :shared}
