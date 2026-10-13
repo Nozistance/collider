@@ -264,7 +264,7 @@
   (when f
     (c/write-varint buf (data/registry-id "number_format_type"
                                           (:type f)))
-    (when (= :fixed (:type f))
+    (when (#{:fixed :styled} (:type f))
       (text/write-component buf (:value f)))))
 
 (defn- write-objective! [^Buf buf {:keys [name method] :as o}]

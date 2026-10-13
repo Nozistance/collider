@@ -93,6 +93,8 @@
 
 (defn- fixed [v] {:type :fixed :value v})
 
+(defn- styled [v] {:type :styled :value v})
+
 (defn- format-set [world eid o fmt]
   (modified world eid o {:format fmt}
             (str "modify.objectiveFormat." (if fmt "set" "clear"))
@@ -120,6 +122,7 @@
    :objective-format (formatted (constantly nil))
    :objective-format-blank (formatted (constantly {:type :blank}))
    :objective-format-fixed (formatted fixed)
+   :objective-format-styled (formatted styled)
    :objective-add add-deltas
    :objective-remove remove-deltas
    :objectives-list list-deltas

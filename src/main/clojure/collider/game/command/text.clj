@@ -122,6 +122,19 @@
   [tag]
   (dfu/settled tag (text tag)))
 
+(defn- style [tag]
+  (if (map? tag)
+    (let [rs (mapv #(dfu/field tag %) style-fields)]
+      (cond (dfu/raw-in? rs) [:raw tag]
+            (some dfu/failed? rs) (dfu/errors rs)
+            :else [:ok (into {} (keep second) rs)]))
+    (dfu/not-map tag)))
+
+(defn style-of
+  "Decodes a text style value."
+  [tag]
+  (dfu/settled tag (style tag)))
+
 (def lore
   "Decodes at most 256 lines of lore."
   (dfu/limited text 256))

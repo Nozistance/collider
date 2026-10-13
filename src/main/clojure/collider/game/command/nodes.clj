@@ -42,7 +42,8 @@
    :team-color [:team-color nil]
    :objective [:objective nil]
    :criteria [:objective-criteria nil]
-   :display-slot [:scoreboard-slot nil]})
+   :display-slot [:scoreboard-slot nil]
+   :style [:style nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

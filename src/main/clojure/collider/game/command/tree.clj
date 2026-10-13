@@ -91,6 +91,15 @@
           :ok [v end]
           (r/error-at rd "argument.component.invalid" (str v)))))))
 
+(defn- style-read [rd]
+  (let [res (snbt/read-tag rd)]
+    (if (r/error? res)
+      res
+      (let [[tag end] res [op v] (tc/style-of tag)]
+        (case op
+          :ok [v end]
+          (r/error-at rd "argument.style.invalid" (str v)))))))
+
 (defn- toplevel [rd] [(first rd) 0])
 
 (defn- too-many [players?]
@@ -154,6 +163,7 @@
     :team-color team-color-read
     (:greedy :text) r/read-greedy
     :component component-read
+    :style style-read
     :dimension args/read-id
     :compound snbt/read-compound
     :nbt-path nbt-path/read-path

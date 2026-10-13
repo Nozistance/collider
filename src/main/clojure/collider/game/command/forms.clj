@@ -334,6 +334,8 @@
    (modifying (lit "numberformat") (lit "fixed")
               [:contents [:component {}]])
    [:world :objective-format-fixed]
+   (modifying (lit "numberformat") (lit "styled") [:style [:style {}]])
+   [:world :objective-format-styled]
    [(lit "objectives") (lit "remove") objective-arg]
    [:world :objective-remove]
    [(lit "objectives") (lit "setdisplay") [:slot [:display-slot {}]]
