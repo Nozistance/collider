@@ -280,3 +280,15 @@
       (let [[e ds] (fell-on world eid e st cell f)]
         [(:pos e) (into (vec ps) ds)])
       [pos ps])))
+
+(defn- landed-deltas [world e {:keys [eid to] fall :landed}]
+  (let [[_ ds] (landed world eid e to nil fall fall)]
+    (conj (vec ds) [:merge-entity eid {:landed nil}])))
+
+(defn moved-deltas
+  "Returns the deltas of player move m as it comes in: the hurt of
+  its fall when it landed, and the end of what a gust started."
+  [world {:keys [eid] :as m}]
+  (when-let [e (get-in world [:entities eid])]
+    (concat (when (:landed m) (landed-deltas world e m))
+            (settled-deltas world eid e))))

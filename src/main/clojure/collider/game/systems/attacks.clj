@@ -2,7 +2,6 @@
   "Players hitting entities when the attack packet comes."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
-            [collider.game.input :as input]
             [collider.game.entity :as entity]
             [collider.game.entity.damage :as damage]
             [collider.game.enchantment :as enchantment]
@@ -283,10 +282,9 @@
     (swing-deltas world ev)))
 
 (defn input-deltas
-  "Returns the deltas of attack or swing event ev, the i-th of the
-  tick, its player as it was when the event came."
-  [world [i ev]]
-  (event-deltas (input/as-came world i ev) ev))
+  "Returns the deltas of attack or swing event ev."
+  [world [_ ev]]
+  (event-deltas world ev))
 
 (defn wielded
   "Returns the deltas that restart the attack ticker of player eid

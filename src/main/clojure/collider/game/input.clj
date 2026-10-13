@@ -72,29 +72,22 @@
         (player/client-loaded? e (long (:tick w))))))
 
 (defn heard
-  "Returns input record acc with what event d did to w, giving w'."
-  [acc w w' d]
-  (let [o (player/use-origin w d) m (move-of w w' d) q (quit-of w d)
-        r (resend-of w w' d) u (release-of w d)]
+  "Returns input record acc with event d heard in w."
+  [acc w d]
+  (let [q (quit-of w d)]
     (cond-> (update acc :heeded conj d)
-      o (assoc-in [:use-origins (count (:heeded acc))] o)
-      m (update :moves conj m)
-      q (update :quits conj q)
-      r (update :resends conj r)
-      u (update :releases conj u))))
+      q (update :quits conj q))))
+
+(defn played
+  "Returns what packet event d did to w, giving w', as a part of the
+  input record: its move, its resent teleport and the use it let go."
+  [w w' d]
+  (let [m (move-of w w' d) r (resend-of w w' d) u (release-of w d)]
+    (cond-> {}
+      m (assoc :moves m)
+      r (assoc :resends r)
+      u (assoc :releases u))))
 
 (def unheard
   "The input record of a tick before its first event."
-  {:heeded [] :use-origins {} :moves [] :quits [] :resends []
-   :releases []})
-
-(defn as-came
-  "Returns world with the player of event ev, the i-th of the tick,
-  as it was when the event came."
-  [world i ev]
-  (let [eid (nth ev 1)
-        origin (get-in world [:input :use-origins i])
-        e (get-in world [:entities eid])]
-    (if (and origin e)
-      (assoc-in world [:entities eid] (merge e origin))
-      world)))
+  {:heeded [] :moves [] :quits [] :resends [] :releases []})

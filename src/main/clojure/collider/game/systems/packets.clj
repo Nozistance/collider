@@ -4,6 +4,8 @@
   (:require [collider.game.apply :as apply]
             [collider.game.camera :as camera]
             [collider.game.deltas :as deltas]
+            [collider.game.input :as input]
+            [collider.game.level :as level]
             [collider.game.mob.interact :as interact]
             [collider.game.player :as player]
             [collider.game.systems.attacks :as attacks]
@@ -13,7 +15,8 @@
             [collider.game.systems.hanging :as hanging]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
-            [collider.game.systems.players :as players]))
+            [collider.game.systems.players :as players]
+            [collider.game.turn.landing :as landing]))
 
 (set! *warn-on-reflection* true)
 
@@ -22,8 +25,37 @@
 
 (defn- spectated [w [_ [_ eid tid]]] (camera/spectate-deltas w eid tid))
 
+(def ^:private player-input
+  {:move player/move
+   :client-tick-end player/client-tick-end
+   :abilities player/abilities
+   :teleport-ack player/teleport-ack
+   :chunk-batch-ack player/chunk-batch-ack
+   :entity-action player/entity-action
+   :input (fn [w [_ eid flags]] (level/update-entity w eid merge flags))
+   :client-settings player/client-settings
+   :place player/place
+   :use-item player/use-item
+   :release-use player/release-use})
+
+(defn- changed [eid e e']
+  (when-not (identical? e e')
+    (when-let [gone (seq (remove #(contains? e' %) (keys e)))]
+      (throw (ex-info "a player event took keys away" {:keys gone})))
+    [[:merge-entity eid
+      (into {} (remove (fn [[k v]] (identical? v (get e k)))) e')]]))
+
+(defn- played [w [_ [tag eid :as ev]]]
+  (let [w' ((player-input tag) w ev)
+        e' (get-in w' [:entities eid])
+        heard (input/played w w' ev)]
+    (concat (when e' (changed eid (get-in w [:entities eid]) e'))
+            (when (seq heard) [[:heard heard]])
+            (when-let [m (:moves heard)] (landing/moved-deltas w' m)))))
+
 (def ^:private handlers
-  [[#{:spectate} spectated]
+  [[(set (keys player-input)) played]
+   [#{:spectate} spectated]
    [#{:dig :place :use-item :sign-update} blocks/edit-deltas]
    [#{:client-settings} (own player/settings-deltas)]
    [#{:click :menu-click :pick :bundle-select} (own inventory/event-deltas)]
@@ -41,8 +73,13 @@
 
 (defn- handled [w [_ ev :as x]]
   (let [tag (nth ev 0)]
-    (into [] (mapcat (fn [[ts f]] (when (contains? ts tag) (f w x))))
-          handlers)))
+    (loop [w w hs (filter #(contains? (first %) tag) handlers) acc []]
+      (if-let [[_ f] (first hs)]
+        (let [ds (vec (f w x))
+              more (next hs)]
+          (recur (if (and more (seq ds)) (first (apply/applied w ds)) w)
+                 more (into acc ds)))
+        acc))))
 
 (defn packets
   "Returns the deltas of the packet events of the tick in the order

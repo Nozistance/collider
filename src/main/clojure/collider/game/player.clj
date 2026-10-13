@@ -210,27 +210,6 @@
              :pitch (v/wrap-deg (double (:pitch rot))))
     e))
 
-(def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
-
-(def ^:private state-keys
-  [:pos :yaw :pitch :on-ground :fall :sprinting? :sneaking? :in-water?
-   :eye-in-water? :pose :swimming?])
-
-(defn use-origin
-  "Returns the eye and look of the player behind an event, or for a
-  dig, an attack or an interaction what its player was when the event
-  came. Other events give nil."
-  [w [tag & args]]
-  (let [rot (case tag
-              :place (nth args 6 nil)
-              :use-item (nth args 3 nil)
-              nil)]
-    (when-let [e (get-in w [:entities (first args)])]
-      (case tag
-        (:place :use-item) (select-keys (snapped e rot) origin-keys)
-        (:dig :attack :interact) (select-keys e state-keys)
-        nil))))
-
 (defn hand-slot
   "Returns the inventory slot the hand holds."
   ^long [e hand]

@@ -4,7 +4,6 @@
             [collider.game.apply :as apply]
             [collider.game.book :as book]
             [collider.game.changes :as changes]
-            [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
@@ -188,11 +187,11 @@
       (door/toggle-deltas world eid pos (changes/block-at world pos))
       (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos))))
 
-(defn- play-deltas [world [eid pos face item cursor _ _ hand] origin]
+(defn- play-deltas [world [eid pos face item cursor _ _ hand]]
   (let [hand (or hand :main)
         e (get-in world [:entities eid])
         item (or item (sense/in-hand e hand))
-        at (assoc (merge e origin) :use-hand hand)
+        at (assoc e :use-hand hand)
         world (assoc-in world [:entities eid] at)
         ctx (place-ctx world at [eid pos face item cursor])]
     (if (= :main hand)
@@ -204,10 +203,10 @@
   (when-not (no-face? face)
     (seq (screen/spectator-open-deltas world eid pos))))
 
-(defn- place-deltas [world [eid pos face :as args] origin]
+(defn- place-deltas [world [eid pos face :as args]]
   (if (game-mode/spectator? (get-in world [:entities eid]))
     (spectator-deltas world eid pos face)
-    (play-deltas world args origin)))
+    (play-deltas world args)))
 
 (defn- placement-attempt? [world e item]
   (and item
@@ -256,15 +255,15 @@
                       (limit-reached eid face y top bottom)]))))
 
 (defn- use-on-deltas
-  [world [eid pos face _ cursor :as args] origin]
-  (let [e (merge (get-in world [:entities eid]) origin)]
+  [world [eid pos face _ cursor :as args]]
+  (let [e (get-in world [:entities eid])]
     (cond
       (no-face? face)
-      (place-deltas world args origin)
+      (place-deltas world args)
       (and (reach/in-reach? e pos) (on-block? cursor))
       (if-let [[high? y] (barred world e pos)]
         [(edit/build-limit eid high? y)]
-        (let [r (place-deltas world args origin)]
+        (let [r (place-deltas world args)]
           (concat r (failed-limits world e args r)))))))
 
 (def ^:private dig-actions #{dig/start dig/abort dig/finish})
@@ -276,8 +275,8 @@
     :use-item (nth args 1 nil)
     nil))
 
-(defn- acted-at [world eid origin pos]
-  (reach/in-reach? (merge (get-in world [:entities eid]) origin) pos))
+(defn- acted-at [world eid pos]
+  (reach/in-reach? (get-in world [:entities eid]) pos))
 
 (defn- ack-changes [world eid pos off]
   (let [pos' (mapv + pos off)]
@@ -285,16 +284,16 @@
             (chunk/in-level? world (nth pos' 1))
             (conj (edit/own-change world eid pos')))))
 
-(defn- ack-offset [world origin [eid pos face _ cursor]]
+(defn- ack-offset [world [eid pos face _ cursor]]
   (when-let [off (dir/face-offset (bit-and (long face) 0xFF))]
     (when (and (chunk/in-level? world (nth pos 1))
-               (acted-at world eid origin pos)
+               (acted-at world eid pos)
                (on-block? cursor))
       off)))
 
-(defn- placed-deltas [world [eid pos :as args] origin]
-  (let [ds (vec (use-on-deltas world args origin))]
-    (if-let [off (ack-offset world origin args)]
+(defn- placed-deltas [world [eid pos :as args]]
+  (let [ds (vec (use-on-deltas world args))]
+    (if-let [off (ack-offset world args)]
       (let [w (first (apply/applied world ds))]
         (into ds (ack-changes w eid pos off)))
       ds)))
@@ -313,14 +312,11 @@
   [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand])
 
 (defn edit-deltas
-  "Returns the deltas of dig, place, item use or sign edit event ev,
-  the i-th of the tick."
-  [world [i [tag & args :as ev]]]
-  (let [origins (get-in world [:input :use-origins])]
-    (case tag
-      :dig (dig/dig-deltas (input/as-came world i ev) args)
-      :place (placed-deltas world args (get origins i))
-      :use-item
-      (place-deltas world (item-use-args args) (get origins i))
-      :sign-update (use/sign-update-deltas world args)
-      nil)))
+  "Returns the deltas of dig, place, item use or sign edit event ev."
+  [world [_ [tag & args]]]
+  (case tag
+    :dig (dig/dig-deltas world args)
+    :place (placed-deltas world args)
+    :use-item (place-deltas world (item-use-args args))
+    :sign-update (use/sign-update-deltas world args)
+    nil))

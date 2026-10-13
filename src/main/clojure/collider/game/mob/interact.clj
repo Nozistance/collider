@@ -1,7 +1,6 @@
 (ns collider.game.mob.interact
   "The answers of mobs to the clicks of players on them."
   (:require [collider.game.entity :as entity]
-            [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.clock :as clock]
@@ -78,7 +77,6 @@
     []))
 
 (defn input-deltas
-  "Returns the deltas of the answer of a mob to click event ev, the
-  i-th of the tick."
-  [world [i ev]]
-  (interact (input/as-came world i ev) ev (long (:tick world))))
+  "Returns the deltas of the answer of a mob to click event ev."
+  [world [_ ev]]
+  (interact world ev (long (:tick world))))

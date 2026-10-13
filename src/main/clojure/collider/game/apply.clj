@@ -34,7 +34,7 @@
 
 (defn- heard-event [w acc d]
   (try (when (input/heeded? w d)
-         (let [w' (event w d)] [w' (input/heard acc w w' d)]))
+         (let [w' (event w d)] [w' (input/heard acc w d)]))
        (catch Throwable t (dropped! #'event d t))))
 
 (defn- applied-input [world input]

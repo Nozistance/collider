@@ -5,7 +5,6 @@
             [collider.game.deltas :as deltas]
             [collider.game.hanging :as hanging]
             [collider.game.hanging.drops :as drops]
-            [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
@@ -174,8 +173,7 @@
        (hanging/types (get-in world [:entities (nth ev 2) :type]))))
 
 (defn input-deltas
-  "Returns the deltas of event ev, the i-th of the tick, when it uses
-  or hits a painting or an item frame."
-  [world [i ev]]
-  (when (aimed? world ev)
-    (event-deltas (input/as-came world i ev) ev)))
+  "Returns the deltas of event ev when it uses or hits a painting or
+  an item frame."
+  [world [_ ev]]
+  (when (aimed? world ev) (event-deltas world ev)))

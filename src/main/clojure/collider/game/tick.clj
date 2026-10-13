@@ -10,7 +10,6 @@
             [collider.game.schema :as schema]
             [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.updates :as block-updates]
-            [collider.game.systems.landing :as landing]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.damage :as damage]
@@ -36,7 +35,6 @@
   "The systems a player event drives.
   They all run before the level tick."
   [#'players/player-list
-   #'landing/landings
    #'containers/containers
    #'packets/packets
    #'inventory/inventory])

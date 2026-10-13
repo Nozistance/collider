@@ -166,6 +166,11 @@
    :observed
    {:scope :level :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :observed m))}
+   :heard
+   {:scope :level :schema [:cat :map]
+    :apply (fn [w [_ m]]
+             (reduce-kv #(update-in %1 [:input %2] (fnil conj []) %3)
+                        w m))}
    :merge-entity
    {:scope :entity :schema [:cat :map]
     :apply (fn [_ e [_ _ m]] (entity/merged e m))}
@@ -227,26 +232,12 @@
              (update e :vel (fnil v/add [0.0 0.0 0.0]) vel))}
    :player-join {:scope :input :apply player/join}
    :player-quit {:scope :input :apply quit}
-   :move {:scope :input :apply player/move}
-   :client-tick-end {:scope :input :apply player/client-tick-end}
-   :abilities {:scope :input :apply player/abilities}
    :player-loaded
    {:scope :input
     :apply (fn [w [_ eid]]
              (level/update-entity w eid dissoc :loaded-at))}
-   :teleport-ack {:scope :input :apply player/teleport-ack}
    :respawn {:scope :input :apply player/respawn}
    :keepalive-echo {:scope :input :apply player/keepalive-echo}
-   :chunk-batch-ack {:scope :input :apply player/chunk-batch-ack}
-   :entity-action {:scope :input :apply player/entity-action}
-   :input
-   {:scope :input
-    :apply (fn [w [_ eid flags]]
-             (level/update-entity w eid merge flags))}
-   :client-settings {:scope :input :apply player/client-settings}
-   :place {:scope :input :apply player/place}
-   :use-item {:scope :input :apply player/use-item}
-   :release-use {:scope :input :apply player/release-use}
    :fx
    {:scope :out
     :messages
