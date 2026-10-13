@@ -9,6 +9,7 @@
             [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
+            [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]
             [collider.vec :as v]
             [collider.world.env.weather :as weather]
@@ -112,6 +113,17 @@
    :team-leave
    {:scope :world :schema [:cat [:vector :string]]
     :apply (fn [w [_ ms]] (update w :teams team/left ms))}
+   :objective-add
+   {:scope :world :schema [:cat :map]
+    :apply (fn [w [_ o]] (update w :scoreboard scoreboard/added o))}
+   :objective-remove
+   {:scope :world :schema [:cat :string]
+    :apply (fn [w [_ nm]]
+             (update w :scoreboard scoreboard/removed nm))}
+   :display-slot
+   {:scope :world :schema [:cat :int [:maybe :string]]
+    :apply (fn [w [_ slot nm]]
+             (update w :scoreboard scoreboard/shows slot nm))}
    :set-config
    {:scope :world :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :config m))}
@@ -285,6 +297,8 @@
                 [:relative :int]]
      :health [[:health number?]]
      :team [[:method :int] [:team :map] [:members [:maybe [:vector :string]]]]
+     :objective [[:method :int] [:objective :map]]
+     :display-slot [[:slot :int] [:name [:maybe :string]]]
      :experience [[:progress number?] [:level :int] [:total :int]]
      :respawn []
      :change-dimension [[:pos Vec3] [:yaw number?] [:pitch number?]

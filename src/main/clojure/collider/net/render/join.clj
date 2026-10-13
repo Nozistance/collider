@@ -12,6 +12,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.schema :as schema]
+            [collider.game.scoreboard :as scoreboard]
             [collider.net.render.view :as view]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -221,11 +222,29 @@
    {:packet :set-player-team :name (:name t) :method method :team t
     :players (if (#{3 4} method) members (:players t))}))
 
+(defn objective-packet
+  "Returns the packet that tells a player of objective o by method."
+  [method o]
+  {:packet :set-objective :name (:name o) :method method
+   :display (:display o) :render (:render o)})
+
+(defn display-packet
+  "Returns the packet that shows the objective called nm in slot, or
+  empties it when nm is nil."
+  [slot nm]
+  {:packet :set-display-objective :slot slot :name (or nm "")})
+
+(defn- score-packet [m]
+  (case (:msg m)
+    :objective (objective-packet (:method m) (:objective m))
+    :display-slot (display-packet (:slot m) (:name m))))
+
 (defn- join-world-packets [world e eid motd]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets world eid e)
     (map #(team-packet 0 %) (:teams world))
+    (map score-packet (scoreboard/joining (:scoreboard world)))
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet

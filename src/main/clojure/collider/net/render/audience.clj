@@ -69,7 +69,7 @@
     :tab-add :tab-remove :tab-latency :tab-header :default-spawn
     :tab-game-mode :tab-hat
     :game-rules :reloaded :view-distance :simulation-distance
-    :rule-flag :team})
+    :rule-flag :team :objective :display-slot})
 
 (defn sight-of
   "Returns the players of world by level, with the levels they see."

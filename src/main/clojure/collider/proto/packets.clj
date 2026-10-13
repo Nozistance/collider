@@ -257,6 +257,16 @@
     (c/write-varint buf (count players))
     (run! #(c/write-string buf %) players)))
 
+(def ^:private render-types {:integer 0 :hearts 1})
+
+(defn- write-objective! [^Buf buf {:keys [name method] :as o}]
+  (c/write-string buf name)
+  (buf/write-byte! buf (int method))
+  (when (#{0 2} method)
+    (text/write-component buf (:display o))
+    (c/write-varint buf (render-types (:render o)))
+    (buf/write-boolean! buf false)))
+
 (def ^:private info-actions
   {:latency [latency-bit write-latency-entry!]
    :game-mode [game-mode-bit write-mode-entry!]
@@ -543,6 +553,14 @@
    [:play :waypoint]
    {:schema [:map [:op :keyword] [:uuid :uuid]]
     :write write-waypoint!}
+   [:play :set-objective]
+   {:schema [:map [:name :string] [:method :int]]
+    :write write-objective!}
+   [:play :set-display-objective]
+   {:schema [:map [:slot :int] [:name :string]]
+    :write (fn [^Buf buf {:keys [slot name]}]
+             (c/write-varint buf slot)
+             (c/write-string buf name))}
    [:play :set-player-team]
    {:schema [:map [:name :string] [:method :int]]
     :write write-team!}

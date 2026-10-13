@@ -44,6 +44,18 @@
   ([method t members]
    {:msg :team :method method :team t :members members}))
 
+(defn objective
+  "Returns the effect that tells players of objective o by method, 0
+  shown, 1 gone, 2 changed."
+  [method o]
+  {:msg :objective :method method :objective o})
+
+(defn display-slot
+  "Returns the effect that shows the objective called nm in slot, or
+  empties it when nm is nil."
+  [slot nm]
+  {:msg :display-slot :slot slot :name nm})
+
 (defn load-chunk [id] {:msg :load-chunk :id id})
 
 (defn store-chunk [id payload]

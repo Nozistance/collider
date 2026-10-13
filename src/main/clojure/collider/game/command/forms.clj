@@ -309,8 +309,23 @@
   [:then [:enum {:values #{"destroy" "hollow" "outline" "strict"}
                  :default nil}]])
 
+(def ^:private objective-arg [:objective [:objective {}]])
+
+(def ^:private scoreboard-form
+  [:scoreboard "keep objectives and show them in display slots"
+   [(lit "objectives") (lit "list")] [:world :objectives-list]
+   [(lit "objectives") (lit "add") [:objective [:word {}]]
+    [:criteria [:criteria {}]]
+    [:displayName [:component {:default nil}]]]
+   [:world :objective-add]
+   [(lit "objectives") (lit "remove") objective-arg]
+   [:world :objective-remove]
+   [(lit "objectives") (lit "setdisplay") [:slot [:display-slot {}]]
+    [:objective [:objective {:default nil}]]]
+   [:world :objective-display]])
+
 (def ^:private base-forms
-  [time-form team-form
+  [time-form team-form scoreboard-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]

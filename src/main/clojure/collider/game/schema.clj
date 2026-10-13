@@ -223,6 +223,8 @@
    :shulker-anim       {:default {} :scope :level}
    :teams              {:default [] :store store-same :load identity
                         :schema [:vector :map] :scope :shared}
+   :scoreboard         {:default {} :store store-same :load identity
+                        :schema :map :scope :shared}
    :players            {:default {} :scope :shared}
    :spawning           {:default (lm/long-map) :scope :shared}
    :listed             {:default {} :scope :shared}

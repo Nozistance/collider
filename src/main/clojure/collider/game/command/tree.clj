@@ -19,6 +19,7 @@
             [collider.game.command.text :as tc]
             [collider.game.mode :as game-mode]
             [collider.game.schema :as schema]
+            [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
@@ -117,6 +118,18 @@
       res
       (r/error-at end "argument.color.invalid" v))))
 
+(defn- criteria-read [[s n]]
+  (let [e (or (str/index-of s " " n) (count s)) v (subs s n e)]
+    (if (scoreboard/criterion? v)
+      [v [s e]]
+      (r/error-at [s n] "argument.criteria.invalid" v))))
+
+(defn- slot-read [rd]
+  (let [[v end :as res] (r/read-unquoted rd)]
+    (if (scoreboard/slot-id v)
+      res
+      (r/error-at end "argument.scoreboardDisplaySlot.invalid" v))))
+
 (defn- int-reader [lo hi] (:parse (r/int-arg lo hi)))
 
 (defn- rule-value-read [{:keys [type min max]}]
@@ -135,7 +148,9 @@
     :game-mode game-mode-read
     :anchor anchor-read
     :bool r/read-boolean
-    (:word :team) r/read-unquoted
+    (:word :team :objective) r/read-unquoted
+    :criteria criteria-read
+    :display-slot slot-read
     :team-color team-color-read
     (:greedy :text) r/read-greedy
     :component component-read

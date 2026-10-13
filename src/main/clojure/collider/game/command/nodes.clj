@@ -39,7 +39,10 @@
    :nbt-path [:nbt-path nil]
    :double [(keyword "brigadier:double") nil]
    :team [:team nil]
-   :team-color [:team-color nil]})
+   :team-color [:team-color nil]
+   :objective [:objective nil]
+   :criteria [:objective-criteria nil]
+   :display-slot [:scoreboard-slot nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})
