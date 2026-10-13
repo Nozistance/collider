@@ -154,7 +154,7 @@
 (defn- loads? [world]
   (or (seq (areas/absent-chunks world))
       (not-every? #(contains? (:chunks world) %)
-                  (mapcat :need (vals (:spawning world))))))
+                  (areas/awaited-ids world))))
 
 (defn chunk-loading
   "Brings in the chunks the players need and takes in the saved ones."

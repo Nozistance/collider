@@ -127,10 +127,16 @@
         live? (fn [[_ e]] (active-at? active (:pos e)))]
     (into [] (filter live?) (level/of-types world ts))))
 
+(defn awaited-ids
+  "Returns the ids of the chunks of level world that joining and
+  respawning players wait for."
+  [world]
+  (let [dim (:dim world :overworld)]
+    (mapcat #(get (:need %) dim) (vals (:spawning world)))))
+
 (defn needed-ids
   "Returns the ids of the chunks the world keeps loaded.
   They are the chunks around its players and the chunks joining and
   respawning players wait for."
   [world]
-  (into (loaded-zone world)
-        (mapcat :need (vals (:spawning world)))))
+  (into (loaded-zone world) (awaited-ids world)))

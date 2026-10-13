@@ -92,7 +92,9 @@
 (defn- awaited? [world dim]
   (let [spawning (:spawning world)]
     (and (not (lm/empty? spawning))
-         (some #(= dim (:dim (val %))) spawning))))
+         (some #(let [req (val %)]
+                  (or (= dim (:dim req)) (contains? (:need req) dim)))
+               spawning))))
 
 (defn- asleep? [world dim]
   (and (not (identical? home dim))

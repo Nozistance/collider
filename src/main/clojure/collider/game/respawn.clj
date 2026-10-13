@@ -16,11 +16,13 @@
 (defn respawn-config
   "Returns the respawn point player e set, or nil when it set none."
   [e]
-  (if-let [{:keys [pos yaw pitch]} (:forced-spawn e)]
+  (if-let [{:keys [pos yaw pitch dimension]} (:forced-spawn e)]
     {:pos     pos :yaw (double (or yaw 0.0))
-     :pitch   (double (or pitch 0.0)) :forced? true}
+     :pitch   (double (or pitch 0.0)) :forced? true
+     :dimension (or dimension :overworld)}
     (when-let [pos (:spawn e)]
-      {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false})))
+      {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false
+       :dimension :overworld})))
 
 (def ^:private ^:const stand-up-reach 3)
 

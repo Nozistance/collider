@@ -63,7 +63,9 @@
     (and (<= (- b) (long x)) (< (long x) b)
          (<= (- b) (long z)) (< (long z) b))))
 
-(defn- respawn-dimension [w]
+(defn respawn-dimension
+  "Returns the dimension of the world spawn."
+  [w]
   (let [dim (:world-spawn-dimension w :overworld)]
     (if (some #{dim} schema/dims) dim :overworld)))
 
@@ -153,7 +155,7 @@
       (-> w
           (assoc-in [:spawning eid]
                     {:respawn? true :seed (spawn-seed w eid)
-                     :dim :overworld})
+                     :dim (:dim w :overworld)})
           (update-entity eid load-awaited (:tick w)))
       w)))
 
