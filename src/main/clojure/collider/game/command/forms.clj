@@ -311,6 +311,9 @@
 
 (def ^:private objective-arg [:objective [:objective {}]])
 
+(defn- modifying [& more]
+  (into [(lit "objectives") (lit "modify") objective-arg] more))
+
 (def ^:private scoreboard-form
   [:scoreboard "keep objectives and show them in display slots"
    [(lit "objectives") (lit "list")] [:world :objectives-list]
@@ -318,6 +321,19 @@
     [:criteria [:criteria {}]]
     [:displayName [:component {:default nil}]]]
    [:world :objective-add]
+   (modifying (lit "displayname") [:displayName [:component {}]])
+   [:world :objective-name]
+   (modifying (lit "rendertype")
+              [:type [:enum {:values #{"integer" "hearts"}}]])
+   [:world :objective-render]
+   (modifying (lit "displayautoupdate") [:value [:bool {}]])
+   [:world :objective-auto-update]
+   (modifying (lit "numberformat")) [:world :objective-format]
+   (modifying (lit "numberformat") (lit "blank"))
+   [:world :objective-format-blank]
+   (modifying (lit "numberformat") (lit "fixed")
+              [:contents [:component {}]])
+   [:world :objective-format-fixed]
    [(lit "objectives") (lit "remove") objective-arg]
    [:world :objective-remove]
    [(lit "objectives") (lit "setdisplay") [:slot [:display-slot {}]]

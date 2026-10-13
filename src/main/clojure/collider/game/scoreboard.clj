@@ -1,7 +1,9 @@
 (ns collider.game.scoreboard
   "Objectives of the scoreboard, in the order they were made, and the
   display slots that show them."
-  (:require [collider.game.out :as out]
+  (:require [clojure.string :as str]
+            [collider.data :as data]
+            [collider.game.out :as out]
             [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
@@ -28,10 +30,38 @@
         (mapcat #(vector (str "teamkill." %) (str "killedByTeam." %)))
         team/color-names))
 
-(defn criterion?
-  "Returns true when nm names a criterion."
+(def ^:private stat-registries
+  {"mined" "block" "crafted" "item" "used" "item" "broken" "item"
+   "picked_up" "item" "dropped" "item" "killed" "entity_type"
+   "killed_by" "entity_type" "custom" "custom_stat"})
+
+(defn- by-dots
+  "Returns the namespace and path of s, a resource location with a dot
+  for its colon."
+  [^String s]
+  (let [i (.indexOf s ".")]
+    (cond (neg? i) ["minecraft" s]
+          (zero? i) ["minecraft" (subs s 1)]
+          :else [(subs s 0 i) (subs s (inc i))])))
+
+(defn- entry [registry s]
+  (let [[ns path] (by-dots s)
+        k (keyword (str/replace path \_ \-))]
+    (when (and (= "minecraft" ns) (not (str/includes? path "-"))
+               (contains? (get (data/registries) registry) k))
+      path)))
+
+(defn- stat [^String nm]
+  (when-let [i (str/index-of nm ":")]
+    (let [t (entry "stat_type" (subs nm 0 i))
+          v (when t (entry (stat-registries t) (subs nm (inc i))))]
+      (when v (str "minecraft." t ":minecraft." v)))))
+
+(defn criterion
+  "Returns the name of the criterion nm names, or nil. A statistic
+  goes by its full name."
   [nm]
-  (or (contains? written nm) (contains? kept nm)))
+  (if (or (contains? written nm) (contains? kept nm)) nm (stat nm)))
 
 (defn made
   "Returns a new objective of name and criterion, shown as display."
@@ -101,6 +131,12 @@
   [sb nm]
   (-> (reduce #(shows %1 %2 nil) sb (slots-of sb nm))
       (update :objectives #(filterv (fn [o] (not= nm (:name o))) %))))
+
+(defn changed
+  "Returns sb with the fields of m set on the objective called nm."
+  [sb nm m]
+  (update sb :objectives
+          (fn [os] (mapv #(if (= nm (:name %)) (merge % m) %) os))))
 
 (defn added
   "Returns sb with objective o last."

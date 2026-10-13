@@ -65,8 +65,62 @@
     (cleared world eid slot)
     (known world eid nm #(set-slot world eid slot nm %))))
 
+(defn- modified
+  "Returns the deltas of fields m set on objective o, and the line of
+  key with the arguments that fs take of the changed objective."
+  [world eid o m key & fs]
+  (let [o' (merge o m) nm (:name o)
+        shown? (seq (scoreboard/slots-of (:scoreboard world) nm))]
+    (concat [[:objective-set nm m]]
+            (when shown? [(out/all (out/objective 2 o'))])
+            (apply say eid (key-of key) (map #(% o') fs)))))
+
+(defn- set-field [world eid o k v key fs]
+  (when-not (= v (get o k))
+    (apply modified world eid o {k v} key fs)))
+
+(defn- unless-same
+  "Returns the handler that sets field k of an objective to (f v), or
+  does nothing when it already is that."
+  [k f key-fn & fs]
+  (fn [world eid [nm v]]
+    (let [v (f v)]
+      (known world eid nm
+             #(set-field world eid % k v (key-fn v) fs)))))
+
+(defn- auto-key [on?]
+  (str "modify.displayAutoUpdate." (if on? "enable" "disable")))
+
+(defn- fixed [v] {:type :fixed :value v})
+
+(defn- format-set [world eid o fmt]
+  (modified world eid o {:format fmt}
+            (str "modify.objectiveFormat." (if fmt "set" "clear"))
+            :name))
+
+(defn- formatted [f]
+  (fn [world eid [nm v]]
+    (known world eid nm #(format-set world eid % (f v)))))
+
+(def ^:private named
+  (unless-same :display identity (constantly "modify.displayname")
+               :name scoreboard/shown))
+
+(def ^:private rendered
+  (unless-same :render keyword (constantly "modify.rendertype")
+               scoreboard/shown))
+
+(def ^:private updating
+  (unless-same :auto-update identity auto-key :name scoreboard/shown))
+
 (def handlers
-  {:objective-add add-deltas
+  {:objective-name named
+   :objective-render rendered
+   :objective-auto-update updating
+   :objective-format (formatted (constantly nil))
+   :objective-format-blank (formatted (constantly {:type :blank}))
+   :objective-format-fixed (formatted fixed)
+   :objective-add add-deltas
    :objective-remove remove-deltas
    :objectives-list list-deltas
    :objective-display display-deltas})

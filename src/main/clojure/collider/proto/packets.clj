@@ -259,13 +259,21 @@
 
 (def ^:private render-types {:integer 0 :hearts 1})
 
+(defn- write-number-format! [^Buf buf f]
+  (buf/write-boolean! buf (some? f))
+  (when f
+    (c/write-varint buf (data/registry-id "number_format_type"
+                                          (:type f)))
+    (when (= :fixed (:type f))
+      (text/write-component buf (:value f)))))
+
 (defn- write-objective! [^Buf buf {:keys [name method] :as o}]
   (c/write-string buf name)
   (buf/write-byte! buf (int method))
   (when (#{0 2} method)
     (text/write-component buf (:display o))
     (c/write-varint buf (render-types (:render o)))
-    (buf/write-boolean! buf false)))
+    (write-number-format! buf (:format o))))
 
 (def ^:private info-actions
   {:latency [latency-bit write-latency-entry!]

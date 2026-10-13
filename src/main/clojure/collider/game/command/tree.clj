@@ -120,8 +120,8 @@
 
 (defn- criteria-read [[s n]]
   (let [e (or (str/index-of s " " n) (count s)) v (subs s n e)]
-    (if (scoreboard/criterion? v)
-      [v [s e]]
+    (if-let [c (scoreboard/criterion v)]
+      [c [s e]]
       (r/error-at [s n] "argument.criteria.invalid" v))))
 
 (defn- slot-read [rd]

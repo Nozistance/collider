@@ -120,6 +120,10 @@
    {:scope :world :schema [:cat :string]
     :apply (fn [w [_ nm]]
              (update w :scoreboard scoreboard/removed nm))}
+   :objective-set
+   {:scope :world :schema [:cat :string :map]
+    :apply (fn [w [_ nm m]]
+             (update w :scoreboard scoreboard/changed nm m))}
    :display-slot
    {:scope :world :schema [:cat :int [:maybe :string]]
     :apply (fn [w [_ slot nm]]

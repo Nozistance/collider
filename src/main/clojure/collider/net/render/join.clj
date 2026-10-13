@@ -226,7 +226,7 @@
   "Returns the packet that tells a player of objective o by method."
   [method o]
   {:packet :set-objective :name (:name o) :method method
-   :display (:display o) :render (:render o)})
+   :display (:display o) :render (:render o) :format (:format o)})
 
 (defn display-packet
   "Returns the packet that shows the objective called nm in slot, or
