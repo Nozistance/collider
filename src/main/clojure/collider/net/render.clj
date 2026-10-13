@@ -82,9 +82,10 @@
         p (join/resent-packets (player-of sight eid))]
     [eid p]))
 
+(def ^:private new-level #{:change-dimension :respawn})
+
 (defn- arrivals [^Deltas deltas]
-  (into #{} (keep #(when (identical? :change-dimension (:msg %))
-                     (:to %)))
+  (into #{} (keep #(when (new-level (:msg %)) (:to %)))
         (deltas/out-of deltas)))
 
 (defn- position? [p]
