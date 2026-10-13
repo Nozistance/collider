@@ -92,8 +92,8 @@
   (.section chunk (int si)))
 
 (defn edge-light
-  "Returns the light of channel ch, 0 block and 1 sky, in section si
-  just below or above chunk, or nil where it is dark."
+  "Returns the light of channel ch, Light/BLOCK or Light/SKY, in
+  section si just below or above chunk, or nil where it is dark."
   ^bytes [^Chunk chunk ^long si ^long ch]
   (.edgeLight chunk (int si) (int ch)))
 

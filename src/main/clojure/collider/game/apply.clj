@@ -321,20 +321,18 @@
   (try (vec (authored (f w x) ev))
        (catch Throwable t (dropped! f ev t) [])))
 
-(defn- event-step [f event-of slots? w x more]
+(defn- event-step [f event-of w x more]
   (let [ev (event-of x)
-        sp (player/slot-part w ev)
-        w (entities w sp)
+        w (entities w (player/slot-part w ev))
         ds (event-deltas f w x ev)]
-    [(if (and more (seq ds)) (first (applied w ds)) w)
-     (if slots? (into (vec sp) ds) ds)]))
+    [(if (and more (seq ds)) (first (applied w ds)) w) ds]))
 
-(defn- folded [world events f event-of slots?]
+(defn- folded [world events f event-of]
   (loop [w world evs (seq events) acc []]
     (if-not evs
       acc
       (let [more (next evs)
-            [w ds] (event-step f event-of slots? w (first evs) more)]
+            [w ds] (event-step f event-of w (first evs) more)]
         (recur w more (into acc ds))))))
 
 (defn fold-events
@@ -343,14 +341,7 @@
   before it. An event that f fails on gives no deltas. The player
   of an event is the author of the block changes it makes."
   ([world events f] (fold-events world events f identity))
-  ([world events f event-of] (folded world events f event-of false)))
-
-(defn fold-input
-  "Returns the deltas of the events of the tick in the order they
-  came, as fold-events, with the slot deltas of each event too. f
-  takes the world and the index and event, [i ev]."
-  [world events f]
-  (folded world (map-indexed vector events) f second true))
+  ([world events f event-of] (folded world events f event-of)))
 
 (defn- level-of [world ev]
   (let [eid (nth ev 1 nil)]
@@ -388,8 +379,9 @@
 (defn fold-world
   "Returns the deltas of the events of the tick in the order they
   came, each in the level its player stands in when it comes and
-  seeing the world after the events before it, as fold-input. The
-  deltas of an event go to its level, its effects stay in order."
+  seeing the world after the events before it. The deltas of an
+  event, its slot deltas first, go to its level, and its effects
+  stay in order. f takes the level and the index and event, [i ev]."
   [world events f]
   (loop [[w dim lv] [world] xs (seq (map-indexed vector events)) acc []]
     (if-let [[_ ev :as x] (first xs)]

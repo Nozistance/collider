@@ -79,9 +79,6 @@
    [#{:attack :swing} attacks/input-deltas]
    [#{:interact} interact/input-deltas]])
 
-(def ^:private tags
-  (into #{:held-item :edit-book} (mapcat first) handlers))
-
 (defn- handled [w [_ ev :as x]]
   (let [tag (nth ev 0)]
     (loop [w w hs (filter #(contains? (first %) tag) handlers) acc []]

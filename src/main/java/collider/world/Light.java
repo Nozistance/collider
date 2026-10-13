@@ -29,6 +29,8 @@ public final class Light {
 
     private static final float[] DAY_FACTORS = {DUSK, 1.0F, 1.0F, DUSK, DUSK, 1.0F};
 
+    private static final long LOW = Chunk.MIN_Y - 16;
+
     private final Scratch<byte[]> cache;
     private long lastKey = -1;
     private byte[] last;
@@ -54,15 +56,13 @@ public final class Light {
         this.increases = increases;
     }
 
-    private static final long LOW = Chunk.MIN_Y - 16;
-
     private static boolean inRange(long y) {
         return Chunk.MIN_Y <= y && y <= Chunk.MAX_Y;
     }
 
-    /// Returns true when channel `ch` keeps light at `y`: the world
-    /// and the sections below and above it, but the sky above it is
-    /// always full.
+    /// Returns true when channel `ch` keeps light at `y`, in the world
+    /// or in the section below or above it. The sky above the world
+    /// is always full and is not kept.
     private static boolean lit(long ch, long y) {
         return LOW <= y && y <= (ch == SKY ? Chunk.MAX_Y : Chunk.MAX_Y + 16);
     }
@@ -194,14 +194,14 @@ public final class Light {
                 if (c == null) continue;
                 int si = (int) ((ks[i] >> 1) & 31) - 1;
                 byte[] a = cache.get(ks[i]);
-                int lch = (int) (ks[i] & 1);
+                int channel = (int) (ks[i] & 1);
                 if (si == Chunk.BELOW || si == Chunk.ABOVE) {
-                    c = c.withEdgeLight(si, lch, a);
+                    c = c.withEdgeLight(si, channel, a);
                     continue;
                 }
                 Section s = c.section(si);
                 if (s == null) s = c.fresh(si);
-                c = c.with(si, lch == SKY ? s.withSkyLight(a) : s.withBlockLight(a));
+                c = c.with(si, channel == SKY ? s.withSkyLight(a) : s.withBlockLight(a));
             }
             if (c != null) {
                 ids[n] = id;

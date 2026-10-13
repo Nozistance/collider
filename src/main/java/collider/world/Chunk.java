@@ -187,8 +187,8 @@ public final class Chunk {
         return 31 * h + Arrays.deepHashCode(edges);
     }
 
-    /// Writes the column to `out` in the snapshot form: the mask of
-    /// the present sections and edge lights above them, then each.
+    /// Writes the column to `out` in the snapshot form. The mask of
+    /// the present sections and edge lights comes first, then each.
     public void save(DataOutput out) throws IOException {
         int mask = present();
         for (int i = 0; i < EDGES; i++) {
