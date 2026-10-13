@@ -1,6 +1,7 @@
 (ns collider.game.commands.entity
   "The kill, summon, tag and swing commands."
   (:require [collider.game.command.targets :as targets]
+            [collider.game.lightning :as lightning]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
              :refer [answer entity-name fail name-list say success]]
@@ -62,13 +63,20 @@
           (assoc :pos at))
       (mobs/command-mob type at [t eid :summon at] t (place)))))
 
+(defn- summon-msg [type]
+  {:translate "commands.summon.success"
+   :with [{:translate (str "entity.minecraft." (name type))}]})
+
+(defn- summonable? [type]
+  (or (= :lightning-bolt type) (mobs/mob-type? type)))
+
 (defn- summoned [world eid type at nbt]
   (let [dim (targets/source-dim world)
-        kind {:translate (str "entity.minecraft." (name type))}
-        msg {:translate "commands.summon.success" :with [kind]}
-        mob (summon-mob world eid type at nbt)]
+        mob (if (= :lightning-bolt type)
+              (lightning/bolt at (:tick world))
+              (summon-mob world eid type at nbt))]
     (concat (targets/in-level world dim [[:spawn-entity mob]])
-            (success [(out/to eid (out/system-chat msg))]))))
+            (success [(out/to eid (out/system-chat (summon-msg type)))]))))
 
 (defn- summon-deltas [world eid [type x y z nbt]]
   (let [p (targets/source-pos world)
@@ -76,7 +84,7 @@
             (double (or y (nth p 1)))
             (double (or z (nth p 2)))]]
     (cond
-      (not (mobs/mob-type? type)) (fail eid "commands.summon.failed")
+      (not (summonable? type)) (fail eid "commands.summon.failed")
       (pos/spawnable? at) (summoned world eid type at nbt)
       :else (fail eid "commands.summon.invalidPosition"))))
 

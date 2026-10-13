@@ -73,7 +73,9 @@
       (long (light/brightness chunks x y z time rain thunder))
       (long (light/block-light-at chunks x y z)))))
 
-(defn- can-see-sky? [chunks p]
+(defn can-see-sky?
+  "Returns true when the sky light at block p is full."
+  [chunks p]
   (let [[x y z] p]
     (>= (long (light/sky-light-at chunks x y z)) 15)))
 

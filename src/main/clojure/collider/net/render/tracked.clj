@@ -12,7 +12,7 @@
 (def ^:private kinds
   (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit
           :armadillo :goat :item :experience-orb :tnt :falling-block
-          :area-effect-cloud
+          :area-effect-cloud :lightning-bolt
           :painting :item-frame :glow-item-frame}
         entity/thrown-types))
 

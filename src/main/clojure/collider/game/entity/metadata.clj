@@ -41,6 +41,7 @@
      :item item-metadata
      :experience-orb orb-metadata
      :tnt (fn [e] {:fuse (:fuse e)})
+     :lightning-bolt (fn [_] {})
      :falling-block (fn [e] {:start (:start e)})
      :area-effect-cloud
      (fn [e] {:radius (:radius e) :color (:color e)

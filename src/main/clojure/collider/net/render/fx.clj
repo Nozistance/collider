@@ -263,6 +263,7 @@
    :particles-spell-potion-splash    2002
    :particles-instant-potion-splash  2007
    :particles-water-evaporating      2009
+   :particles-electric-spark         3002
    :particles-and-sound-wax-on       3003
    :particles-wax-off                3004
    :particles-scrape                 3005})

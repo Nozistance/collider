@@ -26,7 +26,7 @@
 
 (def ^:private tracked-types
   (into #{:player :item :tnt :falling-block :area-effect-cloud
-          :experience-orb}
+          :experience-orb :lightning-bolt}
         cat [entity/thrown-types hanging/types (keys mobs/types)]))
 
 (defn- tracked? [e]
@@ -359,6 +359,7 @@
           :tnt               10
           :falling-block     20
           :area-effect-cloud still-update-interval
+          :lightning-bolt    still-update-interval
           :player            update-interval}
          (zipmap entity/thrown-types (repeat 10))
          (zipmap hanging/types (repeat still-update-interval))))

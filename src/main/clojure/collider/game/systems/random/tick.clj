@@ -10,6 +10,7 @@
             [collider.game.loot :as loot]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
+            [collider.game.lightning :as lightning]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -21,27 +22,6 @@
             [collider.world.blocks.precipitation :as precipitation]))
 
 (set! *warn-on-reflection* true)
-
-(defn- within? [radius [px py pz] [cx cy cz]]
-  (let [dx (- (double px) (double cx))
-        dy (- (double py) (double cy))
-        dz (- (double pz) (double cz))]
-    (< (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
-       (double radius))))
-
-(def ^:private ^:const everywhere -1)
-
-(defn- near-player? [world ^long radius p]
-  (or (= radius everywhere)
-      (let [c (v/centre p)]
-        (some (fn [eid]
-                (when-let [p (get-in world [:entities eid :pos])]
-                  (within? radius p c)))
-              (vals (:players world))))))
-
-(defn- fire-radius ^long [world]
-  (long (get-in world [:rules :fire-spread-radius-around-player]
-                128)))
 
 (defn- leaf-drops [world p]
   (fn [st roll]
@@ -63,7 +43,7 @@
 (defn- cell-result [world chunks day-time p st]
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (block/lava? st)
-      (when (near-player? world (fire-radius world) p)
+      (when (areas/fire-spreads-at? world p)
         {:changes (liquid/lava-random-tick chunks p roll)
          :with (block/block-of st)})
       (block-result world chunks day-time p st roll))))
@@ -211,10 +191,16 @@
       (result-deltas world results changes drips
                      (change-runs fallen results)))))
 
+(defn- storm-deltas [world]
+  (for [cid (areas/active-chunk-ids world)
+        :let [b (lightning/storm-bolt world cid)]
+        :when b]
+    [:spawn-entity b]))
+
 (defn- random-tick-deltas [world]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))]
-    (when (pos? speed)
-      (ticked world speed))))
+    (concat (storm-deltas world)
+            (when (pos? speed) (ticked world speed)))))
 
 (defn random-ticks
   {:wake {:types #{:player}}}

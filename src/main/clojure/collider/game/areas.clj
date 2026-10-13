@@ -4,6 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
+            [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -140,3 +141,25 @@
   respawning players wait for."
   [world]
   (into (loaded-zone world) (awaited-ids world)))
+
+(defn- within? [radius [px py pz] [cx cy cz]]
+  (let [dx (- (double px) (double cx))
+        dy (- (double py) (double cy))
+        dz (- (double pz) (double cz))]
+    (< (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
+       (double radius))))
+
+(def ^:private ^:const everywhere -1)
+
+(defn fire-spreads-at?
+  "Returns true when fire may catch and spread at block p of level
+  world, near enough to a player or with no limit."
+  [world p]
+  (let [radius (long (get-in world [:rules :fire-spread-radius-around-player]
+                             128))]
+    (or (= radius everywhere)
+        (let [c (v/centre p)]
+          (some (fn [eid]
+                  (when-let [q (get-in world [:entities eid :pos])]
+                    (within? radius q c)))
+                (vals (:players world)))))))

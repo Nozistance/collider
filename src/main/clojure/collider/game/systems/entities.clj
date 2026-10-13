@@ -7,6 +7,7 @@
             [collider.game.systems.items :as items]
             [collider.game.systems.orbs :as orbs]
             [collider.game.turn.falling :as falling]
+            [collider.game.turn.lightning :as lightning]
             [collider.game.turn.mob :as mob]
             [collider.game.turn.player :as player]
             [collider.game.turn.thrown :as thrown]
@@ -16,7 +17,7 @@
 
 (def ^:private kinds
   (into #{:item :experience-orb :falling-block :area-effect-cloud
-          :tnt}
+          :tnt :lightning-bolt}
         cat [entity/thrown-types (keys mobs/types)]))
 
 (defn- others
@@ -32,7 +33,9 @@
         ds (deltas/merge ds mobs)
         [world thrown] (thrown/turns world ds rode)
         ds (deltas/merge ds (deltas/of-vec thrown))]
-    (deltas/merge ds (deltas/of-vec (tnt/turns world ds)))))
+    (-> ds
+        (deltas/merge (deltas/of-vec (tnt/turns world ds)))
+        (deltas/merge (deltas/of-vec (lightning/turns world))))))
 
 (defn entities
   "Returns the deltas of the entities of the level in one tick, in
