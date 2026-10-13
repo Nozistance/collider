@@ -92,9 +92,14 @@
                  more (into acc ds)))
         acc))))
 
+(defn- arrived [ds]
+  (sort-by #(:at (meta %))
+           (mapcat #(deltas/input-of (val %)) ds)))
+
 (defn packets
-  "Returns the deltas of the packet events of the tick in the order
-  they came, each seeing the world after the ones before it."
-  {:wake {:events tags}}
-  [world d]
-  (deltas/of-vec (apply/fold-input world (:input d) handled)))
+  "Returns the deltas of the packet events of every level in the
+  order they came, each seeing the world after the ones before it.
+  Takes the world and the deltas of each level."
+  {:wake :always :once true :whole true}
+  [world ds]
+  (deltas/of-vec (apply/fold-world world (arrived ds) handled)))

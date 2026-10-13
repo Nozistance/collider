@@ -352,6 +352,53 @@
   [world events f]
   (folded world (map-indexed vector events) f second true))
 
+(defn- level-of [world ev]
+  (let [eid (nth ev 1 nil)]
+    (or (when (integer? eid) (level/dim-of world eid)) :overworld)))
+
+(defn- played [dim ds]
+  (let [v (deltas/as-vec (deltas/with-dim (deltas-of ds) dim))
+        fx? #(identical? :fx (nth % 0))
+        own (filterv (complement fx?) v)]
+    (into (if (seq own) [[:level-deltas dim own]] []) (filter fx?) v)))
+
+(def ^:private crossing-tags #{:level-deltas :change-dimension})
+
+(defn- crosses? [ds]
+  (some #(contains? crossing-tags (nth % 0)) ds))
+
+(defn- kept [w dim lv]
+  (if lv (level/with-level w dim (dissoc lv :server)) w))
+
+(defn- level-at [w dim lv at]
+  (if (and lv (identical? at dim))
+    [w lv]
+    (let [w (kept w dim lv)]
+      [w (assoc (get (:levels w) at) :server w)])))
+
+(defn- event-ds [f lv x ev]
+  (let [sp (player/slot-part lv ev)]
+    (into (vec sp) (event-deltas f (entities lv sp) x ev))))
+
+(defn- went [w at lv ds]
+  (cond (empty? ds) [w at lv]
+        (crosses? ds) [(nth (in (kept w at lv) at (deltas-of ds) {}) 0)]
+        :else [w at (apply-level lv (deltas-of ds))]))
+
+(defn fold-world
+  "Returns the deltas of the events of the tick in the order they
+  came, each in the level its player stands in when it comes and
+  seeing the world after the events before it, as fold-input. The
+  deltas of an event go to its level, its effects stay in order."
+  [world events f]
+  (loop [[w dim lv] [world] xs (seq (map-indexed vector events)) acc []]
+    (if-let [[_ ev :as x] (first xs)]
+      (let [at (level-of w ev)
+            [w lv] (level-at w dim lv at)
+            ds (event-ds f lv x ev)]
+        (recur (went w at lv ds) (next xs) (into acc (played at ds))))
+      acc)))
+
 (defn then
   "Returns world with deltas ds applied, and deltas d with ds added."
   [[world d] ds]

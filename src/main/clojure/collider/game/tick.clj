@@ -101,9 +101,12 @@
        (level/idle? (get (:levels world) dim))
        (not (awaited? world dim))))
 
+(defn- arrived [events]
+  (into [] (map-indexed #(vary-meta %2 assoc :at %1)) events))
+
 (defn- begin [world events]
   (let [world (level/synced world)
-        by (group-by #(event-dim world %) events)
+        by (group-by #(event-dim world %) (arrived events))
         ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
                  dims)
         w (reduce #(apply/entered %1 %2 (ds %2)) world dims)
@@ -113,9 +116,11 @@
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
 (defn- thunk [world lv d ds s]
-  (if (:once (meta s))
-    #(deltas/with-dim (s (level/server-view world) (merged ds)) nil)
-    #(s lv d)))
+  (let [m (meta s)]
+    (cond (:whole m) #(deltas/with-dim (s world ds) nil)
+          (:once m) #(deltas/with-dim
+                       (s (level/server-view world) (merged ds)) nil)
+          :else #(s lv d))))
 
 (defn- runs-in? [dim s]
   (or (identical? home dim) (not (:once (meta s)))))
@@ -204,12 +209,19 @@
   (and (vector? d) (pos? (count d))
        (tagged-known? plugin-tags (nth d 0) (nth d 1 nil))))
 
+(defn- passed-in [world fs dim v]
+  (let [lv (assoc (get (:levels world) dim) :server world)
+        ok? (partial known? (:deltas (:hooks world)))
+        handed #(if (identical? :level-deltas (nth % 0))
+                  [:level-deltas (nth % 1)
+                   (passed-in world fs (nth % 1) (nth % 2))]
+                  %)]
+    (passed fs lv (mapv handed v) ok?)))
+
 (defn- filtered [world fs pd]
   (reduce-kv
     (fn [m dim d]
-      (let [lv (assoc (get (:levels world) dim) :server world)
-            ok? (partial known? (:deltas (:hooks world)))
-            v (passed fs lv (deltas/as-vec d) ok?)]
+      (let [v (passed-in world fs dim (deltas/as-vec d))]
         (assoc m dim (deltas/with-dim (deltas/of-vec v) dim))))
     pd pd))
 
