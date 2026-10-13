@@ -125,8 +125,26 @@
     dry
     (liquid/fluid-info chunks pos (item-half) (item-height) vel dim)))
 
-(defn- item-drift [chunks dim pos vel]
-  (let [{:keys [water lava push]} (fluid-at chunks dim pos vel)
+(defn- air-at? [chunks ^double x ^double y ^double z]
+  (zero? (chunk/block-state chunks (num/floor x) (num/floor y)
+                            (num/floor z))))
+
+(defn- in-air?
+  "Returns true when only air lies in the cells that the box of an
+  item at pos touches. The box is smaller than a block, so these are
+  the cells of its corners."
+  [chunks pos]
+  (let [h (item-half) x0 (- (v/x pos) h) x1 (+ (v/x pos) h)
+        y0 (v/y pos) y1 (+ y0 (item-height))
+        z0 (- (v/z pos) h) z1 (+ (v/z pos) h)]
+    (and (air-at? chunks x0 y0 z0) (air-at? chunks x1 y0 z0)
+         (air-at? chunks x0 y0 z1) (air-at? chunks x1 y0 z1)
+         (air-at? chunks x0 y1 z0) (air-at? chunks x1 y1 z0)
+         (air-at? chunks x0 y1 z1) (air-at? chunks x1 y1 z1))))
+
+(defn- item-drift [chunks dim pos vel air?]
+  (let [{:keys [water lava push]}
+        (if air? dry (fluid-at chunks dim pos vel))
         pushed (v/add vel push)
         water (double water)
         lava (double lava)]
@@ -211,17 +229,27 @@
   (not (phys/clear? chunks (:pos e) (item-half) (item-height)
                     wall-inset)))
 
+(defn- met-blocks
+  "Returns [vy stuck] of an item that moved from pos to pos' by push
+  at vertical speed vy, after bubbles push it and the blocks it met
+  hold it."
+  [chunks pos pos' push vy]
+  [(liquid/bubble-push chunks pos' (double vy))
+   (motion/stuck-speed chunks [[pos pos' push]]
+                       (item-half) (item-height))])
+
 (defn- felt
-  "Returns the step of item e that blocks act on."
-  [chunks e drift rest?]
+  "Returns the step of item e that blocks act on. An item at rest in
+  air meets no block that acts on it."
+  [chunks e drift rest? air?]
   (let [stuck (:stuck e)
         push (if stuck (mapv * drift stuck) drift)
         [pos' v on-ground sup nb?]
         (moved-or-resting chunks e drift rest? push)
         v (if (and stuck (not rest?)) [0.0 0.0 0.0] v)
-        vy (liquid/bubble-push chunks pos' (double (v 1)))
-        st (motion/stuck-speed chunks [[(:pos e) pos' push]]
-                               (item-half) (item-height))]
+        [vy st] (if (and rest? air?)
+                  [(double (v 1)) nil]
+                  (met-blocks chunks (:pos e) pos' push (v 1)))]
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
      :support sup :no-blocks? nb?
      :stuck (if rest? (or st stuck) st)}))
@@ -230,14 +258,15 @@
   (let [roll (random/of-key t eid :shove)]
     (shove/shoved chunks (:pos e) (item-height) drift roll)))
 
-(defn- settled [chunks dim e eid age t]
-  (let [[drift in-fluid?] (item-drift chunks dim (:pos e) (:vel e))
-        ghost? (in-wall? chunks e)
+(defn- settled [chunks dim e eid age t air?]
+  (let [[drift in-fluid?]
+        (item-drift chunks dim (:pos e) (:vel e) air?)
+        ghost? (and (not air?) (in-wall? chunks e))
         drift (if ghost? (shoved chunks e eid t drift) drift)
         rest? (resting? e drift age eid)
         s (if ghost?
             (passed chunks e drift rest?)
-            (felt chunks e drift rest?))]
+            (felt chunks e drift rest? air?))]
     (assoc s :in-fluid? in-fluid?)))
 
 (defn- gone? [world e ^long age]
@@ -264,8 +293,9 @@
 
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
-        s (settled (:chunks world) (:dim world) e (long eid) age
-                   (:tick world))]
+        chunks (:chunks world)
+        s (settled chunks (:dim world) e (long eid) age (:tick world)
+                   (in-air? chunks (:pos e)))]
     (if (gone? world e age)
       [:remove-entity eid]
       [:merge-entity eid (stepped e s age)])))
