@@ -82,6 +82,14 @@
     :int (buf/write-int! buf (int v))
     :list (write-list buf v)))
 
+(defn write-named
+  "Writes the NBT value v as the entry nm of a compound."
+  [^Buf buf ^String nm v]
+  (let [kind (nbt-type v)]
+    (buf/write-byte! buf (tag-id kind))
+    (buf/write-utf! buf nm)
+    (write-payload buf kind v)))
+
 (defn write-nbt
   "Writes the NBT value v, nil as an empty tag."
   [^Buf buf v]

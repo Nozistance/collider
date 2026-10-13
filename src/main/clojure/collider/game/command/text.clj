@@ -1,8 +1,11 @@
 (ns collider.game.command.text
   "Text components in commands."
   (:require [clojure.string :as str]
+            [collider.data :as data]
             [collider.game.command.decode :as dfu]
-            [collider.proto.text :as text]))
+            [collider.proto.text :as text])
+  (:import (java.net URI URISyntaxException)
+           (java.util Locale UUID)))
 
 (set! *warn-on-reflection* true)
 
@@ -30,7 +33,89 @@
 
 (defn- font [tag] ((dfu/mapped dfu/identifier dfu/full-id) tag))
 
-(defn- unmodelled [tag] [:raw tag])
+(declare text)
+
+(def ^:private web #{"http" "https"})
+
+(defn- untrusted-uri ^URI [^String s]
+  (let [u (URI. s) p (.getScheme u)]
+    (cond (nil? p)
+          (throw (URISyntaxException. s (str "Missing protocol in URI: " s)))
+          (web (.toLowerCase p Locale/ROOT)) u
+          :else
+          (throw (URISyntaxException.
+                   s (str "Unsupported protocol in URI: " s))))))
+
+(defn- uri [tag]
+  (if (string? tag)
+    (try [:ok (str (untrusted-uri tag))]
+         (catch URISyntaxException e [:malformed (.getMessage e)]))
+    [:malformed "Not a string"]))
+
+(defn- chat-char? [c]
+  (let [n (int c)] (and (not= 167 n) (>= n 32) (not= 127 n))))
+
+(defn- chat-string [tag]
+  (let [[op v :as r] (dfu/string-of tag)
+        bad (when (= :ok op) (first (remove chat-char? v)))]
+    (if bad [:malformed (str "Disallowed chat character: '" bad "'")] r)))
+
+(def ^:private positive
+  (dfu/checked dfu/int-of pos? #(str "Value must be positive: " %)))
+
+(defn- uuid-of-ints [[a b c d]]
+  (UUID. (bit-or (bit-shift-left a 32) (bit-and b 0xffffffff))
+         (bit-or (bit-shift-left c 32) (bit-and d 0xffffffff))))
+
+(defn- uuid-string [tag]
+  (if (string? tag)
+    (try [:ok (UUID/fromString tag)]
+         (catch IllegalArgumentException e
+           [:malformed (str "Invalid UUID " tag ": " (.getMessage e))]))
+    [:malformed "Not a string"]))
+
+(defn- uuid [tag]
+  (dfu/either ((dfu/mapped (dfu/ints-of 4) uuid-of-ints) tag)
+              (uuid-string tag)))
+
+(defn- command [] (dfu/record [:command :command chat-string :req]))
+
+(def ^:private clicks
+  {"open_url" (dfu/record [:url :url uri :req])
+   "run_command" (command) "suggest_command" (command)
+   "change_page" (dfu/record [:page :page positive :req])
+   "copy_to_clipboard" (dfu/record [:value :value dfu/string-of :req])
+   "custom" (dfu/record [:id :id dfu/identifier :req]
+                        [:payload :payload #(vector :ok %) :opt])
+   "open_file" :blocked "show_dialog" :raw})
+
+(def ^:private hovers
+  {"show_text" (dfu/record [:value :value #(text %) :req])
+   "show_entity" (dfu/record [:id :id (dfu/by-name "entity_type") :req]
+                             [:uuid :uuid uuid :req]
+                             [:name :name #(text %) :opt])
+   "show_item" :raw})
+
+(def ^:private action (dfu/record [:action :action dfu/string-of :req]))
+
+(defn- acted [actions kind tag a]
+  (let [f (actions a)]
+    (cond (nil? f) [:malformed (str "Unknown element name:" a)]
+          (= :raw f) [:raw tag]
+          (= :blocked f)
+          [:malformed (str kind " event type not allowed: "
+                           (str/upper-case a))]
+          :else (let [[op v :as r] (f tag)]
+                  (if (= :ok op)
+                    [:ok (assoc v :action (data/kebab a))]
+                    r)))))
+
+(defn- event
+  "Returns the decoder of an event of kind, one of actions by name."
+  [actions kind]
+  (fn [tag]
+    (let [[op v :as r] (action tag)]
+      (if (= :ok op) (acted actions kind tag (:action v)) r))))
 
 (def ^:private style-fields
   "The style fields in decode order.
@@ -40,14 +125,13 @@
    [:underlined :underlined dfu/bool-of]
    [:strikethrough :strikethrough dfu/bool-of]
    [:obfuscated :obfuscated dfu/bool-of]
-   [:click_event :click unmodelled] [:hover_event :hover unmodelled]
+   [:click_event :click (event clicks "Click")]
+   [:hover_event :hover (event hovers "Hover")]
    [:insertion :insertion dfu/string-of] [:font :font font]])
 
 (def ^:private other-keys
   "The keys that other text contents need."
   #{:keybind :score :selector :nbt :object :sprite :player})
-
-(declare text)
 
 (defn- from-list
   [[x & more]]

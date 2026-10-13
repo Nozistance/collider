@@ -1,6 +1,7 @@
 (ns collider.proto.text
   "Text components on the wire."
   (:require [clojure.string :as str]
+            [collider.data :as data]
             [collider.hash-order :as hash-order]
             [collider.proto.buf :as buf]
             [collider.proto.nbt :as nbt])
@@ -21,7 +22,8 @@
 (def ^:private event-keys
   [[:action "action"] [:url "url"] [:path "path"]
    [:command "command"] [:page "page"] [:value "value"]
-   [:id "id"] [:count "count"] [:uuid "uuid"] [:name "name"]])
+   [:id "id"] [:count "count"] [:uuid "uuid"] [:name "name"]
+   [:payload "payload"]])
 
 (def ^:private ordered (memoize #(hash-order/by-name second %)))
 
@@ -78,22 +80,33 @@
 
 (defn- wire-value [k v]
   (case k
-    (:action :id) (str (when (= :id k) "minecraft:")
-                       (str/replace (name v) \- \_))
+    :action (str/replace (name v) \- \_)
+    :id (if (keyword? v) (data/wire v) v)
     v))
+
+(defn- hashed
+  "Returns NBT value v with its compounds in the order a hash map
+  gives their names."
+  [v]
+  (cond (map? v) (hash-order/compound (map (fn [[k x]] [k (hashed x)]) v))
+        (vector? v) (with-meta (mapv hashed v) (meta v))
+        :else v))
 
 (defn- written? [m [k]]
   (let [v (get m k)]
-    (and (some? v) (not (and (vector? v) (empty? v))))))
+    (and (some? v)
+         (or (= :payload k) (not (and (vector? v) (empty? v)))))))
 
 (defn- write-fields [^Buf b m fields]
   (run! (fn [[k nm]]
           (let [v (get m k)]
-            (if (vector? v)
+            (cond
+              (= :payload k) (nbt/write-named b nm (hashed v))
+              (vector? v)
               (do (buf/write-byte! b (nbt/tag-id :list))
                   (buf/write-utf! b nm)
                   (write-list b v))
-              (write-entry b nm (wire-value k v)))))
+              :else (write-entry b nm (wire-value k v)))))
         (ordered (filterv #(written? m %) fields)))
   (buf/write-byte! b 0))
 
