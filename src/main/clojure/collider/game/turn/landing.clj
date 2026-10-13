@@ -3,6 +3,7 @@
   with each fall."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
+            [collider.game.block.lift :as lift]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
@@ -201,52 +202,19 @@
          (or (player? e) (get-in world [:rules :mob-griefing] true))
          (> size (float 0.512)))))
 
-(defn- top-of
-  "Returns how high the collision shape of block st reaches."
-  ^double [^long st]
-  (let [tops (map #(nth % 4) (block/collision-boxes st))]
-    (/ (double (reduce max 0 tops)) 16.0)))
-
-(defn- lifted-y
-  "Returns the height a body at y rises to out of the block at cy that
-  became a whole one."
-  ^double [^double y ^long cy]
-  (let [off (max -1.0 (- (+ (double cy) 1.0) (+ y 1.0)))]
-    (+ y (+ 1.0 off))))
-
-(defn- in-top?
-  "Returns true when the box of o meets the cell from height y0 of
-  the cell up."
-  [o [cx cy cz] ^double y0]
-  (let [[half h] (entity/box o) p (:pos o) half (double half)
-        x (double cx) z (double cz) y0 (+ (double cy) y0)]
-    (and (< (- (v/x p) half) (inc x)) (> (+ (v/x p) half) x)
-         (< (v/y p) (inc (double cy))) (> (+ (v/y p) (double h)) y0)
-         (< (- (v/z p) half) (inc z)) (> (+ (v/z p) half) z))))
-
-(defn- lift [o cell]
-  (let [p (:pos o)]
-    (v/v3 (v/x p) (lifted-y (v/y p) (long (nth cell 1))) (v/z p))))
-
-(defn- lifted-delta [eid cell y0 [oid o]]
-  (when (and (not= oid eid) (not= :player (:type o))
-             (in-top? o cell y0))
-    [:merge-entity oid {:pos (lift o cell)}]))
-
-(defn- lifted-deltas [world eid cell y0]
-  (into [] (keep #(lifted-delta eid cell y0 %)) (:entities world)))
-
 (defn- trampled
   "Returns e and the deltas of farmland st at cell that e tramples
   to dirt. The bodies in the top of the cell rise out of it."
   [world eid e st cell f]
   (if (tramples? world eid e f)
-    (let [y0 (top-of st)]
-      [(cond-> e (in-top? e cell y0) (assoc :pos (lift e cell)))
-       (into (delta/authored
-               (changes/set-deltas world [[cell (block/state :dirt)]])
-               (delta/entity-author eid e))
-             (lifted-deltas world eid cell y0))])
+    (let [dirt (block/state :dirt)
+          r (lift/rising e cell st dirt)]
+      [(cond-> e r (assoc :pos (nth r 1)))
+       (cond-> (into (delta/authored
+                       (changes/set-deltas world [[cell dirt]])
+                       (delta/entity-author eid e))
+                     (lift/lifted world [[cell st dirt]] eid))
+         (and r (player? e)) (into (lift/player-deltas eid r)))])
     [e nil]))
 
 (defn- fell-on

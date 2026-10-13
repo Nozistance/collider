@@ -2,6 +2,7 @@
   "Random block ticks for growth, melting, dripping and weathering."
   (:require [collider.cell :as cell]
             [collider.data :as data]
+            [collider.game.block.lift :as lift]
             [collider.game.changes :as changes]
             [collider.game.clock :as clock]
             [collider.game.delta :as delta]
@@ -169,9 +170,19 @@
   (delta/authored (changes/set-deltas world changes runs)
                   (nth (peek runs) 0)))
 
+(defn- turns [world changes]
+  (let [chunks (:chunks world)]
+    (nth (reduce (fn [[seen ts] [p st]]
+                   (let [old (get seen p (chunk/at chunks p))]
+                     [(assoc seen p st)
+                      (cond-> ts (lift/rises? old st) (conj [p old st]))]))
+                 [{} []] changes)
+         1)))
+
 (defn- result-deltas [world results changes drips runs]
   (let [woken (drip-schedules world drips)]
     (concat (when (seq changes) (changed world changes runs))
+            (lift/lifted world (turns world changes))
             (when (seq woken) [[:schedule-ticks woken]])
             (drip-events drips)
             (drop-spawns world results))))

@@ -4,6 +4,7 @@
             [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.lid :as lid]
+            [collider.game.block.lift :as lift]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
@@ -124,6 +125,13 @@
   (or (nil? first-run)
       (touched? (:dirty pass) (:reach first-run) p)))
 
+(defn- lifted [world pass changes]
+  (let [chunks (:chunks (:w pass))]
+    (lift/lifted world (for [[p st] changes
+                             :let [old (chunk/at chunks p)]
+                             :when (lift/rises? old st)]
+                         [p old st]))))
+
 (defn- stepped
   [world ctx k pass [tick first-run]]
   (let [[pass r] (if (stale? pass tick first-run)
@@ -131,7 +139,8 @@
                    [pass first-run])
         by (nth tick 1)
         ds (concat (again-deltas tick r)
-                   (delta/authored (:deltas r) nil by))
+                   (delta/authored (:deltas r) nil by)
+                   (lifted world pass (:changes r)))
         pass (out-into pass ds)]
     (applied world ctx k pass (:changes r) by)))
 
