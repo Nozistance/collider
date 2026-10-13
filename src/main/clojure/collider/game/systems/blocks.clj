@@ -313,7 +313,7 @@
 
 (defn edit-deltas
   "Returns the deltas of dig, place, item use or sign edit event ev."
-  [world [_ [tag & args]]]
+  [world [tag & args]]
   (case tag
     :dig (dig/dig-deltas world args)
     :place (placed-deltas world args)

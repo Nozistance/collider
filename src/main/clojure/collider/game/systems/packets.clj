@@ -22,9 +22,9 @@
 (set! *warn-on-reflection* true)
 
 (defn- own [f]
-  (fn [w [_ ev]] (when (number? (nth ev 1 nil)) (f w ev))))
+  (fn [w ev] (when (number? (nth ev 1 nil)) (f w ev))))
 
-(defn- spectated [w [_ [_ eid tid]]] (camera/spectate-deltas w eid tid))
+(defn- spectated [w [_ eid tid]] (camera/spectate-deltas w eid tid))
 
 (def ^:private player-input
   {:move player/move
@@ -46,7 +46,7 @@
     [[:merge-entity eid
       (into {} (remove (fn [[k v]] (identical? v (get e k)))) e')]]))
 
-(defn- played [w [_ [tag eid :as ev]]]
+(defn- played [w [tag eid :as ev]]
   (let [w' ((player-input tag) w ev)
         e' (get-in w' [:entities eid])
         heard (input/played w w' ev)]
@@ -54,7 +54,7 @@
             (when (seq heard) [[:heard heard]])
             (when-let [m (:moves heard)] (landing/moved-deltas w' m)))))
 
-(defn- respawned [w [_ [_ eid :as ev]]]
+(defn- respawned [w [_ eid :as ev]]
   (let [w' (player/respawn w ev)
         req (get-in w' [:spawning eid])]
     (when-not (identical? w w')
@@ -73,17 +73,17 @@
    [#{:dig :creative-slot} (own items/event-deltas)]
    [#{:swing} (own players/swing-deltas)]
    [#{:menu-click :menu-close :menu-button :rename-item :bundle-select}
-    (fn [w [_ ev]] (containers/event-deltas w ev))]
-   [chat/tags (fn [w [_ ev]] (chat/input-deltas w ev))]
+    containers/event-deltas]
+   [chat/tags chat/input-deltas]
    [#{:interact :attack} hanging/input-deltas]
    [#{:attack :swing} attacks/input-deltas]
    [#{:interact} interact/input-deltas]])
 
-(defn- handled [w [_ ev :as x]]
+(defn- handled [w ev]
   (let [tag (nth ev 0)]
     (loop [w w hs (filter #(contains? (first %) tag) handlers) acc []]
       (if-let [[_ f] (first hs)]
-        (let [ds (vec (f w x))
+        (let [ds (vec (f w ev))
               more (next hs)]
           (recur (if (and more (seq ds)) (first (apply/applied w ds)) w)
                  more (into acc ds)))

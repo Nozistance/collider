@@ -283,7 +283,7 @@
 
 (defn input-deltas
   "Returns the deltas of attack or swing event ev."
-  [world [_ ev]]
+  [world ev]
   (event-deltas world ev))
 
 (defn wielded

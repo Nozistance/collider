@@ -367,9 +367,9 @@
     (let [w (kept w dim lv)]
       [w (assoc (get (:levels w) at) :server w)])))
 
-(defn- event-ds [f lv x ev]
+(defn- event-ds [f lv ev]
   (let [sp (player/slot-part lv ev)]
-    (into (vec sp) (event-deltas f (entities lv sp) x ev))))
+    (into (vec sp) (event-deltas f (entities lv sp) ev ev))))
 
 (defn- went [w at lv ds]
   (cond (empty? ds) [w at lv]
@@ -381,14 +381,14 @@
   came, each in the level its player stands in when it comes and
   seeing the world after the events before it. The deltas of an
   event, its slot deltas first, go to its level, and its effects
-  stay in order. f takes the level and the index and event, [i ev]."
+  stay in order. f takes the level and the event."
   [world events f]
-  (loop [[w dim lv] [world] xs (seq (map-indexed vector events)) acc []]
-    (if-let [[_ ev :as x] (first xs)]
+  (loop [[w dim lv] [world] evs (seq events) acc []]
+    (if-let [ev (first evs)]
       (let [at (level-of w ev)
             [w lv] (level-at w dim lv at)
-            ds (event-ds f lv x ev)]
-        (recur (went w at lv ds) (next xs) (into acc (played at ds))))
+            ds (event-ds f lv ev)]
+        (recur (went w at lv ds) (next evs) (into acc (played at ds))))
       acc)))
 
 (defn then

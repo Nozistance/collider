@@ -175,5 +175,5 @@
 (defn input-deltas
   "Returns the deltas of event ev when it uses or hits a painting or
   an item frame."
-  [world [_ ev]]
+  [world ev]
   (when (aimed? world ev) (event-deltas world ev)))

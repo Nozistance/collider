@@ -78,5 +78,5 @@
 
 (defn input-deltas
   "Returns the deltas of the answer of a mob to click event ev."
-  [world [_ ev]]
+  [world ev]
   (interact world ev (long (:tick world))))

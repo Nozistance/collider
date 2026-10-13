@@ -79,9 +79,9 @@
       q (update :quits conj q))))
 
 (defn played
-  "Returns the part of the input record that packet event d, giving w'
-  from w, adds. It holds its move, its resent teleport and the use it
-  let go."
+  "Returns what packet event d adds to the input record, w' being w
+  after it. That is its move, its resent teleport and the use it let
+  go, each only when there is one."
   [w w' d]
   (let [m (move-of w w' d) r (resend-of w w' d) u (release-of w d)]
     (cond-> {}
