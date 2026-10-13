@@ -1,11 +1,31 @@
 (ns collider.tables.stamp
-  "The game version and the layout of the tables this tool makes."
+  "The game version and the sources of the tables this tool makes."
   (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str])
+  (:import (java.io File)
+           (java.nio.file Files)
+           (java.security MessageDigest)))
 
 (def game "26.2")
 
-(def layout 26)
+(defn fingerprint
+  "Returns the hex SHA-1 of the files under dir, each with its path
+  from dir."
+  [dir]
+  (let [root (.toPath (io/file dir))
+        md (MessageDigest/getInstance "SHA-1")
+        rel #(str/replace (str (.relativize root (.toPath ^File %)))
+                          "\\" "/")]
+    (doseq [f (sort-by rel (filter File/.isFile (file-seq (io/file dir))))]
+      (.update md (.getBytes ^String (rel f) "UTF-8"))
+      (.update md (Files/readAllBytes (.toPath ^File f))))
+    (format "%040x" (BigInteger. 1 (.digest md)))))
+
+(def sources
+  (delay (or (some-> (io/resource "collider/tables/sources.edn")
+                     slurp edn/read-string)
+             (fingerprint "src"))))
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -57,7 +77,7 @@
 (defn stamp
   "Returns the stamp that a set of tables of this tool carries."
   []
-  {:game game :layout layout})
+  {:game game :sources @sources})
 
 (defn stamp-of
   "Returns the stamp of the tables in d, or nil when it has none."

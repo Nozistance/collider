@@ -27,7 +27,7 @@
    "  --quiet      print errors only"
    "check DIR      tell if DIR has a full set of tables"
    "  --jar FILE   also tell if they came from this server.jar"
-   "--version      print the game version and the table layout"
+   "--version      print the game version and the table sources"
    ""
    "Example: java -jar collider-tables.jar generate --out ./data"])
 
@@ -132,7 +132,7 @@
 
 (defmethod execute :version [_]
   (println (str "collider-tables for Minecraft " stamp/game
-                ", table layout " stamp/layout))
+                ", sources " @stamp/sources))
   0)
 
 (defmethod execute :usage [{:keys [error]}]
@@ -173,7 +173,7 @@
 (defn- check-failure [{:keys [dir jar]}]
   (let [lack (stamp/missing dir)
         found (stamp/stamp-of dir)
-        mark (select-keys found [:game :layout])]
+        mark (select-keys found [:game :sources])]
     (cond
       (= (count lack) (inc (count stamp/files)))
       (str "There are no tables in " dir)
@@ -181,8 +181,8 @@
       (str "The tables in " dir " lack " (str/join ", " lack))
       (not= (stamp/stamp) mark)
       (str "The tables in " dir " are for " (:game found)
-           " layout " (:layout found) ", not " stamp/game
-           " layout " stamp/layout)
+           " sources " (:sources found) ", not " stamp/game
+           " sources " @stamp/sources)
       jar (other-jar dir jar found))))
 
 (defmethod execute :check [{:keys [dir] :as opts}]

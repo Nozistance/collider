@@ -92,10 +92,10 @@
         (saved-before? dir) (throw (unreadable dir "is missing"))
         :else nil))
 
-(def ^:private stamp {:game data/game :layout data/layout})
+(def ^:private stamp {:game data/game})
 
-(defn- stamp-line [{:keys [game layout]}]
-  (str "tables " game " layout " layout))
+(defn- stamp-line [{:keys [game]}]
+  (str "tables " game))
 
 (defn- other-tables [dir found]
   (let [saved (if found (stamp-line found) "no stamp")
@@ -111,7 +111,7 @@
               :command command})))
 
 (defn- stamped [dir m]
-  (if (= stamp (:stamp m))
+  (if (= stamp (select-keys (:stamp m) [:game]))
     m
     (throw (other-tables dir (:stamp m)))))
 

@@ -1,5 +1,6 @@
 (ns build
-  (:require [clojure.tools.build.api :as b]))
+  (:require [clojure.java.io :as io]
+            [clojure.tools.build.api :as b]))
 
 (def jar-file "target/collider-tables.jar")
 
@@ -12,6 +13,10 @@
                     :src-dirs   ["src"]
                     :class-dir  classes
                     :ns-compile '[collider.tables.core]})
+    (let [f (io/file classes "collider" "tables" "sources.edn")]
+      (load-file "src/collider/tables/stamp.clj")
+      (spit f (pr-str ((resolve 'collider.tables.stamp/fingerprint)
+                       "src"))))
     (b/uber {:class-dir classes
              :uber-file jar-file
              :basis     basis

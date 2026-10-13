@@ -10,23 +10,43 @@
             [collider.num :as num])
   (:import (clojure.lang PersistentArrayMap)
            (java.io File PushbackReader)
+           (java.nio.file Files)
+           (java.security MessageDigest)
            (java.util.concurrent ExecutionException)))
 
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
 
-(def layout 26)
+(defn- fingerprint [dir]
+  (let [root (.toPath (io/file dir))
+        md (MessageDigest/getInstance "SHA-1")
+        rel #(str/replace (str (.relativize root (.toPath ^File %)))
+                          "\\" "/")]
+    (doseq [f (sort-by rel (filter File/.isFile (file-seq (io/file dir))))]
+      (.update md (.getBytes ^String (rel f) "UTF-8"))
+      (.update md (Files/readAllBytes (.toPath ^File f))))
+    (format "%040x" (BigInteger. 1 (.digest md)))))
+
+(def sources
+  "The hash of the sources of the tool that makes the tables this
+  build reads."
+  (delay (or (some-> (io/resource "collider/tables.edn")
+                     slurp edn/read-string)
+             (let [here (io/file (io/resource "collider/data.clj"))
+                   root (nth (iterate File/.getParentFile here) 5)]
+               (fingerprint (io/file root "tools/tables/src"))))))
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
        (catch Exception _ nil)))
 
 (defn complete?
-  "Returns true when d holds a set of tables of this game and layout."
+  "Returns true when d holds a set of tables of this game made by the
+  tool of this build."
   [d]
-  (= {:game game :layout layout}
-     (select-keys (stamp-of d) [:game :layout])))
+  (= {:game game :sources @sources}
+     (select-keys (stamp-of d) [:game :sources])))
 
 (defn dir
   "Returns the first place that holds a full set of tables of this

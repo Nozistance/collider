@@ -39,9 +39,16 @@
     (io/make-parents f)
     (spit f (pr-str {:commit (commit)}))))
 
+(defn- write-table-sources []
+  (load-file "tools/tables/src/collider/tables/stamp.clj")
+  (spit (io/file class-dir "collider" "tables.edn")
+        (pr-str ((resolve 'collider.tables.stamp/fingerprint)
+                 "tools/tables/src"))))
+
 (defn release [_]
   (clean nil)
   (write-build-info)
+  (write-table-sources)
   (javac nil)
   (compile-clj)
   (uber))
