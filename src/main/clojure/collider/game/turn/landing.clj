@@ -286,8 +286,8 @@
     (conj (vec ds) [:merge-entity eid {:landed nil}])))
 
 (defn moved-deltas
-  "Returns the deltas of player move m as it comes in: the hurt of
-  its fall when it landed, and the end of what a gust started."
+  "Returns the deltas of player move m as it comes in. A landing hurts
+  by its fall, and the end of what a gust started settles."
   [world {:keys [eid] :as m}]
   (when-let [e (get-in world [:entities eid])]
     (concat (when (:landed m) (landed-deltas world e m))
