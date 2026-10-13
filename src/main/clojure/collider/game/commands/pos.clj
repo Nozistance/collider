@@ -1,7 +1,6 @@
 (ns collider.game.commands.pos
   "The positions and turns commands take, and the checks on them."
-  (:require [collider.game.areas :as areas]
-            [collider.game.command.targets :as targets]
+  (:require [collider.game.command.targets :as targets]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -9,11 +8,8 @@
 (defn unloaded?
   "Returns true when one of the positions is in no loaded chunk."
   [world positions]
-  (let [held (areas/needed-ids world)]
-    (some #(let [id (chunk/block-chunk %)]
-             (not (or (contains? (:chunks world) id)
-                      (contains? held id))))
-          positions)))
+  (some #(not (contains? (:chunks world) (chunk/block-chunk %)))
+        positions))
 
 (defn- flat-in? [^long x ^long z]
   (and (<= -30000000 x) (< x 30000000)
