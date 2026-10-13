@@ -30,6 +30,28 @@
   [hashes]
   (order (HashMap. ^Map (filled hashes))))
 
+(defn- slot ^long [h ^long cap]
+  (let [h (long h)
+        u (bit-and h 0xffffffff)]
+    (bit-and (bit-xor h (unsigned-bit-shift-right u 16)) (dec cap))))
+
+(defn at-capacity
+  "Returns the indices of keys with hash codes hashes, put into a
+  hash map in that order, in the order it iterates them once its
+  table is cap wide. No bucket of it may hold a tree."
+  [hashes ^long cap]
+  (let [hs (vec hashes)]
+    (vec (sort-by #(slot (nth hs %) cap) (range (count hs))))))
+
+(defn grown
+  "Returns how wide the table of a hash map cap wide that holds keys
+  of hash codes hashes is once it takes a key of hash code h."
+  ^long [^long cap hashes h]
+  (let [k (slot h cap)
+        bin (inc (count (filter #(= k (slot % cap)) hashes)))
+        cap (if (and (>= bin 9) (< cap 64)) (* 2 cap) cap)]
+    (if (> (inc (count hashes)) (quot (* 3 cap) 4)) (* 2 cap) cap)))
+
 (defn by-name
   "Returns xs in the order a hash map given them in order iterates
   them, each keyed by the string (f x)."

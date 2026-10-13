@@ -1,10 +1,9 @@
 (ns collider.game.lightning
   "Lightning bolts and where a storm strikes."
-  (:require [collider.data :as data]
+  (:require [collider.game.block.pois :as pois]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.random :as random]
-            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather]
             [collider.world.space.column :as column]))
@@ -14,13 +13,6 @@
 (def ^:private ^:const rod-reach 128)
 
 (def ^:private ^:const body-reach 3.0)
-
-(def ^:private rod-types #{:lightning-rod :weathering-lightning-rod})
-
-(defn- rod? [st] (contains? rod-types (block/type-of st)))
-
-(def ^:private ^:table rods
-  (delay (boolean-array (map rod? (range (data/block-state-count))))))
 
 (defn bolt
   "Returns a new lightning bolt at pos, made at tick t."
@@ -34,47 +26,27 @@
         dz (- (long az) (long bz))]
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
-(defn- bucket
-  "Returns the slot of cell p in a small hash set of cells, the order
-  in which such a set lists them."
-  ^long [[x y z]]
-  (let [yz (+ (long y) (* (long z) 31))
-        h (unchecked-int (+ (* yz 31) (long x)))]
-    (bit-and (bit-xor h (unsigned-bit-shift-right h 16)) 15)))
+(defn- chunk-rods [w cx cz]
+  (when (contains? (:chunks w) (chunk/pos->id cx cz))
+    (for [si (range chunk/section-count)
+          p (pois/listed (:pois w) [cx (- si chunk/section-offset) cz]
+                         :lightning-rod)]
+      p)))
 
-(defn- section-rods [chunks cx cz si]
-  (let [y0 (* 16 (- (long si) chunk/section-offset))
-        x0 (* 16 (long cx)) z0 (* 16 (long cz))]
-    (sort-by bucket
-             (for [y (range y0 (+ y0 16)) z (range z0 (+ z0 16))
-                   x (range x0 (+ x0 16))
-                   :let [p [x y z]]
-                   :when (rod? (chunk/at chunks p))]
-               p))))
-
-(defn- chunk-rods [chunks cx cz]
-  (when (contains? chunks (chunk/pos->id cx cz))
-    (let [c (chunk/chunk-at chunks cx cz)]
-      (for [si (range 24)
-            :let [s (chunk/chunk-section c si)]
-            :when (and s (chunk/holds? s @rods))
-            p (section-rods chunks cx cz si)]
-        p))))
-
-(defn- rods-around [chunks [x _ z]]
+(defn- rods-around [w [x _ z]]
   (let [r (inc (Math/floorDiv (long rod-reach) 16))
         cx (bit-shift-right (long x) 4) cz (bit-shift-right (long z) 4)]
     (for [j (range (- cz r) (+ cz r 1)) i (range (- cx r) (+ cx r 1))
-          p (chunk-rods chunks i j)]
+          p (chunk-rods w i j)]
       p)))
 
 (defn- topmost? [chunks [x y z]]
   (= (long y) (column/surface-top chunks x z)))
 
-(defn- rod-target [chunks center]
+(defn- rod-target [w center]
   (let [near? #(<= (dist-sq % center) (* rod-reach rod-reach))
-        found (filter #(and (near? %) (topmost? chunks %))
-                      (rods-around chunks center))]
+        found (filter #(and (near? %) (topmost? (:chunks w) %))
+                      (rods-around w center))]
     (when (seq found)
       (let [closer #(if (< (dist-sq %2 center) (dist-sq %1 center)) %2 %1)
             [x y z] (reduce closer found)]
@@ -116,7 +88,7 @@
   [world [x _ z]]
   (let [chunks (:chunks world)
         center [x (column/motion-blocking-height chunks x z) z]]
-    (or (rod-target chunks center)
+    (or (rod-target world center)
         (body-target world center)
         center)))
 

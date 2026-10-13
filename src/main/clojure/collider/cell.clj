@@ -59,3 +59,8 @@
   {:inline (fn [s] `(bit-shift-right (bit-shift-left (long ~s) 22) 42))}
   ^long [^long s]
   (bit-shift-right (bit-shift-left s 22) 42))
+
+(defn hashed
+  "Returns the hash code of cell [x y z] as a block position has it."
+  ^long [[x y z]]
+  (unchecked-int (+ (* (+ (long y) (* (long z) 31)) 31) (long x))))

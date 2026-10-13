@@ -1,7 +1,8 @@
 (ns collider.game.block.tickers
   "The block entities that tick, in the order they joined the level.
   A ticker that stays keeps its turn, and a new one goes last."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.hash-order :as hash-order]
             [collider.world.block :as block]))
 
@@ -41,12 +42,9 @@
   [tk pos on?]
   (if on? (added tk pos) (without tk pos)))
 
-(defn- pos-hash [[x y z]]
-  (unchecked-int (+ (* (+ (long y) (* (long z) 31)) 31) (long x))))
-
 (defn- hash-order [ps]
   (let [ps (vec ps)
-        order (hash-order/copied (map pos-hash ps))]
+        order (hash-order/copied (map cell/hashed ps))]
     (mapv #(nth ps %) order)))
 
 (defn loaded

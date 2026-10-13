@@ -5,6 +5,7 @@
   (:require [collider.cell :as cell]
             [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.pois :as pois]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
@@ -85,6 +86,7 @@
                         (:sky? w true))
                 (update :chunks chunk/frozen)
                 (block-entities-changed real)
+                (update :pois pois/changed real)
                 (ticks-added ticks))
       (seq told) (update :changed-blocks add-changed told))))
 
@@ -178,7 +180,10 @@
 (defn add-chunk
   "Returns level w after the delta [:add-chunk id c]."
   [w [_ id c]]
-  (if (contains? (:chunks w) id) w (update w :chunks assoc id c)))
+  (if (contains? (:chunks w) id)
+    w
+    (let [w (update w :chunks assoc id c)]
+      (update w :pois pois/loaded (:chunks w) id))))
 
 (defn restore-chunk
   "Returns level w after the delta [:restore-chunk id payload]."

@@ -2,6 +2,7 @@
   "Schema of the world map and of the player profile."
   (:require [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.pois :as pois]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
@@ -105,9 +106,11 @@
   (let [id (long id)
         t (long (:tick w 0))
         loaded-xf (keep (entity-entry t))
-        bes (into {} (map (block-entity-entry t)) block-entities)]
+        bes (into {} (map (block-entity-entry t)) block-entities)
+        chunks (assoc (:chunks w) id chunk)]
     (cond-> (-> w
-                (update :chunks assoc id chunk)
+                (assoc :chunks chunks)
+                (update :pois pois/loaded chunks id)
                 (update :entities into loaded-xf entities)
                 (ticks-restored t payload)
                 (update :loading disj id))
@@ -214,6 +217,9 @@
                         :scope :level}
    :openers            {:default {} :scope :level}
    :tickers            {:default tickers/none :scope :level}
+   :pois               {:default pois/none :store store-same
+                        :load identity :schema :map
+                        :scope :level}
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
    :spawning           {:default (lm/long-map) :scope :shared}
