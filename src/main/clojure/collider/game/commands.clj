@@ -6,6 +6,7 @@
             [collider.game.commands.player :as player]
             [collider.game.commands.reply :as reply]
             [collider.game.commands.say :as say]
+            [collider.game.commands.team :as team]
             [collider.game.commands.teleport :as teleport]
             [collider.game.commands.world :as world]))
 
@@ -14,7 +15,7 @@
 (def handlers
   "Every command by name, each as (f world eid args)."
   (merge fill/handlers teleport/handlers entity/handlers data/handlers
-         player/handlers world/handlers say/handlers))
+         player/handlers world/handlers say/handlers team/handlers))
 
 (defn deltas
   "Returns the deltas of player eid running the parsed command."

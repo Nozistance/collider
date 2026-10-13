@@ -190,6 +190,7 @@
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])
+   :team          (fn [_ m] [(join/team-packet (:method m) (:team m))])
    :combat-kill   (fn [_ m]
                     [{:packet :player-combat-kill :eid (:eid m)
                       :text (:text m)}])

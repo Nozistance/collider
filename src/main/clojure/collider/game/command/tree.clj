@@ -121,7 +121,7 @@
     :game-mode game-mode-read
     :anchor anchor-read
     :bool r/read-boolean
-    :word r/read-unquoted
+    (:word :team) r/read-unquoted
     (:greedy :text) r/read-greedy
     :component component-read
     :dimension args/read-id

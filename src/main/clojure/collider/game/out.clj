@@ -25,6 +25,12 @@
   [msg]
   [:fx (assoc msg :dim nil)])
 
+(defn team
+  "Returns the effect that tells players of team t by method, 0 made,
+  1 removed, 2 changed."
+  [method t]
+  {:msg :team :method method :team t})
+
 (defn load-chunk [id] {:msg :load-chunk :id id})
 
 (defn store-chunk [id payload]

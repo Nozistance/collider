@@ -213,10 +213,17 @@
      :pos [(v/x p) (v/y p) (v/z p)] :vel [0.0 0.0 0.0]
      :yaw (double (:yaw e)) :pitch (double (:pitch e)) :relative 0}))
 
+(defn team-packet
+  "Returns the packet that tells a player of team t by method."
+  [method t]
+  {:packet :set-player-team :name (:name t) :method method :team t
+   :players (:players t)})
+
 (defn- join-world-packets [world e eid motd]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets world eid e)
+    (map #(team-packet 0 %) (:teams world))
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet

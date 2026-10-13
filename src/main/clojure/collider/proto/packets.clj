@@ -5,6 +5,7 @@
             [collider.proto.chunk :as chunk]
             [collider.proto.codec :as c]
             [collider.proto.components :as comps]
+            [collider.proto.text :as text]
             [collider.proto.wire :as wire]
             [malli.core :as m]
             [malli.error :as me])
@@ -227,6 +228,33 @@
 (defn- write-hat-entry! [^Buf buf {:keys [uuid hat?]}]
   (c/write-uuid buf uuid)
   (buf/write-boolean! buf (boolean hat?)))
+
+(def ^:private team-rules
+  {:always 0 :never 1 :hide-for-other-teams 2 :hide-for-own-team 3
+   :push-other-teams 2 :push-own-team 3})
+
+(def ^:private team-colors
+  (zipmap [:black :dark-blue :dark-green :dark-aqua :dark-red :dark-purple
+           :gold :gray :dark-gray :blue :green :aqua :red :light-purple
+           :yellow :white]
+          (range)))
+
+(defn- write-team-params! [^Buf buf t]
+  (run! #(text/write-component buf (get t %)) [:display :prefix :suffix])
+  (c/write-varint buf (team-rules (:nametag t)))
+  (c/write-varint buf (team-rules (:collision t)))
+  (buf/write-boolean! buf (some? (:color t)))
+  (when (:color t) (c/write-varint buf (team-colors (:color t))))
+  (buf/write-byte! buf (bit-or (if (:friendly-fire t) 1 0)
+                               (if (:see-invisible t) 2 0))))
+
+(defn- write-team! [^Buf buf {:keys [name method team players]}]
+  (c/write-string buf name)
+  (buf/write-byte! buf (int method))
+  (when (#{0 2} method) (write-team-params! buf team))
+  (when (#{0 3 4} method)
+    (c/write-varint buf (count players))
+    (run! #(c/write-string buf %) players)))
 
 (def ^:private info-actions
   {:latency [latency-bit write-latency-entry!]
@@ -514,6 +542,9 @@
    [:play :waypoint]
    {:schema [:map [:op :keyword] [:uuid :uuid]]
     :write write-waypoint!}
+   [:play :set-player-team]
+   {:schema [:map [:name :string] [:method :int]]
+    :write write-team!}
    [:play :set-title-text]
    {:schema [:map [:text wire/text]]
     :write :wire}

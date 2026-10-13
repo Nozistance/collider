@@ -128,6 +128,16 @@
       (conj (into [:of "change or query a clock"]
                   (mapcat of-way) clock-ways))))
 
+(def ^:private team-arg [:team [:team {}]])
+
+(def ^:private team-form
+  [:team "make, remove and list teams"
+   [(lit "list")] [:world :team-list]
+   [(lit "list") team-arg] [:world :team-members]
+   [(lit "add") [:team [:word {}]]
+    [:displayName [:component {:default nil}]]] [:world :team-add]
+   [(lit "remove") team-arg] [:world :team-remove]])
+
 (def ^:private players-arg
   [:targets [:targets {:players? true}]])
 
@@ -269,7 +279,7 @@
                  :default nil}]])
 
 (def ^:private base-forms
-  [time-form
+  [time-form team-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]

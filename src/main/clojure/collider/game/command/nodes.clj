@@ -37,7 +37,8 @@
    :dimension [:dimension nil]
    :compound [:nbt-compound-tag nil]
    :nbt-path [:nbt-path nil]
-   :double [(keyword "brigadier:double") nil]})
+   :double [(keyword "brigadier:double") nil]
+   :team [:team nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

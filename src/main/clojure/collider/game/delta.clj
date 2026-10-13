@@ -9,6 +9,7 @@
             [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
+            [collider.game.team :as team]
             [collider.vec :as v]
             [collider.world.env.weather :as weather]
             [malli.core :as m]
@@ -96,6 +97,12 @@
    :set-rule
    {:scope :world :schema [:cat :keyword :any]
     :apply (fn [w [_ rule value]] (assoc-in w [:rules rule] value))}
+   :team-add
+   {:scope :world :schema [:cat :string :any]
+    :apply (fn [w [_ nm display]] (update w :teams team/added nm display))}
+   :team-remove
+   {:scope :world :schema [:cat :string]
+    :apply (fn [w [_ nm]] (update w :teams team/removed nm))}
    :set-config
    {:scope :world :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :config m))}
@@ -268,6 +275,7 @@
      :teleport [[:pos Vec3] [:yaw number?] [:pitch number?]
                 [:relative :int]]
      :health [[:health number?]]
+     :team [[:method :int] [:team :map]]
      :experience [[:progress number?] [:level :int] [:total :int]]
      :respawn []
      :change-dimension [[:pos Vec3] [:yaw number?] [:pitch number?]
