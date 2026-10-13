@@ -52,7 +52,7 @@
 (defn- write-parser! [^Buf buf parser props]
   (let [id (data/registry-id "command_argument_type" parser)]
     (c/write-varint buf id))
-  (case (name parser)
+  (case (data/snake parser)
     "brigadier:integer" (write-int-range! buf props)
     "brigadier:float" (write-float-range! buf props)
     "brigadier:double" (write-double-range! buf props)
