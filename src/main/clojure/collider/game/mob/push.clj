@@ -5,6 +5,7 @@
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.team :as team]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]
@@ -138,14 +139,30 @@
   ^booleans [^Bodies b ^ints g]
   (Bodies/ticking b g))
 
+(def ^:private rule-ids
+  {:always 0 :never 1 :push-other-teams 2 :push-own-team 3})
+
+(defn teamed
+  "Returns index in which bodies es, in its order, meet only as the
+  collision rules of teams let them."
+  ^PushGrid [^PushGrid index teams es]
+  (if (every? #(= :always (:collision %)) teams)
+    index
+    (let [ids (zipmap (map :name teams) (range))
+          ts (mapv (fn [[eid e]] (team/of-entity teams eid e)) es)
+          rules (byte-array (map #(rule-ids (:collision %) 0) ts))
+          in (int-array (map #(get ids (:name %) -1) ts))]
+      (PushGrid/teamed index rules in))))
+
 (defn index-of
   "Returns the index in which a body finds every body near enough to
-  shove it, each body stepping this tick. Each move of a body changes
-  it in place."
-  ^PushGrid [entries]
-  (let [es (if (by-id? entries) entries (sort-by first entries))
-        b (reduce #(add-body %1 %2 true) (bodies) es)]
-    (grid-of b (int-array (range (count es))))))
+  shove it, each body stepping this tick, as teams let them meet.
+  Each move of a body changes it in place."
+  (^PushGrid [entries] (index-of entries nil))
+  (^PushGrid [entries teams]
+   (let [es (if (by-id? entries) entries (sort-by first entries))
+         b (reduce #(add-body %1 %2 true) (bodies) es)]
+     (teamed (grid-of b (int-array (range (count es)))) teams es))))
 
 (defn- scan [^PushGrid index eid p half height hi]
   (if index
@@ -281,7 +298,7 @@
     (let [bs (crowd-of world entry)]
       (when (next bs)
         (let [[h ht] (pushable-box p)
-              index (index-of bs)
+              index (index-of bs (:teams world))
               n (count (touching index peid p h ht))]
           (into (vec (crammed world peid p n))
                 (shoved-mobs (:entities world))

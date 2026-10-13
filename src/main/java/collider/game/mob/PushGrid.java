@@ -24,6 +24,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private static final double THRESHOLD = 0.01F;
 
+    private static final byte NEVER = 1, PUSH_OTHER_TEAMS = 2, PUSH_OWN_TEAM = 3;
+
     private final long[] eids;
     private final double[] halfs, heights, xs, ys, zs;
     private final long[] came, ranks;
@@ -32,6 +34,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private final LongIntMap heads;
     private double widest, slack;
     private double[] px, pz, ph;
+    private byte[] rules;
+    private int[] teams;
 
     /// Returns the grid of bodies `eids`, ascending. Every other array
     /// holds the body of `eids` at the same index.
@@ -144,6 +148,23 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         return g;
     }
 
+    /// Returns `g`, in which each body meets the others as the
+    /// collision rule `rules` of its team `teams` lets it, by index.
+    /// A body of no team is in team -1 with rule 0.
+    public static PushGrid teamed(PushGrid g, byte[] rules, int[] teams) {
+        g.rules = rules;
+        g.teams = teams;
+        return g;
+    }
+
+    private boolean meets(int a, int b) {
+        byte ra = rules[a], rb = rules[b];
+        if (ra == NEVER || rb == NEVER) return false;
+        boolean same = teams[a] >= 0 && teams[a] == teams[b];
+        if ((ra == PUSH_OWN_TEAM || rb == PUSH_OWN_TEAM) && same) return false;
+        return ra != PUSH_OTHER_TEAMS && rb != PUSH_OTHER_TEAMS || same;
+    }
+
     private static long cellCoord(double c) {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
@@ -162,6 +183,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
         long cx = cellCoord(x), cz = cellCoord(z);
         boolean pinned = slack > 0.0;
+        int s = rules == null ? -1 : Arrays.binarySearch(eids, eid);
         int[] hits = new int[16];
         int n = 0;
         for (long bx = x0; bx <= x1; bx++) {
@@ -174,6 +196,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                     long o = eids[j];
                     if (o == eid || o >= hi) continue;
                     if (hi != Long.MAX_VALUE && !steps[j]) continue;
+                    if (s >= 0 && !meets(s, j)) continue;
                     double rj = half + halfs[j];
                     double oy = ys[j];
                     if (Math.abs(xs[j] - x) < rj

@@ -365,8 +365,8 @@
     index))
 
 (defn- island
-  [{:keys [es bodies at riders after]}]
-  {:es es :index (push/grid-of bodies at)
+  [teams {:keys [es bodies at riders after]}]
+  {:es es :index (push/teamed (push/grid-of bodies at) teams es)
    :ticking (push/ticks-of bodies at)
    :slots (push/slots-of bodies at) :riders riders :after after})
 
@@ -460,7 +460,7 @@
   "Returns the deltas of herd h stepped in order, and the deltas of
   each of its riders by id."
   [world tempters t h]
-  (let [isl (island h)]
+  (let [isl (island (:teams world) h)]
     (if (seq (:riders h))
       (ridden-walk world tempters t isl)
       [(walk world tempters t isl) nil])))
@@ -540,7 +540,7 @@
   and the herd keeps the runs when ok? finds every mob in reach. Else
   it steps again in order."
   [world tempters t h ok?]
-  (let [isl (island h) cur (object-array (:es isl))
+  (let [isl (island (:teams world) h) cur (object-array (:es isl))
         d (when-not (seq (:riders h))
             (turn-runs world tempters t isl cur ok?))]
     (if d
