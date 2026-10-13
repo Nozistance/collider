@@ -1,6 +1,7 @@
 (ns collider.game.team
   "Teams of the scoreboard, in the order they were made."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.game.entity :as entity]))
 
 (set! *warn-on-reflection* true)
 
@@ -36,6 +37,11 @@
   "Returns the team of teams that member nm is in, or nil."
   [teams nm]
   (some #(when (some #{nm} (:players %)) %) teams))
+
+(defn of-entity
+  "Returns the team of teams that entity eid is in, or nil."
+  [teams eid e]
+  (of-member teams (entity/scoreboard-name eid e)))
 
 (defn- without [t nm]
   (update t :players #(into [] (remove #{nm}) %)))

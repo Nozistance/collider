@@ -6,6 +6,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.systems.sleep :as sleep]
+            [collider.game.team :as team]
             [collider.log :as log])
   (:import (java.util Locale)))
 
@@ -45,17 +46,21 @@
                       (other-logins world pname))))
           events))
 
+(defn- shown [world eid e]
+  (entity/display-name eid e (team/of-entity (:teams world) eid e)))
+
 (defn- joined-deltas [world events]
   (for [[tag eid] events :when (= :player-join tag)
         d [(out/to eid (out/joined))
            (out/except eid (out/system-chat
                              (entity/joined-text
-                               (get-in world [:entities eid]))))]]
+                               (shown world eid
+                                      (get-in world [:entities eid])))))]]
     d))
 
 (defn- left-deltas [world]
   (for [e (:quits world)]
-    (out/all (out/system-chat (entity/left-text e)))))
+    (out/all (out/system-chat (entity/left-text (shown world nil e))))))
 
 (defn- add-entry [e]
   (cond-> {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)

@@ -3,6 +3,7 @@
   (:require [collider.data.long-map :as lm]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
+            [collider.game.team :as team]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
@@ -79,7 +80,9 @@
     {:ps     ps
      :of     of
      :by-dim (group-by of ps)
-     :levels (:levels (level/synced world))}))
+     :levels (:levels (level/synced world))
+     :teams  (:teams world)
+     :named  (:players world)}))
 
 (defn level-of
   "Returns level dim of sight, the overworld when dim is nil."
@@ -138,6 +141,9 @@
   [sight viewers m]
   (cond
     (:to m) [(:to m)]
+    (:to-team m)
+    (let [t (team/named (:teams sight) (:to-team m))]
+      (remove #{(:except m)} (keep #(get (:named sight) %) (:players t))))
     (entity-msgs (:msg m))
     (get @viewers (long (or (:via m) (:eid m))) [])
     :else

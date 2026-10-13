@@ -41,10 +41,10 @@
 (defn- killed [world [id dim e]]
   (targets/in-level world dim (kill-in (targets/level-view world dim) id e)))
 
-(defn- kill-report [eid xs]
+(defn- kill-report [world eid xs]
   (if (= 1 (count xs))
     (say eid "commands.kill.success.single"
-         (entity-name (nth (first xs) 2)))
+         (entity-name world (first xs)))
     (say eid "commands.kill.success.multiple" (count xs))))
 
 (defn- kill-deltas [world eid [s]]
@@ -52,7 +52,7 @@
     (if (empty? xs)
       (fail eid "argument.entity.notfound.entity")
       (concat (mapcat #(killed world %) xs)
-              (kill-report eid xs)))))
+              (kill-report world eid xs)))))
 
 (defn- summon-mob [world eid type at nbt]
   (let [t (:tick world)
@@ -102,10 +102,10 @@
     (let [tags (disj (:tags e) name)]
       (targets/in-level world dim [[:merge-entity id {:tags tags}]]))))
 
-(defn- tag-report [eid xs base name]
+(defn- tag-report [world eid xs base name]
   (if (= 1 (count xs))
     (say eid (str base "single") name
-         (entity-name (nth (first xs) 2)))
+         (entity-name world (first xs)))
     (say eid (str base "multiple") name (count xs))))
 
 (defn- tag-changed [f op]
@@ -117,14 +117,14 @@
         (empty? xs) (fail eid "argument.entity.notfound.entity")
         (empty? dss) (fail eid (str "commands.tag." op ".failed"))
         :else (concat (apply concat dss)
-                      (tag-report eid xs base name))))))
+                      (tag-report world eid xs base name))))))
 
 (defn- tag-names [tags]
   (name-list (mapv (fn [t] {:text t :color "green"}) (sort tags))))
 
-(defn- tag-list [eid xs tags]
+(defn- tag-list [world eid xs tags]
   (let [one? (= 1 (count xs))
-        who (when one? (entity-name (nth (first xs) 2)))
+        who (when one? (entity-name world (first xs)))
         n (count tags)]
     (cond
       (empty? xs) (fail eid "argument.entity.notfound.entity")
@@ -140,17 +140,17 @@
 (defn- tag-list-deltas [world eid [s]]
   (let [xs (targets/selected world eid s)
         tags (into #{} (mapcat #(:tags (nth % 2))) xs)]
-    (answer (tag-list eid xs tags))))
+    (answer (tag-list world eid xs tags))))
 
 (defn- swung [world hand [id dim e]]
   (when (account/living? e)
     (let [ds (player/swing-deltas id e hand (:tick world) true)]
       (or (targets/in-level world dim ds) []))))
 
-(defn- swing-report [eid xs n]
+(defn- swing-report [world eid xs n]
   (if (= 1 n)
     (say eid "commands.swing.success.single"
-         (entity-name (nth (first xs) 2)))
+         (entity-name world (first xs)))
     (say eid "commands.swing.success.multiple" n)))
 
 (defn- swing-deltas [world eid [hand s]]
@@ -160,7 +160,7 @@
       (empty? xs) (fail eid "argument.entity.notfound.entity")
       (empty? dss) (fail eid "commands.swing.failed.notliving")
       :else (concat (apply concat dss)
-                    (swing-report eid xs (count dss))))))
+                    (swing-report world eid xs (count dss))))))
 
 (def handlers
   {:kill kill-deltas :summon summon-deltas

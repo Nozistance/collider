@@ -4,7 +4,8 @@
             [collider.data :as data]
             [collider.game.command.markup :as markup]
             [collider.game.entity :as entity]
-            [collider.game.out :as out]))
+            [collider.game.out :as out]
+            [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
 
@@ -59,9 +60,10 @@
   [(out/to eid (failure {:translate key :with (vec with)}))])
 
 (defn entity-name
-  "Returns the name of entity e as chat shows it."
-  [e]
-  (entity/display-name e))
+  "Returns the name of the entity of entry [eid dim e] of world as
+  chat shows it, in the style of its team."
+  [world [eid _ e]]
+  (entity/display-name eid e (team/of-entity (:teams world) eid e)))
 
 (def ^:private separator {:text ", " :color "gray"})
 

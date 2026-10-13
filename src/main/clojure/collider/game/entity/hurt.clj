@@ -848,24 +848,27 @@
 (defn- killer [world src]
   (or (:attacker src) (get-in world [:entities (:cause src)])))
 
+(defn- shown [world eid e]
+  (entity/display-name eid e (team/of-entity (:teams world) eid e)))
+
 (defn death-text
-  "Returns the cause of the death of e from src as chat shows it."
-  [world e src]
+  "Returns the cause of the death of entity eid of world from src as
+  chat shows it."
+  [world eid e src]
   (let [[id kind] (get @death-kinds (:type src) ["generic" nil])
-        v (entity/display-name e)
+        v (shown world eid e)
         k (killer world src)
-        by (or k (second (credited-player world e)))
+        [bid by] (if k [(:cause src) k] (credited-player world e))
         key (str "death.attack." id)]
     (cond
       (and (= "fall_variants" kind) (nil? by))
       {:translate "death.fell.accident.generic" :with [v]}
-      k {:translate key :with [v (entity/display-name k)]}
-      by {:translate (str key ".player")
-          :with [v (entity/display-name by)]}
+      k {:translate key :with [v (shown world bid k)]}
+      by {:translate (str key ".player") :with [v (shown world bid by)]}
       :else {:translate key :with [v]})))
 
 (defn- told-deltas [world eid e]
-  (let [text (death-text world e (or (:struck-by e) {:type :generic}))]
+  (let [text (death-text world eid e (or (:struck-by e) {:type :generic}))]
     (if (get-in world [:rules :show-death-messages] true)
       [(out/to eid (out/combat-kill eid text))
        (out/all (out/system-chat text))]

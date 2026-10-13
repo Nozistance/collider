@@ -8,13 +8,14 @@
              :refer [answer entity-name fail name-list say]]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
-            [collider.game.player :as player])
+            [collider.game.player :as player]
+            [collider.game.team :as team])
   (:import (java.util Date)))
 
 (set! *warn-on-reflection* true)
 
 (defn- names-of [world eid s]
-  (name-list (map #(entity-name (nth % 2))
+  (name-list (map #(entity-name world %)
                   (targets/selected world eid s))))
 
 (defn- message-step [world eid ^String text]
@@ -45,7 +46,7 @@
            (update-keys style data/kebab))))
 
 (defn- sender-name [world eid]
-  (entity-name (get-in world [:entities eid])))
+  (entity-name world [eid nil (get-in world [:entities eid])]))
 
 (defn- broadcast [id]
   (fn [world eid [m]]
@@ -54,8 +55,8 @@
           line (decorated id {"sender" who "content" content})]
       [(out/everyone (out/player-chat line))])))
 
-(defn- whispered [who content [id _ e]]
-  (let [to {"target" (entity-name e) "content" content}
+(defn- whispered [world who content [id :as x]]
+  (let [to {"target" (entity-name world x) "content" content}
         from {"sender" (:name who) "content" content}
         line #(out/player-chat (decorated %1 %2))]
     [(out/to (:eid who) (line "msg_command_outgoing" to))
@@ -66,7 +67,22 @@
         who {:eid eid :name (sender-name world eid)}]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
-      (mapcat #(whispered who (message-content world eid m) %) xs))))
+      (mapcat #(whispered world who (message-content world eid m) %) xs))))
+
+(def ^:private team-hint
+  {:hover {:action :show-text :value {:translate "chat.type.team.hover"}}
+   :click {:action :suggest-command :command "/teammsg "}})
+
+(defn- teammsg-deltas [world eid [m]]
+  (let [e (get-in world [:entities eid])]
+    (if-let [t (team/of-entity (:teams world) eid e)]
+      (let [params {"target" (merge (team/shown t) team-hint)
+                    "sender" (sender-name world eid)
+                    "content" (message-content world eid m)}
+            line #(out/player-chat (decorated % params))]
+        [(out/to eid (line "team_msg_command_outgoing"))
+         (out/team-except (:name t) eid (line "team_msg_command_incoming"))])
+      (fail eid "commands.teammsg.failed.noteam"))))
 
 (defn- tellraw-deltas [world eid [s text]]
   (let [xs (targets/player-selected world eid s)]
@@ -74,7 +90,7 @@
       (fail eid "argument.entity.notfound.player")
       (mapv (fn [[id]] (out/to id (out/system-chat text))) xs))))
 
-(defn- name-and-id [[id _ e]]
+(defn- name-and-id [_world [id _ e]]
   {:translate "commands.list.nameAndId"
    :with [(:name e) (str (entity/uuid-of id e))]})
 
@@ -83,7 +99,7 @@
     (let [xs (targets/player-entries world)
           most (get-in world [:config :max-players] 20)]
       (answer (say eid "commands.list.players" (count xs) most
-                   (name-list (map f xs)))))))
+                   (name-list (map #(f world %) xs)))))))
 
 (defn- help-deltas [world eid [text]]
   (let [lv (player/permission-level (get-in world [:entities eid]))
@@ -115,6 +131,7 @@
 (def handlers
   {:say (broadcast "say_command") :me (broadcast "emote_command")
    :msg msg-deltas :tellraw tellraw-deltas :help help-deltas
-   :list (list-deltas #(entity-name (nth % 2)))
+   :teammsg teammsg-deltas
+   :list (list-deltas entity-name)
    :list-uuids (list-deltas name-and-id)
    :version version-deltas})

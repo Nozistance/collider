@@ -9,6 +9,7 @@
             [collider.game.experience :as xp]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
+            [collider.game.team :as team]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]))
@@ -99,17 +100,20 @@
 (defn- tagged? [tag e]
   (if (= "" tag) (empty? (:tags e)) (contains? (:tags e) tag)))
 
-(defn- pred? [[k a inv] e t]
+(defn- team-of [world eid e]
+  (or (:name (team/of-entity (:teams world) eid e)) ""))
+
+(defn- pred? [[k a inv] world eid e]
   (let [f #(not= (boolean inv) (boolean %))]
     (case k
       :alive (alive? e)
       :name (f (= a (when (= :player (:type e)) (:name e))))
       :gamemode (and (= :player (:type e)) (f (= a (:game-mode e))))
-      :team (f (= a ""))
+      :team (f (= a (team-of world eid e)))
       :type (f (= a (:type e)))
       :type-tag (f (type-tagged? a (:type e)))
       :tag (f (tagged? a e))
-      :nbt (f (snbt/compare-nbt a (save-data/saved e t) true))
+      :nbt (f (snbt/compare-nbt a (save-data/saved e (:tick world)) true))
       false)))
 
 (defn xp-of
@@ -151,8 +155,8 @@
                         (+ (double %) (double hi) 1.0))
                pos))))
 
-(defn- selects? [world sel pos box [_ _ e]]
-  (and (every? #(pred? % e (:tick world)) (:preds sel))
+(defn- selects? [world sel pos box [eid _ e]]
+  (and (every? #(pred? % world eid e) (:preds sel))
        (or (nil? (:type sel)) (= (:type sel) (:type e)))
        (or (nil? (:rot-x sel)) (turned? (:rot-x sel) (:pitch e 0.0)))
        (or (nil? (:rot-y sel)) (turned? (:rot-y sel) (:yaw e 0.0)))

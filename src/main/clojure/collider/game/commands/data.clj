@@ -17,28 +17,29 @@
   [^double d]
   (let [i (unchecked-int d)] (if (< d i) (unchecked-dec-int i) i)))
 
-(defn- query [eid e tag]
-  (answer (say eid "commands.data.entity.query" (entity-name e)
+(defn- query [eid nm tag]
+  (answer (say eid "commands.data.entity.query" nm
                (nbt-text/pretty tag))))
 
-(defn- scaled [eid e path scale tag]
+(defn- scaled [eid nm path scale tag]
   (if (number? tag)
-    (answer (say eid "commands.data.entity.get" (:text path) (entity-name e)
+    (answer (say eid "commands.data.entity.get" (:text path) nm
                  (String/format Locale/ROOT "%.2f" (object-array [scale]))
                  (floor (* (double tag) (double scale)))))
     (fail eid "commands.data.get.invalid" (:text path))))
 
-(defn- at-path [eid e path scale tag]
+(defn- at-path [eid nm path scale tag]
   (let [found (nbt-path/tags path tag)]
     (cond (r/error? found) (apply fail eid (:key found) (:args found))
           (next found) (fail eid "commands.data.get.multiple")
-          scale (scaled eid e path scale (first found))
-          :else (query eid e (first found)))))
+          scale (scaled eid nm path scale (first found))
+          :else (query eid nm (first found)))))
 
 (defn- get-entity-deltas [world eid [s path scale]]
-  (if-let [[_ _ e] (first (targets/selected world eid s))]
-    (let [tag (save-data/saved e (:tick world))]
-      (if path (at-path eid e path scale tag) (query eid e tag)))
+  (if-let [[_ _ e :as x] (first (targets/selected world eid s))]
+    (let [tag (save-data/saved e (:tick world))
+          nm (entity-name world x)]
+      (if path (at-path eid nm path scale tag) (query eid nm tag)))
     (fail eid "argument.entity.notfound.entity")))
 
 (def handlers

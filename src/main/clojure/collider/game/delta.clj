@@ -429,6 +429,7 @@
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid]
          [:except {:optional true} Eid]
+         [:to-team {:optional true} :string]
          [:dim {:optional true} [:maybe :keyword]]]
         fields))
 

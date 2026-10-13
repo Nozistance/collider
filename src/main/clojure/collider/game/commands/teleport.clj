@@ -167,11 +167,11 @@
 (defn- coord [x]
   (String/format Locale/ROOT "%f" (object-array [(double x)])))
 
-(defn- pos-report [eid placed pos]
+(defn- pos-report [world eid placed pos]
   (let [at (mapv coord pos)]
     (if (= 1 (count placed))
       (say eid "commands.teleport.success.location.single"
-           (entity-name (nth (first placed) 2)) (at 0) (at 1) (at 2))
+           (entity-name world (first placed)) (at 0) (at 1) (at 2))
       (say eid "commands.teleport.success.location.multiple"
            (count placed) (at 0) (at 1) (at 2)))))
 
@@ -199,28 +199,28 @@
      (fail eid "commands.teleport.invalidPosition")
      :else
      (concat (tp-moves world placed pos (or turn-of own-turn-of) look)
-             (pos-report eid placed pos)))))
+             (pos-report world eid placed pos)))))
 
-(defn- entity-report [eid placed d]
+(defn- entity-report [world eid placed dx]
   (if (= 1 (count placed))
     (say eid "commands.teleport.success.entity.single"
-         (entity-name (nth (first placed) 2)) (entity-name d))
+         (entity-name world (first placed)) (entity-name world dx))
     (say eid "commands.teleport.success.entity.multiple"
-         (count placed) (entity-name d))))
+         (count placed) (entity-name world dx))))
 
-(defn- to-entity [world eid placed dim d]
+(defn- to-entity [world eid placed [_ dim d :as dx]]
   (let [pos (vec (xyz (:pos d))) turn [(:yaw d 0.0) (:pitch d 0.0)]]
     (concat (mapcat #(moved world % dim pos turn :entity) placed)
-            (entity-report eid placed d))))
+            (entity-report world eid placed dx))))
 
 (defn- tp-entity-deltas [world eid placed s]
-  (let [[_ dim d] (first (targets/selected world eid s))]
+  (let [[_ _ d :as dx] (first (targets/selected world eid s))]
     (cond
       (or (nil? d) (empty? placed))
       (fail eid "argument.entity.notfound.entity")
       (not (pos/spawnable? (xyz (:pos d))))
       (fail eid "commands.teleport.invalidPosition")
-      :else (to-entity world eid placed dim d))))
+      :else (to-entity world eid placed dx))))
 
 (defn- tp-deltas [world eid p]
   (tp-at world eid (targets/self world eid) (vec p)))
@@ -316,22 +316,22 @@
         sent [dy (boolean ry) dx (boolean rp)]]
     [ay (pitch-set (max -90.0 (min 90.0 ax))) sent]))
 
-(defn- rotate-report [eid e]
-  (say eid "commands.rotate.success" (entity-name e)))
+(defn- rotate-report [world eid x]
+  (say eid "commands.rotate.success" (entity-name world x)))
 
 (defn- rotate-deltas [world eid [s yaw pitch]]
-  (if-let [[id dim e] (first (targets/selected world eid s))]
+  (if-let [[id dim e :as x] (first (targets/selected world eid s))]
     (let [[ay ax sent] (turned-to world eid e yaw pitch)
           fx (when (= :player (:type e))
                (apply out/player-rotation sent))]
-      (concat (rotated world id dim ay ax fx) (rotate-report eid e)))
+      (concat (rotated world id dim ay ax fx) (rotate-report world eid x)))
     (fail eid "argument.entity.notfound.entity")))
 
-(defn- faced [world eid [id dim e] pos fx]
+(defn- faced [world eid [id dim e :as x] pos fx]
   (let [[yaw pitch] (look-angles (xyz (:pos e)) pos)]
     (concat (rotated world id dim yaw pitch
                      (when (= :player (:type e)) fx))
-            (rotate-report eid e))))
+            (rotate-report world eid x))))
 
 (defn- facing-deltas [world eid [s x y z]]
   (if-let [x0 (first (targets/selected world eid s))]
@@ -358,20 +358,20 @@
                      own-rotation)
               (targets/in-level world tdim ds)))))
 
-(defn- spectate-report [eid t]
-  (let [k (if t "started" "stopped")
+(defn- spectate-report [world eid target]
+  (let [k (if target "started" "stopped")
         msg {:translate (str "commands.spectate.success." k)
-             :with (if t [(entity-name t)] [])}]
+             :with (if target [(entity-name world target)] [])}]
     (answer [(out/to eid (out/system-chat msg))])))
 
 (defn- spectated
-  [world eid [id _ e :as x] [tid _ t :as target]]
+  [world eid [id _ e :as x] [tid :as target]]
   (cond
     (= id tid) (fail eid "commands.spectate.self")
     (not (game-mode/spectator? e))
-    (fail eid "commands.spectate.not_spectator" (entity-name e))
+    (fail eid "commands.spectate.not_spectator" (entity-name world x))
     :else (concat (camera-set world x target)
-                  (spectate-report eid t))))
+                  (spectate-report world eid target))))
 
 (defn- spectate-deltas [world eid [target player]]
   (let [x (first (targets/player-selected world eid player))

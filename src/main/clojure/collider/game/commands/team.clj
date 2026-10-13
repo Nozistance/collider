@@ -55,28 +55,10 @@
                       :with [(team/shown t) (count ps)
                              (name-list (map member (sort ps)))]}))))))
 
-(defn- scoreboard-name [[id _ e]]
-  (if (= :player (:type e)) (:name e) (str (entity/uuid-of id e))))
-
-(defn- team-name [teams nm e]
-  (let [base (entity/display-name e)
-        t (team/of-member teams nm)]
-    (if-not t
-      base
-      (merge (cond-> {:text "" :extra [(:prefix t)
-                                       (if (= :player (:type e))
-                                         (:name e)
-                                         (dissoc base :hover :insertion))
-                                       (:suffix t)]}
-               (:color t) (assoc :color (team/color-name t)))
-             (select-keys base [:hover :insertion :click])))))
-
-(defn- of-entity [world x]
-  (let [nm (scoreboard-name x)
-        shown (team-name (:teams world) nm (nth x 2))]
-    {:name nm :shown (if (map? shown)
-                       (assoc shown :hover {:action :show-text :value nm})
-                       shown)}))
+(defn- of-entity [world [id _ e]]
+  (let [nm (entity/scoreboard-name id e)
+        shown (entity/display-name id e (team/of-entity (:teams world) id e))]
+    {:name nm :shown (assoc shown :hover {:action :show-text :value nm})}))
 
 (defn- uuid-of [^String s]
   (try (UUID/fromString s) (catch IllegalArgumentException _ nil)))

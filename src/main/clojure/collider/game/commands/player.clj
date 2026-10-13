@@ -40,10 +40,10 @@
                   [[:spawn-entity (item/dropped lv id left true 0)]])]
     (targets/in-level world dim (concat (map set changes) spilled))))
 
-(defn- given [world eid [_ _ e :as x] proto n]
+(defn- given [world eid x proto n]
   (concat (given-deltas world x proto n)
           (say eid "commands.give.success.single"
-               n (item-name (:item proto)) (entity-name e))))
+               n (item-name (:item proto)) (entity-name world x))))
 
 (defn- give-limit [proto]
   (* 100 (long (or (stack/component proto :max-stack-size) 1))))
@@ -99,11 +99,11 @@
     [:merge-entity id {:carried stack}]
     [:set-slot id slot stack]))
 
-(defn- clear-report [eid xs n limit]
+(defn- clear-report [world eid xs n limit]
   (let [kind (if (zero? (long limit)) "test" "success")]
     (if (= 1 (count xs))
       (say eid (str "commands.clear." kind ".single") n
-           (entity-name (nth (first xs) 2)))
+           (entity-name world (first xs)))
       (say eid (str "commands.clear." kind ".multiple") n
            (count xs)))))
 
@@ -127,7 +127,7 @@
       (empty? xs) (fail eid "argument.entity.notfound.player")
       (zero? (long n)) (clear-failure eid xs)
       :else (concat (mapcat #(cleared-deltas world %) rs)
-                    (clear-report eid xs n limit)))))
+                    (clear-report world eid xs n limit)))))
 
 (defn- chimes [e acc]
   (for [vol (:chimes acc)]
@@ -141,11 +141,11 @@
 
 (defn- xp-unit [unit] (or unit "points"))
 
-(defn- xp-report [eid xs op unit amount]
+(defn- xp-report [world eid xs op unit amount]
   (let [base (str "commands.experience." op "." unit ".success.")]
     (if (= 1 (count xs))
       (say eid (str base "single") amount
-           (entity-name (nth (first xs) 2)))
+           (entity-name world (first xs)))
       (say eid (str base "multiple") amount (count xs)))))
 
 (defn- xp-add-deltas [world eid [s amount unit]]
@@ -156,7 +156,7 @@
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
       (concat (mapcat #(xp-changed world % g) xs)
-              (xp-report eid xs "add" unit amount)))))
+              (xp-report world eid xs "add" unit amount)))))
 
 (defn- settable? [world unit amount [_ _ e]]
   (or (= "levels" unit)
@@ -172,14 +172,14 @@
       (empty? xs) (fail eid "argument.entity.notfound.player")
       (empty? ok) (fail eid "commands.experience.set.points.invalid")
       :else (concat (mapcat #(xp-changed world % g) ok)
-                    (xp-report eid xs "set" unit amount)))))
+                    (xp-report world eid xs "set" unit amount)))))
 
 (defn- xp-query-deltas [world eid [s unit]]
-  (if-let [[_ _ e] (first (targets/player-selected world eid s))]
+  (if-let [[_ _ e :as x] (first (targets/player-selected world eid s))]
     (let [acc (targets/xp-of world e)
           n (if (= "levels" unit) (:level acc) (xp/points acc))]
       (say eid (str "commands.experience.query." unit)
-           (entity-name e) n))
+           (entity-name world x) n))
     (fail eid "argument.entity.notfound.player")))
 
 (defn- effect-title [k]
@@ -198,10 +198,10 @@
       (when (:landed? acc)
         (or (targets/in-level world dim (account/deltas acc e)) [])))))
 
-(defn- effect-report [eid xs n key-of with]
+(defn- effect-report [world eid xs n key-of with]
   (if (= 1 (count xs))
     (apply say eid (key-of "single")
-           (with (entity-name (nth (first xs) 2))))
+           (with (entity-name world (first xs))))
     (apply say eid (key-of "multiple") (with n))))
 
 (defn- effect-run [world eid xs f fail-key key-of with]
@@ -209,7 +209,7 @@
     (if (empty? dss)
       (fail eid fail-key)
       (concat (apply concat dss)
-              (effect-report eid xs (count xs) key-of with)))))
+              (effect-report world eid xs (count xs) key-of with)))))
 
 (defn- effect-give-deltas [world eid [s k secs amp hide]]
   (let [xs (targets/selected world eid s)
@@ -248,12 +248,12 @@
                    :with [(mode-name mode)]}))]))
 
 (defn- mode-report
-  [world eid [id _ e] mode]
+  [world eid [id :as x] mode]
   (if (= id eid)
     (say eid "commands.gamemode.success.self" (mode-name mode))
     (concat (told-of-mode world id mode)
             (say eid "commands.gamemode.success.other"
-                 (entity-name e) (mode-name mode)))))
+                 (entity-name world x) (mode-name mode)))))
 
 (defn mode-change
   "Returns the deltas that put the selected player x in game mode
@@ -275,10 +275,10 @@
       (fail eid "argument.entity.notfound.player")
       (mapcat #(mode-set world eid mode %) xs))))
 
-(defn- spawn-report [eid xs with]
+(defn- spawn-report [world eid xs with]
   (if (= 1 (count xs))
     (say* eid "commands.spawnpoint.success.single"
-          (conj with (entity-name (nth (first xs) 2))))
+          (conj with (entity-name world (first xs))))
     (say* eid "commands.spawnpoint.success.multiple"
           (conj with (count xs)))))
 
@@ -291,7 +291,7 @@
               (targets/in-level world d [[:merge-entity id forced]]))
         with (conj (mapv str at) (str yaw) (str pitch)
                    (dimension-id dim))]
-    (concat (mapcat set xs) (spawn-report eid xs with))))
+    (concat (mapcat set xs) (spawn-report world eid xs with))))
 
 (defn- spawnpoint-deltas [world eid [s x y z yaw pitch]]
   (let [xs (targets/player-selected world eid s)]
@@ -327,10 +327,10 @@
         xs (players-or-self world eid s)]
     (filter #(= dim (nth % 1)) xs)))
 
-(defn- sound-report [eid played id]
+(defn- sound-report [world eid played id]
   (if (= 1 (count played))
     (say eid "commands.playsound.success.single" id
-         (entity-name (nth (first played) 2)))
+         (entity-name world (first played)))
     (say eid "commands.playsound.success.multiple" id
          (count played))))
 
@@ -340,7 +340,7 @@
     (fail eid "argument.entity.notfound.player")
     (empty? played) (fail eid "commands.playsound.failed")
     :else (concat (map second played)
-                  (sound-report eid (map first played) id))))
+                  (sound-report world eid (map first played) id))))
 
 (defn- player-hears [at volume least sound]
   (fn [[pid _ e :as x]]
@@ -419,9 +419,9 @@
       (concat (map (fn [[pid]] (out/to pid m)) xs)
               (apply say eid (stop-report src id))))))
 
-(defn- title-report [eid xs key]
+(defn- title-report [world eid xs key]
   (if (= 1 (count xs))
-    (say eid (str key ".single") (entity-name (nth (first xs) 2)))
+    (say eid (str key ".single") (entity-name world (first xs)))
     (say eid (str key ".multiple") (count xs))))
 
 (defn- titled [key fx]
@@ -431,7 +431,7 @@
       (if (empty? xs)
         (fail eid "argument.entity.notfound.player")
         (concat (map (fn [[id]] (out/to id m)) xs)
-                (title-report eid xs key))))))
+                (title-report world eid xs key))))))
 
 (defn- shown [kind]
   (titled (str "commands.title.show." (name kind))

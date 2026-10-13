@@ -302,32 +302,43 @@
   [src]
   (and (some? (:cause src)) (living? (:attacker src))))
 
-(defn display-name
-  "Returns the name of entity e as chat shows it."
-  [e]
-  (let [k (str "entity.minecraft." (data/snake (:type e)))
-        nm (cond (= :player (:type e)) (:name e)
-                 (:custom-name e) (:custom-name e)
-                 :else {:translate k})
-        hover {:action :show-entity :id (:type e) :uuid (:uuid e)
-               :name nm}]
-    (cond
-      (nil? (:uuid e)) nm
-      (= :player (:type e))
-      {:text nm :insertion nm :hover hover
-       :click {:action :suggest-command
-               :command (str "/tell " nm " ")}}
-      :else (assoc nm :hover hover :insertion (str (:uuid e))))))
+(defn scoreboard-name
+  "Returns the name entity eid has on the scoreboard, its own name for
+  a player and its uuid for anything else."
+  [eid e]
+  (if (= :player (:type e)) (:name e) (str (uuid-of eid e))))
 
-(defn- yellow-line [key e]
-  {:translate key :with [(display-name e)] :color "yellow"})
+(defn display-name
+  "Returns the name of entity eid as chat shows it, in the style of
+  team t when it is in one."
+  ([eid e] (display-name eid e nil))
+  ([eid e t]
+   (let [k (str "entity.minecraft." (data/snake (:type e)))
+         player? (= :player (:type e))
+         nm (cond player? (:name e)
+                  (:custom-name e) (:custom-name e)
+                  :else {:translate k})
+         uuid (uuid-of eid e)
+         hover {:action :show-entity :id (:type e) :uuid uuid :name nm}
+         base (if t
+                (cond-> {:text "" :extra [(:prefix t) nm (:suffix t)]}
+                  (:color t) (assoc :color (data/snake (:color t))))
+                (if (map? nm) nm {:text nm}))]
+     (if player?
+       (assoc base :insertion nm :hover hover
+              :click {:action :suggest-command
+                      :command (str "/tell " nm " ")})
+       (assoc base :hover hover :insertion (str uuid))))))
+
+(defn- yellow-line [key shown]
+  {:translate key :with [shown] :color "yellow"})
 
 (defn joined-text
-  "Returns the line chat shows when player e joins."
-  [e]
-  (yellow-line "multiplayer.player.joined" e))
+  "Returns the line chat shows when a player shown so joins."
+  [shown]
+  (yellow-line "multiplayer.player.joined" shown))
 
 (defn left-text
-  "Returns the line chat shows when player e leaves."
-  [e]
-  (yellow-line "multiplayer.player.left" e))
+  "Returns the line chat shows when a player shown so leaves."
+  [shown]
+  (yellow-line "multiplayer.player.left" shown))

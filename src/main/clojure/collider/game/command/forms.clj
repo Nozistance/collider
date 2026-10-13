@@ -19,7 +19,7 @@
 
 (def ^:private open-commands
   "The commands every player may run."
-  #{"me" "msg" "tell" "w" "list" "help"})
+  #{"me" "msg" "tell" "w" "list" "help" "teammsg" "tm"})
 
 (defn- level-of ^long [nm]
   (if (open-commands nm) 0 gamemaster))
@@ -284,6 +284,8 @@
     [[:action [:message {}]]] [:world :me]]
    [:msg "whisper to players"
     [players-arg [:message [:message {}]]] [:world :msg]]
+   [:teammsg "send a message to your team"
+    [[:message [:message {}]]] [:world :teammsg]]
    [:tellraw "show a text component to players"
     [players-arg [:message [:component {}]]] [:world :tellraw]]
    [:help "show how to use the commands"
@@ -456,4 +458,5 @@
 
 (def aliases
   "The other names of commands."
-  {"tp" "teleport" "xp" "experience" "tell" "msg" "w" "msg"})
+  {"tp" "teleport" "xp" "experience" "tell" "msg" "w" "msg"
+   "tm" "teammsg"})
