@@ -5,6 +5,7 @@
             [collider.game.item :as item]
             [collider.random :as random]
             [collider.game.entity :as entity]
+            [collider.game.entity.sections :as sections]
             [collider.game.entity.shove :as shove]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
@@ -21,7 +22,8 @@
             [collider.game.turn.overlay :as overlay]
             [collider.num :as num]
             [collider.parallel :as par])
-  (:import (collider.world Move)))
+  (:import (clojure.lang MapEntry)
+           (collider.world Move)))
 
 (set! *warn-on-reflection* true)
 
@@ -69,9 +71,12 @@
     (vec (concat (item/thrown-deltas world eid [stack])
                  (when take-from (taken world eid take-from))))))
 
-(defn- item-half ^double [] (size/half :item))
+(def ^:private ^:table item-size
+  (delay [(size/half :item) (size/height :item)]))
 
-(defn- item-height ^double [] (size/height :item))
+(defn- item-half ^double [] (double (nth @item-size 0)))
+
+(defn- item-height ^double [] (double (nth @item-size 1)))
 
 (def ^:private ^:const air-drag (double (float 0.98)))
 
@@ -393,15 +398,25 @@
             :else (let [[es out done?] (tried es gone fresh out i j)]
                     (if done? [es out] (recur (rest js) es out)))))))
 
-(defn- in-pickup-range? [pe ie]
-  (let [pp (:pos pe) pi (:pos ie)
-        [half h] (entity/box pe)
-        reach (+ (double half) (item-half) pickup-inflate)
-        dy (- (double (v/y pi)) (double (v/y pp)))]
-    (and (near? (v/x pi) (v/x pp) reach)
-         (near? (v/z pi) (v/z pp) reach)
-         (< (- (+ (item-height) pickup-inflate-y)) dy
-            (+ (double h) pickup-inflate-y)))))
+(defn- pickup-box
+  "Returns the box from lo to hi the player pe takes items up in,
+  its own box widened by a block and half a block up and down."
+  [pe]
+  (let [p (:pos pe) [half h] (entity/box pe)
+        half (double half)]
+    [(v/v3 (- (v/x p) half pickup-inflate)
+           (- (v/y p) pickup-inflate-y)
+           (- (v/z p) half pickup-inflate))
+     (v/v3 (+ (v/x p) half pickup-inflate)
+           (+ (v/y p) (double h) pickup-inflate-y)
+           (+ (v/z p) half pickup-inflate))]))
+
+(defn- in-box? [lo hi ie]
+  (let [p (:pos ie) half (item-half)
+        x (v/x p) y (v/y p) z (v/z p)]
+    (and (< (v/x lo) (+ x half)) (> (v/x hi) (- x half))
+         (< (v/y lo) (+ y (item-height))) (> (v/y hi) y)
+         (< (v/z lo) (+ z half)) (> (v/z hi) (- z half)))))
 
 (defn- collect-deltas [ieid peid changes remaining]
   (concat
@@ -411,30 +426,43 @@
       [(out/all (out/collect ieid peid))
        [:remove-entity ieid]])))
 
-(defn- pickup-one [[peid pe] [out inv :as acc] [ieid ie]]
-  (if (in-pickup-range? pe ie)
-    (let [[changes remaining] (inventory/add-stack inv (:stack ie))]
-      (if (seq changes)
-        [(into out (collect-deltas ieid peid changes remaining))
-         (into inv changes)]
-        acc))
-    acc))
+(defn- pickup-one [peid [out inv :as acc] [ieid ie]]
+  (let [[changes remaining] (inventory/add-stack inv (:stack ie))]
+    (if (seq changes)
+      [(into out (collect-deltas ieid peid changes remaining))
+       (into inv changes)]
+      acc)))
 
-(defn- ready? [[_ ie]]
+(defn- ready? [ie]
   (zero? (long (or (:pickup-delay ie) 0))))
 
 (defn- takes? [pe]
   (and (entity/alive? pe) (not (game-mode/spectator? pe))))
 
+(defn- touched
+  "Returns the items player pe can take up, in the order the game
+  visits them."
+  [world pe]
+  (let [es (:entities world) active (areas/active-chunks world)
+        [lo hi] (pickup-box pe)
+        taken? (fn [[_ e]]
+                 (and (identical? :item (:type e)) (ready? e)
+                      (in-box? lo hi e)
+                      (areas/active-at? active (:pos e))))
+        entry (fn [eid]
+                (when-let [e (get es eid)] (MapEntry/create eid e)))]
+    (into [] (comp (keep entry) (filter taken?))
+          (sections/within (sections/index world) lo hi))))
+
 (defn player-pickups
   "Returns the deltas of the player entry p taking up the items it
   touches, one after another."
-  [world p]
-  (when (takes? (val p))
-    (let [items (filterv ready? (areas/active-of-types world [:item]))
-          take (fn [acc item] (pickup-one p acc item))]
+  [world [peid pe]]
+  (when (takes? pe)
+    (let [items (touched world pe)
+          take (fn [acc item] (pickup-one peid acc item))]
       (when (seq items)
-        (first (reduce take [[] (:inventory (val p))] items))))))
+        (first (reduce take [[] (:inventory pe)] items))))))
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item (overlay/seen world eid) eid e)]
@@ -448,20 +476,23 @@
     (nth steps i)))
 
 (defn- due? [e from]
-  (and (merge-ready? e) (merge-due? e from)))
+  (and (merge-due? e from) (merge-ready? e)))
 
 (defn- item-turn
   "Returns [es index out] after the turn of item i of es. The item
-  steps and merges. An item gone before its turn does not step."
+  steps and merges. An item gone before its turn does not step. The
+  index of the items by cell is made at the first merge, from the
+  items as they stand at that turn, and kept up from there."
   [world steps [gone fresh] [es index out] i]
   (let [[eid e from d] (turn-of world steps fresh es i)
         out (conj! out d)]
     (if (nil? e)
       (do (aset ^booleans gone (long i) true) [es index out])
       (let [es (assoc es i [eid e])
-            index (cell-moved index i from (:pos e))]
+            index (some-> index (cell-moved i from (:pos e)))]
         (if (due? e from)
-          (let [[es out] (merged index es gone fresh out i)]
+          (let [index (or index (transient (merge-index es)))
+                [es out] (merged index es gone fresh out i)]
             [es index out])
           [es index out])))))
 
@@ -469,8 +500,7 @@
   [world items steps]
   (let [n (count items) flags [(boolean-array n) (boolean-array n)]
         ^booleans gone (nth flags 0)]
-    (loop [i 0 acc [items (transient (merge-index items))
-                    (transient [])]]
+    (loop [i 0 acc [items nil (transient [])]]
       (cond (= i n) (persistent! (nth acc 2))
             (aget gone i) (recur (inc i) acc)
             :else
