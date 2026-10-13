@@ -32,10 +32,9 @@
         [mobs rode] (mob/turns world d ds)
         ds (deltas/merge ds mobs)
         [world thrown] (thrown/turns world ds rode)
-        ds (deltas/merge ds (deltas/of-vec thrown))]
-    (-> ds
-        (deltas/merge (deltas/of-vec (tnt/turns world ds)))
-        (deltas/merge (deltas/of-vec (lightning/turns world))))))
+        ds (deltas/merge ds (deltas/of-vec thrown))
+        ds (deltas/merge ds (deltas/of-vec (tnt/turns world ds)))]
+    (deltas/merge ds (deltas/of-vec (lightning/turns world ds)))))
 
 (defn entities
   "Returns the deltas of the entities of the level in one tick, in

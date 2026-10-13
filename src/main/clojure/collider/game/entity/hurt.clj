@@ -536,13 +536,20 @@
     (pos? (liquid/fluid-height
             (:chunks world) (:pos e) half height :water))))
 
+(defn- burnt-down
+  "Returns the fire left after the base tick, the flag it shows."
+  ^long [^long fire wet?]
+  (cond (not (pos? fire)) fire
+        wet? 0
+        :else (dec fire)))
+
 (defn- item-fire-deltas [world eid e ^long flags]
   (let [fire (long (or (:fire e) 0))
         touched? (or (pos? fire) (pos? flags))
         wet? (boolean (and touched? (item-wet? world e)))
         lava? (pos? (bit-and flags lava-bit))
         ignite (fn [d s] (ignite-deltas eid fire wet? d s nil))]
-    (concat (burning-flag eid e fire)
+    (concat (burning-flag eid e (burnt-down fire wet?))
             (burn-tick-deltas eid fire wet? lava?)
             (when (pos? (bit-and flags fire-bit))
               (ignite (fire-damage flags) fire-seconds))

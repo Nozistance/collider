@@ -1,7 +1,9 @@
 (ns collider.game.turn.lightning
   "The turn of a lightning bolt. It sets fire, cleans copper and hits
   the bodies around it while it flashes."
-  (:require [collider.game.areas :as areas]
+  (:require [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
+            [collider.game.deltas :as deltas]
             [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
@@ -151,7 +153,9 @@
 
 (defn turns
   "Returns the deltas of every lightning bolt of level world in one
-  tick."
-  [world]
-  (mapcat #(turn world %)
-          (areas/active-of-types world [:lightning-bolt])))
+  tick, after the turns ds of the other entities. A bolt sees the
+  bodies as their turns left them."
+  [world ds]
+  (when-let [bolts (seq (areas/active-of-types world [:lightning-bolt]))]
+    (let [seen (apply/entities world (deltas/as-vec ds))]
+      (mapcat #(turn seen %) bolts))))
