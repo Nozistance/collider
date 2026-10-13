@@ -236,7 +236,6 @@
    {:scope :input
     :apply (fn [w [_ eid]]
              (level/update-entity w eid dissoc :loaded-at))}
-   :respawn {:scope :input :apply player/respawn}
    :keepalive-echo {:scope :input :apply player/keepalive-echo}
    :fx
    {:scope :out

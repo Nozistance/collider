@@ -77,6 +77,14 @@
 (defn- here? [world [_ req]]
   (= (:dim world :overworld) (:dim req :overworld)))
 
+(defn arrival
+  "Returns the deltas that place player eid of request req in level
+  world when its chunks are loaded, or that load them. A request of
+  another level gives nil."
+  [world eid req]
+  (when (here? world [eid req])
+    (second (settle [world []] [eid req]))))
+
 (defn placing
   "Places the players of this level whose spawn chunks are loaded.
   They are the joining and respawning ones. The chunks the others wait

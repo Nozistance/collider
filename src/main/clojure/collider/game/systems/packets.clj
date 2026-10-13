@@ -16,6 +16,7 @@
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.players :as players]
+            [collider.game.systems.spawning :as spawning]
             [collider.game.turn.landing :as landing]))
 
 (set! *warn-on-reflection* true)
@@ -53,8 +54,18 @@
             (when (seq heard) [[:heard heard]])
             (when-let [m (:moves heard)] (landing/moved-deltas w' m)))))
 
+(defn- respawned [w [_ [_ eid :as ev]]]
+  (let [w' (player/respawn w ev)
+        req (get-in w' [:spawning eid])]
+    (when-not (identical? w w')
+      (concat [[:spawn-progress eid req]]
+              (changed eid (get-in w [:entities eid])
+                       (get-in w' [:entities eid]))
+              (spawning/arrival w' eid req)))))
+
 (def ^:private handlers
   [[(set (keys player-input)) played]
+   [#{:respawn} respawned]
    [#{:spectate} spectated]
    [#{:dig :place :use-item :sign-update} blocks/edit-deltas]
    [#{:client-settings} (own player/settings-deltas)]
