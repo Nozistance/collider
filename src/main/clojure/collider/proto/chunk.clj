@@ -8,7 +8,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome])
-  (:import (collider.world Section)))
+  (:import (collider.world Chunk Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -181,15 +181,19 @@
     (or (not (chunk/sky-lit? s)) (dark-bottom? s))
     false))
 
+(defn- below? [^long si] (= si Chunk/BELOW))
+
 (defn- sky-empty? [chunk ^long si]
   (if-let [s (chunk/chunk-section chunk si)]
     (not (chunk/sky-lit? s))
-    (dark-inherited? chunk si)))
+    (if (below? si)
+      (nil? (chunk/edge-light chunk si 1))
+      (dark-inherited? chunk si))))
 
 (defn- block-empty? [chunk ^long si]
   (if-let [s (chunk/chunk-section chunk si)]
     (not (chunk/block-lit? s))
-    true))
+    (or (not (chunk/edge? si)) (nil? (chunk/edge-light chunk si 0)))))
 
 (defn- empty-mask ^long [chunk ^long lo ^long layers dark?]
   (loop [li 0 m 0]
@@ -211,13 +215,19 @@
   (write-mask! buf blk))
 
 (defn- write-sky-layer! [buf chunk ^long si]
-  (let [s (or (chunk/chunk-section chunk si)
-                (chunk/new-section chunk si))]
-    (buf/write-bytes! buf (or (.skyLightBytes ^Section s) dark))))
+  (buf/write-bytes!
+    buf (if (below? si)
+          (chunk/edge-light chunk si 1)
+          (let [s (or (chunk/chunk-section chunk si)
+                      (chunk/new-section chunk si))]
+            (or (.skyLightBytes ^Section s) dark)))))
 
 (defn- write-block-layer! [buf chunk ^long si]
-  (let [^Section s (chunk/chunk-section chunk si)]
-    (buf/write-bytes! buf (or (.blockLightBytes s) dark))))
+  (buf/write-bytes!
+    buf (if (chunk/edge? si)
+          (chunk/edge-light chunk si 0)
+          (or (.blockLightBytes ^Section (chunk/chunk-section chunk si))
+              dark))))
 
 (defn- write-light-layers! [buf chunk lo m write-layer!]
   (let [lo (long lo) m (long m)]

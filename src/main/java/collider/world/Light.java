@@ -54,14 +54,23 @@ public final class Light {
         this.increases = increases;
     }
 
+    private static final long LOW = Chunk.MIN_Y - 16;
+
     private static boolean inRange(long y) {
         return Chunk.MIN_Y <= y && y <= Chunk.MAX_Y;
+    }
+
+    /// Returns true when channel `ch` keeps light at `y`: the world
+    /// and the sections below and above it, but the sky above it is
+    /// always full.
+    private static boolean lit(long ch, long y) {
+        return LOW <= y && y <= (ch == SKY ? Chunk.MAX_Y : Chunk.MAX_Y + 16);
     }
 
     private static long pack(long x, long y, long z, long l) {
         return ((x + COORD_BIAS) << 38)
                 | ((z + COORD_BIAS) << 14)
-                | ((y - Chunk.MIN_Y + 1) << 4)
+                | ((y - LOW + 1) << 4)
                 | l;
     }
 
@@ -74,7 +83,7 @@ public final class Light {
     }
 
     private static long py(long e) {
-        return Chunk.MIN_Y + (((e >> 4) & 0x3FF) - 1);
+        return LOW + (((e >> 4) & 0x3FF) - 1);
     }
 
     private static int idx(long x, long y, long z) {
@@ -87,7 +96,7 @@ public final class Light {
 
     private static long key(long x, long y, long z, long ch) {
         long id = ((x >> 4) & 0xFFFFFFFFL) << 32 | ((z >> 4) & 0xFFFFFFFFL);
-        return (id << 6) | (sectionIndex(y) << 1) | ch;
+        return (id << 6) | ((sectionIndex(y) + 1) << 1) | ch;
     }
 
     private static Section section(ChunkIndex chunks, long x, long y, long z) {
@@ -108,11 +117,20 @@ public final class Light {
         return ch == SKY && y > Chunk.MAX_Y ? 15 : 0;
     }
 
+    private static byte[] edge(ChunkIndex chunks, long ch, long x, long y, long z) {
+        Chunk c = Chunk.at(chunks, (int) (x >> 4), (int) (z >> 4));
+        return c.edgeLight((int) sectionIndex(y), (int) ch);
+    }
+
     /// Returns the level of channel `ch` stored at `x`, `y`, `z` in
     /// `chunks`. Sky light is full above the world, and a missing
     /// section takes the sky light from above.
     public static long stored(ChunkIndex chunks, long ch, long x, long y, long z) {
-        if (!inRange(y)) return outside(ch, y);
+        if (!lit(ch, y)) return outside(ch, y);
+        if (!inRange(y)) {
+            byte[] a = edge(chunks, ch, x, y, z);
+            return a == null ? 0 : Section.nibble(a, idx(x, y, z));
+        }
         Section s = section(chunks, x, y, z);
         if (s != null) {
             int i = idx(x, y, z);
@@ -150,7 +168,7 @@ public final class Light {
             }
             top = b;
         }
-        return Chunk.MIN_Y;
+        return LOW;
     }
 
     /// Returns `chunks` relit after the changes `[pos old new]`, block
@@ -174,12 +192,16 @@ public final class Light {
             Chunk c = (Chunk) chunks.get(id);
             for (; i >= 0 && (ks[i] >> 6) == id; i--) {
                 if (c == null) continue;
-                int si = (int) ((ks[i] >> 1) & 31);
+                int si = (int) ((ks[i] >> 1) & 31) - 1;
+                byte[] a = cache.get(ks[i]);
+                int lch = (int) (ks[i] & 1);
+                if (si == Chunk.BELOW || si == Chunk.ABOVE) {
+                    c = c.withEdgeLight(si, lch, a);
+                    continue;
+                }
                 Section s = c.section(si);
                 if (s == null) s = c.fresh(si);
-                byte[] a = cache.get(ks[i]);
-                boolean skyLit = (ks[i] & 1) == SKY;
-                c = c.with(si, skyLit ? s.withSkyLight(a) : s.withBlockLight(a));
+                c = c.with(si, lch == SKY ? s.withSkyLight(a) : s.withBlockLight(a));
             }
             if (c != null) {
                 ids[n] = id;
@@ -201,7 +223,8 @@ public final class Light {
             long old = nth(c, 1), now = nth(c, 2);
             if (!relightNeeded(t, old, now)) continue;
             Object p = RT.nth(c, 0);
-            cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2), Block.emission(t, now));
+            long x = nth(p, 0), y = nth(p, 1), z = nth(p, 2);
+            cells[n++] = pack(x, y, z, Block.emission(t, block(chunks, x, y, z)));
         }
         if (n == 0) return null;
         Scratch<byte[]> cache = new Scratch<>();
@@ -254,7 +277,7 @@ public final class Light {
             long x = px(ps[a]), z = pz(ps[a]);
             long src = skySource(chunks, x, z, t);
             long lo = src, hi = src;
-            while (inRange(lo - 1) && skyFull(chunks, x, lo - 1, z)) lo--;
+            while (lit(SKY, lo - 1) && skyFull(chunks, x, lo - 1, z)) lo--;
             while (hi <= Chunk.MAX_Y && !skyFull(chunks, x, hi, z)) hi++;
             int need = m + (int) (hi - lo) + (b - a);
             if (need > out.length) {
@@ -287,12 +310,16 @@ public final class Light {
     }
 
     private long get(long x, long y, long z) {
-        if (!inRange(y)) return outside(ch, y);
+        if (!lit(ch, y)) return outside(ch, y);
         byte[] a = cached(key(x, y, z, ch));
         return a != null ? Section.nibble(a, idx(x, y, z)) : stored(chunks, ch, x, y, z);
     }
 
     private byte[] fresh(long x, long y, long z) {
+        if (!inRange(y)) {
+            byte[] a = edge(chunks, ch, x, y, z);
+            return a == null ? new byte[2048] : a.clone();
+        }
         Section s = section(chunks, x, y, z);
         if (s == null) {
             Chunk c = Chunk.at(chunks, (int) (x >> 4), (int) (z >> 4));
@@ -302,7 +329,7 @@ public final class Light {
     }
 
     private boolean set(long x, long y, long z, long v) {
-        if (!inRange(y)) return false;
+        if (!lit(ch, y)) return false;
         long k = key(x, y, z, ch);
         byte[] a = cached(k);
         if (a == null) {
@@ -377,7 +404,7 @@ public final class Light {
     }
 
     private void spread(long from, long nx, long ny, long nz, long l, int d) {
-        if (!inRange(ny)) return;
+        if (!lit(ch, ny)) return;
         long to = block(chunks, nx, ny, nz);
         long cand = l - Math.max(1, Block.dampening(t, to));
         if (cand > 0
