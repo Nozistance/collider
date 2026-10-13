@@ -224,10 +224,13 @@
 
 (defn waypoint
   "Returns the effect that puts op (:track, :update or :untrack) on
-  the point of uuid in the locator bar. Kind is :block, :chunk or
-  :azimuth, with at a block, a chunk or an angle."
-  [op uuid kind at]
-  {:msg :waypoint :op op :uuid uuid :kind kind :at at})
+  the point of uuid in the locator bar, coloured color when given.
+  Kind is :block, :chunk or :azimuth, with at a block, a chunk or an
+  angle."
+  ([op uuid kind at] (waypoint op uuid kind at nil))
+  ([op uuid kind at color]
+   (cond-> {:msg :waypoint :op op :uuid uuid :kind kind :at at}
+     color (assoc :color color))))
 
 (defn player-chat
   "Returns the effect that shows a line a player said.

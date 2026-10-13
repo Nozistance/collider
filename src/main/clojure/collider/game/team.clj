@@ -11,6 +11,20 @@
    "gold" "gray" "dark_gray" "blue" "green" "aqua" "red" "light_purple"
    "yellow" "white"])
 
+(def ^:private color-values
+  [0 170 43520 43690 11141120 11141290 16755200 11184810 5592405 5592575
+   5635925 5636095 16733525 16733695 16777045 16777215])
+
+(defn waypoint-color
+  "Returns the colour the locator bar shows a member of team t in, or
+  nil when t has none. Black shows as dark grey."
+  [t]
+  (when-let [c (:color t)]
+    (if (= :black c)
+      -13619152
+      (nth color-values (.indexOf ^java.util.List color-names
+                                  (data/snake c))))))
+
 (defn made
   "Returns a new team of name, shown as display."
   [name display]

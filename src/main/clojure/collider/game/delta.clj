@@ -327,7 +327,7 @@
                [:anchor [:maybe [:enum :feet :eyes]]]]
      :waypoint [[:op [:enum :track :update :untrack]] [:uuid :uuid]
                 [:kind [:maybe [:enum :block :chunk :azimuth]]]
-                [:at :any]]
+                [:at :any] [:color {:optional true} [:maybe :int]]]
      :named-sound [[:id :string] [:source :string] [:pos Vec3]
                    [:volume :double] [:pitch :double] [:seed :int]]
      :stop-sound [[:id [:maybe :string]] [:source [:maybe :string]]]

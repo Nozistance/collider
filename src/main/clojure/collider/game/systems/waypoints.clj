@@ -10,6 +10,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.team :as team]
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
@@ -104,13 +105,16 @@
     (> (abs (num/f32 (- (double at') (double at)))) turn)
     (not= at at')))
 
-(defn- sent [st rid op uuid kind at]
-  (update st :out conj (out/to rid (out/waypoint op uuid kind at))))
+(defn- sent [st rid op uuid kind at color]
+  (update st :out conj (out/to rid (out/waypoint op uuid kind at color))))
+
+(defn- color-of [world sid s]
+  (team/waypoint-color (team/of-entity (:teams world) sid s)))
 
 (defn- unlinked [st rid sid]
   (if-let [c (get-in st [:links rid sid])]
     (-> (update-in st [:links rid] dissoc sid)
-        (sent rid :untrack (:uuid c) nil nil))
+        (sent rid :untrack (:uuid c) nil nil nil))
     st))
 
 (defn- linked
@@ -121,8 +125,11 @@
     (not (:on? st)) st
     :else
     (if-let [c (link world s r)]
-      (-> (assoc-in st [:links rid sid] (assoc c :uuid (:uuid s)))
-          (sent rid :track (:uuid s) (:kind c) (:at c)))
+      (let [color (color-of world sid s)]
+        (-> (assoc-in st [:links rid sid]
+                      (cond-> (assoc c :uuid (:uuid s))
+                        color (assoc :color color)))
+            (sent rid :track (:uuid s) (:kind c) (:at c) color)))
       (unlinked st rid sid))))
 
 (defn- touched
@@ -137,7 +144,7 @@
       (let [{:keys [kind at]} c at' (now-at s r kind)]
         (if (moved? kind at at')
           (-> (assoc-in st [:links rid sid :at] at')
-              (sent rid :update (:uuid c) kind at'))
+              (sent rid :update (:uuid c) kind at' (:color c)))
           st)))))
 
 (defn- untracked [st sid]
@@ -186,6 +193,20 @@
       (reduce #(linked %1 world se %2) (update st :in conj sid) ps)
       :else st)))
 
+(defn- recolored
+  "Returns st with the links to s made afresh where the colour of its
+  team changed, as remakeConnections does."
+  [st world [sid s :as se] ps]
+  (if (contains? (:in st) sid)
+    (let [color (color-of world sid s)]
+      (reduce (fn [st [rid :as re]]
+                (let [c (get-in st [:links rid sid])]
+                  (if (and c (not= color (:color c)))
+                    (linked st world se re)
+                    st)))
+              st ps))
+    st))
+
 (defn- broke-all [st]
   (reduce cut st (keys (:links st))))
 
@@ -223,5 +244,6 @@
         moved (movers world)
         st (reduce #(heard %1 world %2 ps moved) st ps)
         st (reduce #(switched %1 world %2 ps) st ps)
+        st (reduce #(recolored %1 world %2 ps) st ps)
         st (if on? st (broke-all st))]
     (deltas/of-vec (into (:out st) (keep #(marks st %)) all))))
