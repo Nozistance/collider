@@ -27,9 +27,10 @@
 
 (defn team
   "Returns the effect that tells players of team t by method, 0 made,
-  1 removed, 2 changed."
-  [method t]
-  {:msg :team :method method :team t})
+  1 removed, 2 changed, 3 joined by members, 4 left by them."
+  ([method t] (team method t nil))
+  ([method t members]
+   {:msg :team :method method :team t :members members}))
 
 (defn load-chunk [id] {:msg :load-chunk :id id})
 

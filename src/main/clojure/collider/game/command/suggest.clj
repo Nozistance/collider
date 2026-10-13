@@ -136,7 +136,8 @@
   (case kind
     (:coord :dcoord)
     (fn [text start _ _] (coord-suggestions reader text start))
-    :targets (fn [text start _ cx] (target-suggestions text start cx))
+    (:targets :score-holder)
+    (fn [text start _ cx] (target-suggestions text start cx))
     :dimension
     (fn [text start _ _]
       (let [ids (sort (map data/wire schema/dims))]

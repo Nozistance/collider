@@ -26,9 +26,35 @@
   [teams name]
   (into [] (remove #(= name (:name %))) teams))
 
+(defn of-member
+  "Returns the team of teams that member nm is in, or nil."
+  [teams nm]
+  (some #(when (some #{nm} (:players %)) %) teams))
+
+(defn- without [t nm]
+  (update t :players #(into [] (remove #{nm}) %)))
+
+(defn left
+  "Returns teams with members nms out of the teams they were in."
+  [teams nms]
+  (mapv #(reduce without % nms) teams))
+
+(defn joined
+  "Returns teams with members nms moved into the team called name."
+  [teams name nms]
+  (mapv #(if (= name (:name %))
+           (update % :players into nms)
+           %)
+        (left teams nms)))
+
 (defn- styled [display name]
   (let [style {:insertion name :hover {:action :show-text :value name}}]
     (merge (if (map? display) display {:text display}) style)))
+
+(defn color-name
+  "Returns the colour of team t as text styles name it."
+  [t]
+  (data/snake (:color t)))
 
 (defn shown
   "Returns the name of team t as chat shows it, in square brackets
@@ -36,4 +62,4 @@
   [t]
   (cond-> {:translate "chat.square_brackets"
            :with [(styled (:display t) (:name t))]}
-    (:color t) (assoc :color (data/snake (:color t)))))
+    (:color t) (assoc :color (color-name t))))

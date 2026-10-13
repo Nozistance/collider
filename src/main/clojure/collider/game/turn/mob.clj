@@ -768,8 +768,8 @@
         bf (fn [w m] (bitten w tempters steps? t m))]
     (reduce bf world biters)))
 
-(defn- endings [ends]
-  (into [] (mapcat (fn [[eid e]] (living/ended eid e))) ends))
+(defn- endings [world ends]
+  (into [] (mapcat (fn [[eid e]] (living/ended world eid e))) ends))
 
 (defn- stepper
   "Returns the fn that tells whether the entity of an id steps this
@@ -819,5 +819,5 @@
         world (seen (sense/indexed world) tempters
                     (stepper world active) t biters)
         [d rode] (herds-deltas world tempters t hs)
-        ends (deltas/of-vec (endings ends))]
+        ends (deltas/of-vec (endings world ends))]
     [(deltas/merge (deltas/of-vec pre) d ends) (into {} rode)]))

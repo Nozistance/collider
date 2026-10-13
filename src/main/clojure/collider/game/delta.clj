@@ -103,6 +103,12 @@
    :team-remove
    {:scope :world :schema [:cat :string]
     :apply (fn [w [_ nm]] (update w :teams team/removed nm))}
+   :team-join
+   {:scope :world :schema [:cat :string [:vector :string]]
+    :apply (fn [w [_ nm ms]] (update w :teams team/joined nm ms))}
+   :team-leave
+   {:scope :world :schema [:cat [:vector :string]]
+    :apply (fn [w [_ ms]] (update w :teams team/left ms))}
    :set-config
    {:scope :world :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :config m))}
@@ -275,7 +281,7 @@
      :teleport [[:pos Vec3] [:yaw number?] [:pitch number?]
                 [:relative :int]]
      :health [[:health number?]]
-     :team [[:method :int] [:team :map]]
+     :team [[:method :int] [:team :map] [:members [:maybe [:vector :string]]]]
      :experience [[:progress number?] [:level :int] [:total :int]]
      :respawn []
      :change-dimension [[:pos Vec3] [:yaw number?] [:pitch number?]

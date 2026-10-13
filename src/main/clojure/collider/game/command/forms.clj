@@ -131,12 +131,16 @@
 (def ^:private team-arg [:team [:team {}]])
 
 (def ^:private team-form
-  [:team "make, remove and list teams"
+  [:team "make teams, list them and move players and mobs in and out"
    [(lit "list")] [:world :team-list]
    [(lit "list") team-arg] [:world :team-members]
    [(lit "add") [:team [:word {}]]
     [:displayName [:component {:default nil}]]] [:world :team-add]
-   [(lit "remove") team-arg] [:world :team-remove]])
+   [(lit "remove") team-arg] [:world :team-remove]
+   [(lit "empty") team-arg] [:world :team-empty]
+   [(lit "join") team-arg [:members [:score-holder {:default nil}]]]
+   [:world :team-join]
+   [(lit "leave") [:members [:score-holder {}]]] [:world :team-leave]])
 
 (def ^:private players-arg
   [:targets [:targets {:players? true}]])

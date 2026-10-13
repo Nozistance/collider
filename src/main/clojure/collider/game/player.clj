@@ -15,6 +15,7 @@
             [collider.game.schema :as schema]
             [collider.game.slots :as slots]
             [collider.game.stack :as stack]
+            [collider.game.team :as team]
             [collider.game.using :as using]
             [collider.random :as random]
             [collider.vec :as v]
@@ -177,14 +178,17 @@
     (assoc-in w [:profiles name] (stored-profile e dim))))
 
 (defn quit
-  "Returns level w without player eid, its profile kept."
+  "Returns level w without entity eid. A player keeps its profile,
+  and any other entity leaves its team."
   [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
     (cond-> (-> w
                 (update :spawning dissoc eid)
                 (update :entities dissoc eid)
                 (update :players forget-player name eid))
-            name (kept-profile name e))))
+      name (kept-profile name e)
+      (and e (not (entity/player? e)) (seq (:teams w)))
+      (update :teams team/left [(str (entity/uuid-of eid e))]))))
 
 (def ^:private ^:table swords
   (delay (set (data/tag-values "item" "swords"))))

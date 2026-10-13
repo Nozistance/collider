@@ -16,7 +16,7 @@
   (cond-> []
     (hurt/based? world e) (into (hurt/base-deltas world eid e))
     (not (pos? (double (:health e))))
-    (into (hurt/timer-deltas eid e))))
+    (into (hurt/timer-deltas world eid e))))
 
 (defn based
   "Returns living entity eid after its base tick, and its deltas.
@@ -45,6 +45,7 @@
       (shown world eid e ds true))))
 
 (defn ended
-  "Returns the deltas that remove dead entity eid before its step."
-  [eid e]
-  (hurt/timer-deltas eid e))
+  "Returns the deltas that remove dead entity eid of world before its
+  step."
+  [world eid e]
+  (hurt/timer-deltas world eid e))

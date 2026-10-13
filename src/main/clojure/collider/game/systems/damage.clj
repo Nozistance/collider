@@ -48,7 +48,7 @@
     (concat ds (screen/removed-deltas world eid e))))
 
 (defn- busy-deltas [world eid e]
-  (let [ds (concat (hurt/timer-deltas eid e)
+  (let [ds (concat (hurt/timer-deltas world eid e)
                    (removal-deltas world eid e)
                    (hurt/landing-deltas world eid e)
                    (hurt/fire-deltas world eid e))]

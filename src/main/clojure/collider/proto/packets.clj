@@ -60,6 +60,7 @@
     "time" (buf/write-int! buf (int (:min props 0)))
     "entity" (buf/write-byte! buf (int (entity-flags props)))
     "resource" (c/write-string buf (:registry props))
+    "score_holder" (buf/write-byte! buf (if (:multiple props) 1 0))
     nil))
 
 (defn- write-node! [^Buf buf node]

@@ -214,10 +214,12 @@
      :yaw (double (:yaw e)) :pitch (double (:pitch e)) :relative 0}))
 
 (defn team-packet
-  "Returns the packet that tells a player of team t by method."
-  [method t]
-  {:packet :set-player-team :name (:name t) :method method :team t
-   :players (:players t)})
+  "Returns the packet that tells a player of team t by method, with
+  members when method 3 or 4."
+  ([method t] (team-packet method t nil))
+  ([method t members]
+   {:packet :set-player-team :name (:name t) :method method :team t
+    :players (if (#{3 4} method) members (:players t))}))
 
 (defn- join-world-packets [world e eid motd]
   (concat

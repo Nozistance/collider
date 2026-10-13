@@ -103,6 +103,13 @@
           (r/error-at (toplevel rd) "argument.player.entities")
           :else [s (:rd p)])))
 
+(defn- holder-read [[s n :as rd] cx]
+  (if (= \@ (get s n))
+    (let [p (sel/parse rd (forms/selectors? cx))]
+      (or (:error p) [{:selector (:sel p)} (:rd p)]))
+    (let [e (or (str/index-of s " " n) (count s))]
+      [{:name (subs s n e)} [s e]])))
+
 (defn- int-reader [lo hi] (:parse (r/int-arg lo hi)))
 
 (defn- rule-value-read [{:keys [type min max]}]
@@ -148,6 +155,7 @@
 (defn- arg-parse [[_ [kind opts] :as a]]
   (case kind
     :targets (fn [rd cx _] (targets-read opts rd cx))
+    :score-holder (fn [rd cx _] (holder-read rd cx))
     :message (fn [rd cx _] (message-read rd cx))
     (let [f (reader-for a)] (fn [rd _ _] (f rd)))))
 

@@ -17,6 +17,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.stack :as stack]
+            [collider.game.team :as team]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
@@ -940,17 +941,24 @@
          (when src (struck-deltas world eid e src))
          (when lost? (lost-deltas world eid e health)))))))
 
+(defn- team-left [world eid e]
+  (let [nm (str (entity/uuid-of eid e))]
+    (when-let [t (team/of-member (:teams world) nm)]
+      [(out/all (out/team 4 t [nm]))])))
+
 (defn timer-deltas
-  "Returns the deltas of the death countdown of entity eid."
-  [eid e]
+  "Returns the deltas of the death countdown of entity eid of world.
+  A body that goes leaves its team."
+  [world eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
         gone? (and death (>= (long death) mobs/death-ticks)
                    (not (entity/player? e)))]
     (concat
       (when death [[:merge-entity eid {:death-time death}]])
-      (when gone? [(out/all (out/status eid :poof))
-                   [:remove-entity eid]]))))
+      (when gone? (concat [(out/all (out/status eid :poof))
+                           [:remove-entity eid]]
+                          (team-left world eid e))))))
 
 (defn removal-deltas
   "Returns the deltas that take dead player eid off its level once

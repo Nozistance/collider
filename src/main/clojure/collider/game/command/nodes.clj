@@ -65,6 +65,7 @@
       :word (cond-> [n brigadier-string {:kind 0}]
               (:tags opts) (conj ask-server)
               :always vector)
+      :score-holder [[n :score-holder {:multiple true} ask-server]]
       :rule {:rules true}
       (clock-nodes n kind opts))))
 
