@@ -11,6 +11,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.game.team :as team]
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]))
@@ -126,9 +127,10 @@
     [(- (v/x p) h) (v/y p) (- (v/z p) h)
      (+ (v/x p) h) (+ (v/y p) (double ht)) (+ (v/z p) h)]))
 
-(defn- swept? [a box [oid o] eid tid]
+(defn- swept? [teams a box [oid o] eid tid]
   (and (not= oid eid) (not= oid tid) (some? (:health o))
        (entity/living? o)
+       (not (team/allied? teams eid a oid o))
        (v/boxes-meet? (body-box o) box)
        (< (v/dist-sq (:pos a) (:pos o)) 9.0)))
 
@@ -166,7 +168,8 @@
 (defn- sweep-deltas
   [world eid a tid target src b]
   (let [s (sweep-damage a b) box (sweep-box target) dir (facing a)
-        near (filter #(swept? a box % eid tid) (:entities world))]
+        near (filter #(swept? (:teams world) a box % eid tid)
+                     (:entities world))]
     (concat [(sound a :entity.player.attack.sweep)]
             (mapcat #(swept-deltas world src (num/f32 s) dir %) near)
             [(sweep-particle a)])))

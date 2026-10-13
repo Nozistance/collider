@@ -102,10 +102,11 @@
   "Returns true when player e takes no damage from src.
   A game rule, the pvp rule or the mode of e can spare it."
   [world e src]
-  (let [t (:type src) rule (get @rule-of t)]
+  (let [t (:type src) rule (get @rule-of t) a (cause-of world src)]
     (or (and rule (not (get-in world [:rules rule] true)))
-        (and (entity/player? (cause-of world src))
-             (not (get-in world [:rules :pvp] true)))
+        (and (entity/player? a)
+             (or (not (get-in world [:rules :pvp] true))
+                 (and (entity/player? e) (team/spares? (:teams world) e a))))
         (and (game-mode/invulnerable? e)
              (not (contains? @bypassing t))))))
 
@@ -867,11 +868,22 @@
       by {:translate (str key ".player") :with [v (shown world bid by)]}
       :else {:translate key :with [v]})))
 
+(defn- death-told
+  "Returns the effect of death line msg of player eid of world for the
+  players its team lets hear it."
+  [world eid e msg]
+  (let [t (team/of-entity (:teams world) eid e)]
+    (case (if (entity/player? e) (:death-message t :always) :always)
+      :always [(out/all msg)]
+      :hide-for-other-teams [(out/team-except (:name t) eid msg)]
+      :hide-for-own-team [(out/team-others (:name t) msg)]
+      :never [])))
+
 (defn- told-deltas [world eid e]
   (let [text (death-text world eid e (or (:struck-by e) {:type :generic}))]
     (if (get-in world [:rules :show-death-messages] true)
-      [(out/to eid (out/combat-kill eid text))
-       (out/all (out/system-chat text))]
+      (into [(out/to eid (out/combat-kill eid text))]
+            (death-told world eid e (out/system-chat text)))
       [(out/to eid (out/combat-kill eid {:text ""}))])))
 
 (defn- kill-deltas

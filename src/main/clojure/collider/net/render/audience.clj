@@ -144,6 +144,10 @@
     (:to-team m)
     (let [t (team/named (:teams sight) (:to-team m))]
       (remove #{(:except m)} (keep #(get (:named sight) %) (:players t))))
+    (:to-others-of m)
+    (let [t (team/named (:teams sight) (:to-others-of m))
+          in (set (keep #(get (:named sight) %) (:players t)))]
+      (remove in (:ps sight)))
     (entity-msgs (:msg m))
     (get @viewers (long (or (:via m) (:eid m))) [])
     :else

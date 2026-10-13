@@ -25,6 +25,12 @@
   [name eid msg]
   [:fx (assoc msg :to-team name :except eid)])
 
+(defn team-others
+  "Returns msg as an effect for every player out of the team called
+  name."
+  [name msg]
+  [:fx (assoc msg :to-others-of name)])
+
 (defn everyone
   "Returns msg as an effect of the server.
   Every player gets it, whatever level it is in."

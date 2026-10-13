@@ -43,6 +43,20 @@
   [teams eid e]
   (of-member teams (entity/scoreboard-name eid e)))
 
+(defn allied?
+  "Returns true when entity a of teams is in a team and entity b is in
+  the same one."
+  [teams aid a bid b]
+  (let [t (of-entity teams aid a)]
+    (boolean (and t (= (:name t) (:name (of-entity teams bid b)))))))
+
+(defn spares?
+  "Returns true when player victim of teams takes no harm from player
+  attacker, both in one team that keeps friendly fire off."
+  [teams victim attacker]
+  (and (allied? teams nil victim nil attacker)
+       (not (:friendly-fire (of-entity teams nil victim)))))
+
 (defn- without [t nm]
   (update t :players #(into [] (remove #{nm}) %)))
 
