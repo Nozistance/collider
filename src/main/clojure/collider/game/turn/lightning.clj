@@ -7,7 +7,7 @@
             [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
-            [collider.game.mob.mooshroom :as mooshroom]
+            [collider.game.mob.spec :as spec]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -110,13 +110,13 @@
          (> (+ (double z) h) (- (double bz) reach)))))
 
 (defn- thunder-hit [eid e bid]
-  (cond
-    (= :mooshroom (:type e)) (mooshroom/struck eid e bid)
-    (contains? unhurt (:type e)) nil
-    :else (let [f (inc (long (or (:fire e) 0)))
-                lit (if (zero? f) {:fire lit-ticks :ticks-frozen 0} {:fire f})]
-            [[:merge-entity eid lit]
-             [:damage eid damage {:type :lightning-bolt}]])))
+  (if-let [f (:thunder-hit (spec/of (:type e)))]
+    (f eid e bid)
+    (when-not (contains? unhurt (:type e))
+      (let [f (inc (long (or (:fire e) 0)))
+            lit (if (zero? f) {:fire lit-ticks :ticks-frozen 0} {:fire f})]
+        [[:merge-entity eid lit]
+         [:damage eid damage {:type :lightning-bolt}]]))))
 
 (defn- hits [world bid b]
   (for [[eid e] (:entities world)

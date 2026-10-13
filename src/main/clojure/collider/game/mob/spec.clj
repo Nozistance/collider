@@ -39,7 +39,7 @@
    :cow {:think cow/brain :goals cow/spec
          :results [cow/milk-result animal/feed-result]}
    :mooshroom {:think mooshroom/brain :goals mooshroom/spec
-               :results mushroom-results}
+               :results mushroom-results :thunder-hit mooshroom/struck}
    :pig {:think pig/brain :goals pig/spec
          :results [animal/feed-result]}
    :chicken {:think chicken/brain :goals chicken/spec
@@ -52,7 +52,8 @@
   "Returns the parts of the turn of a mob of type, or nil for a type
   without them. A mob thinks with goals by :think and :goals, or
   with the compiled brain :brain. Its own server step :custom-step
-  comes after either."
+  comes after either. :thunder-hit takes the place of what lightning
+  does to any other body."
   [type]
   (kinds type))
 
