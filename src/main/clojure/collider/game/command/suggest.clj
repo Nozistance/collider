@@ -7,8 +7,11 @@
             [collider.game.command.forms :as forms]
             [collider.game.command.reader :as r]
             [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
+            [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
             [collider.game.schema :as schema]
+            [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]))
 
 (set! *warn-on-reflection* true)
@@ -21,6 +24,25 @@
   "Returns the xs that start with prefix, without prefix itself."
   [prefix xs]
   (filterv #(not= prefix %) (prefixed prefix xs)))
+
+(defn- splitter-after [^String s i]
+  (some #(when (#{\. \_ \/} (.charAt s (int %))) %)
+        (range i (count s))))
+
+(defn- sub-match?
+  "Returns true when input starts with pattern there or after a dot,
+  an underscore or a slash."
+  [^String pattern ^String input]
+  (loop [i 0]
+    (or (.startsWith input pattern (int i))
+        (when-let [j (splitter-after input i)]
+          (recur (inc (long j)))))))
+
+(defn- matching
+  "Returns the xs that pattern w matches as brigadier offers them."
+  [^String w xs]
+  (let [p (str/lower-case w)]
+    (filterv #(and (not= w %) (sub-match? p (str/lower-case %))) xs)))
 
 (defn suggest-player
   "Returns the names of the players in world that start with prefix."
@@ -113,6 +135,38 @@
     :entity-type (sugg start (:texts (ids-of w (sel/entity-types))))
     nil))
 
+(defn- arg-value [cx nm]
+  (some #(when (= nm (:name (:node %))) (:value %))
+        (:nodes (:ctx cx))))
+
+(defn- uuid-of [s]
+  (try (java.util.UUID/fromString s)
+       (catch IllegalArgumentException _ nil)))
+
+(defn- by-text [nm]
+  (if-let [u (uuid-of nm)] {:uuid u} {:name nm}))
+
+(defn- holder-names
+  "Returns the names of the holders that arg names, as eid reads it."
+  [world eid {:keys [selector] nm :name}]
+  (let [named (fn [[id _ e]] (entity/scoreboard-name id e))
+        of #(map named (targets/selected world eid %))]
+    (cond selector (of selector)
+          (= "*" nm) (scoreboard/holders (:scoreboard world))
+          (str/starts-with? nm "#") [nm]
+          :else (or (seq (of (by-text nm))) [nm]))))
+
+(defn- objective-names [opts cx]
+  (let [{:keys [world eid]} cx sb (:scoreboard world)]
+    (case (:suggest opts)
+      :triggerable
+      (when-let [[id _ e] (first (targets/self world eid))]
+        (scoreboard/triggerable sb (entity/scoreboard-name id e)))
+      :enableable
+      (->> (holder-names world eid (arg-value cx "targets"))
+           (scoreboard/enableable sb))
+      (map :name (:objectives sb)))))
+
 (defn- arg-suggestions [[_ [kind opts]] reader w start cx]
   (case kind
     (:ticks :duration) (unit-suggestions w start)
@@ -122,6 +176,8 @@
     :game-mode (sugg start (starting-with w @mode-names))
     :anchor (sugg start (starting-with w ["eyes" "feet"]))
     :team-color (sugg start (starting-with w team/color-names))
+    :objective (sugg start (matching w (objective-names opts cx)))
+    :operation (sugg start (matching w scoreboard/operations))
     (:bool :rule-value)
     (sugg start (if (= :int (:type opts))
                   []

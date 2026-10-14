@@ -40,7 +40,6 @@
    :double [(keyword "brigadier:double") nil]
    :team [:team nil]
    :team-color [:team-color nil]
-   :objective [:objective nil]
    :criteria [:objective-criteria nil]
    :display-slot [:scoreboard-slot nil]
    :operation [:operation nil]
@@ -73,6 +72,8 @@
               :always vector)
       :score-holder [[n :score-holder {:multiple (not single?)}
                       ask-server]]
+      :objective [(cond-> [n :objective nil]
+                    (:suggest opts) (conj ask-server))]
       :rule {:rules true}
       (clock-nodes n kind opts))))
 

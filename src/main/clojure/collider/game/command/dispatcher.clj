@@ -127,14 +127,19 @@
 (defn- expanded [^String text lo {:keys [start texts]}]
   (map #(str (subs text lo start) %) texts))
 
+(defn- widened-tips [^String text lo {:keys [start tips]}]
+  (map (fn [[t tip]] [(str (subs text lo start) t) tip]) tips))
+
 (defn merged
-  "Returns suggestions ss as one range, each text widened to it."
+  "Returns suggestions ss as one range, each text and the key of each
+  of its :tips widened to it."
   [text ss start]
   (let [ss (filter (comp seq :texts) ss)
-        lo (if (seq ss) (reduce min (map :start ss)) start)]
-    {:start lo
-     :texts (->> ss (mapcat #(expanded text lo %)) distinct
-                 (sort String/CASE_INSENSITIVE_ORDER) vec)}))
+        lo (if (seq ss) (reduce min (map :start ss)) start)
+        tips (into {} (mapcat #(widened-tips text lo %)) ss)
+        texts (->> ss (mapcat #(expanded text lo %)) distinct
+                   (sort String/CASE_INSENSITIVE_ORDER) vec)]
+    (cond-> {:start lo :texts texts} (seq tips) (assoc :tips tips))))
 
 (defn- literal-suggestions [node ^String text start]
   (let [rem (str/lower-case (subs text start))

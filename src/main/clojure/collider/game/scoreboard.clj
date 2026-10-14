@@ -13,6 +13,10 @@
   (into ["list" "sidebar" "below_name"]
         (map #(str "sidebar.team." %) team/color-names)))
 
+(def operations
+  "The operators of scoreboard players operation."
+  #{"=" "+=" "-=" "*=" "/=" "%=" "<" ">" "><"})
+
 (defn slot-id
   "Returns the id of the display slot called nm, or nil."
   [nm]
@@ -282,6 +286,26 @@
   "Returns sb with objective o last."
   [sb o]
   (update sb :objectives (fnil conj []) o))
+
+(defn- triggers [sb]
+  (filter #(= "trigger" (:criteria %)) (:objectives sb)))
+
+(defn triggerable
+  "Returns the names of the trigger objectives of sb that holder h may
+  trigger now."
+  [sb h]
+  (for [o (triggers sb)
+        :let [s (score sb (:name o) h)]
+        :when (and s (not (:locked s)))]
+    (:name o)))
+
+(defn enableable
+  "Returns the names of the trigger objectives of sb that one of the
+  holders hs has no open score on."
+  [sb hs]
+  (for [o (triggers sb)
+        :when (some #(:locked (score sb (:name o) %) true) hs)]
+    (:name o)))
 
 (defn joining
   "Returns the effects that show sb to a player who joins. Each

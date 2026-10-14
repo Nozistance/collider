@@ -186,7 +186,8 @@
    :suggestions   (fn [_ m]
                     [{:packet :command-suggestions :id (:id m)
                       :start (:start m) :length (:length m)
-                      :matches (:matches m)}])
+                      :matches (mapv #(vector % (get (:tips m) %))
+                                     (:matches m))}])
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])

@@ -21,6 +21,10 @@
            {:dim (:dim r (:dim world)) :pos pos
             :relative (:relative r #{})})))
 
+(defn- origin-of [world eid]
+  (when-let [p (get-in world [:entities eid :pos])]
+    [(v/x p) (v/y p) (v/z p)]))
+
 (def ^:private here
   {:translate "command.context.here" :color "red" :italic true})
 
@@ -80,8 +84,7 @@
              (permission world eid) [0.0 0.0] (forms/extra-of world)))
 
 (defn- command-deltas [world eid text]
-  (let [origin (when-let [p (get-in world [:entities eid :pos])]
-                 [(v/x p) (v/y p) (v/z p)])
+  (let [origin (origin-of world eid)
         r (parsed world eid text origin)]
     (cond
       (:failure r) (parse-failed eid text r)
@@ -113,9 +116,12 @@
 
 (defn- tab-deltas [world eid text id]
   (let [lv (permission world eid)
-        {:keys [start texts]} (cmd/suggestions world text lv)
-        len (- (count text) (long start))]
-    [(out/to eid (out/suggestions (or id 0) start len texts))]))
+        w (sourced world {} (origin-of world eid))
+        {:keys [start texts tips]} (cmd/suggestions w text lv eid)
+        [start len] (if (seq texts)
+                      [start (- (count text) (long start))]
+                      [0 0])]
+    [(out/to eid (out/suggestions (or id 0) start len texts tips))]))
 
 (defn- mode-changed [world eid mode]
   (when (gamemaster? world eid)

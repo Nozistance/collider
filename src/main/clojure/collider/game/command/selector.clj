@@ -484,6 +484,18 @@
 
 (def ^:private selector-texts ["@p" "@a" "@r" "@s" "@e" "@n"])
 
+(defn- tip [k] {:translate k})
+
+(def ^:private selector-tips
+  (update-vals {"@p" "nearestPlayer" "@a" "allPlayers"
+                "@r" "randomPlayer" "@s" "self" "@e" "allEntities"
+                "@n" "nearestEntity"}
+               #(tip (str "argument.entity.selector." %))))
+
+(defn- option-tips []
+  (into {} (for [k (keys options)]
+             [(str k "=") (tip (str options-key k ".description"))])))
+
 (defn- fixed [text start xs]
   {:start start :texts (offered (subs text start) xs)})
 
@@ -521,13 +533,20 @@
   (let [at (cursor p)
         sel (when (:allow? p) selector-texts)
         n (suggest-strings text at names)]
-    (update n :texts into (offered (subs text at) sel))))
+    (-> (update n :texts into (offered (subs text at) sel))
+        (assoc :tips (when sel selector-tips)))))
+
+(defn- keyed
+  "Returns the option names that complete at, after the texts more."
+  [p text at more]
+  (-> (fixed text at (concat more (option-names p text at)))
+      (assoc :tips (option-tips))))
 
 (defn- option-suggestions [p ^String text at]
   (case (:sugg p)
     :open (fixed text at ["["])
-    :key-or-close (fixed text at (cons "]" (option-names p text at)))
-    :key (fixed text at (option-names p text at))
+    :key-or-close (keyed p text at ["]"])
+    :key (keyed p text at [])
     :next (fixed text at ["," "]"])
     :sort (suggest-strings text at sort-texts)
     :gamemode (fixed text at (mode-texts p (subs text at)))
@@ -542,5 +561,6 @@
     (case (:sugg p)
       :name-or-selector (name-suggestions p text names)
       :name (suggest-strings text (:start p) names)
-      :selector (fixed text (dec at) selector-texts)
+      :selector (assoc (fixed text (dec at) selector-texts)
+                       :tips selector-tips)
       (option-suggestions p text at))))

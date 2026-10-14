@@ -343,7 +343,8 @@
    [(lit "players") (lit "reset") targets-arg] [:world :scores-reset]
    [(lit "players") (lit "reset") targets-arg objective-arg]
    [:world :score-reset]
-   [(lit "players") (lit "enable") targets-arg objective-arg]
+   [(lit "players") (lit "enable") targets-arg
+    [:objective [:objective {:suggest :enableable}]]]
    [:world :trigger-enable]
    [(lit "players") (lit "display") (lit "name") targets-arg
     objective-arg [:name [:component {:default nil}]]]
@@ -391,11 +392,14 @@
 (def ^:private trigger-value
   [:value [:int {:min int-min :max int-max}]])
 
+(def ^:private trigger-arg
+  [:objective [:objective {:suggest :triggerable}]])
+
 (def ^:private trigger-form
   [:trigger "add to or set your score on a trigger objective"
-   [objective-arg] [:world :trigger nil]
-   [objective-arg (lit "add") trigger-value] [:world :trigger :add]
-   [objective-arg (lit "set") trigger-value] [:world :trigger :set]])
+   [trigger-arg] [:world :trigger nil]
+   [trigger-arg (lit "add") trigger-value] [:world :trigger :add]
+   [trigger-arg (lit "set") trigger-value] [:world :trigger :set]])
 
 (def ^:private base-forms
   [time-form team-form scoreboard-forms trigger-form

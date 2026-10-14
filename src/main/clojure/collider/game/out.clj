@@ -174,9 +174,13 @@
   ([slots] (inventory slots nil))
   ([slots carried] {:msg :inventory :slots slots :carried carried}))
 
-(defn suggestions [id start length matches]
+(defn suggestions
+  "Returns the effect of the completions matches of request id, the
+  text of each replacing length characters from start, with the
+  tooltips in tips by text."
+  [id start length matches tips]
   {:msg :suggestions :id id :start start :length length
-   :matches (vec matches)})
+   :matches (vec matches) :tips tips})
 
 (defn combat-kill
   "Returns the effect that shows player eid the cause of its death on

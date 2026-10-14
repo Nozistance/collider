@@ -142,14 +142,11 @@
       res
       (r/error-at end "argument.scoreboardDisplaySlot.invalid" v))))
 
-(def ^:private operations
-  #{"=" "+=" "-=" "*=" "/=" "%=" "<" ">" "><"})
-
 (defn- operation-read [[s n :as rd]]
   (let [e (or (str/index-of s " " n) (count s)) v (subs s n e)]
     (cond (not (r/can-read? rd))
           (r/error-at rd "arguments.operation.invalid")
-          (operations v) [v [s e]]
+          (scoreboard/operations v) [v [s e]]
           :else (r/error "arguments.operation.invalid"))))
 
 (defn- int-reader [lo hi] (:parse (r/int-arg lo hi)))
@@ -359,14 +356,16 @@
 
 (defn suggestions
   "Returns the completions for half-typed text as :texts that
-  replace it from index :start. A player of permission level sees
+  replace it from index :start. Player eid of permission level sees
   the commands it may run."
   ([world text] (suggestions world text forms/gamemaster))
-  ([world text level]
+  ([world text level] (suggestions world text level nil))
+  ([world text level eid]
    (let [text (or text "")
          start (inc (long (or (str/last-index-of text " ") -1)))
          cx {:level level :dim (:dim world :overworld)
-             :players (sort (keys (:players world)))}]
+             :players (sort (keys (:players world)))
+             :world world :eid eid}]
      (if (str/starts-with? text "/")
        (command-suggestions world text cx)
        (->> (suggest/suggest-player world (subs text start))

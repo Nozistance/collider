@@ -419,7 +419,8 @@
    [:play :command-suggestions]
    {:schema [:map [:id wire/varint] [:start wire/varint]
              [:length wire/varint]
-             [:matches [:sequential [wire/bare wire/string]]]]
+             [:matches [:sequential
+                        [:tuple wire/string [:maybe wire/text]]]]]
     :write :wire}
    [:play :command-suggestion]
    {:schema [:map [:id wire/varint]
