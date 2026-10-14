@@ -447,18 +447,29 @@
                 (identical? :change-dimension tag))))
         (:world d)))
 
+(defn- thrown? [e] (contains? entity/thrown-types (:type e)))
+
+(defn- thrown-moves [world ps t]
+  (let [viewers (viewed ps)]
+    (into [] (mapcat (fn [[eid e]] (move-deltas t viewers eid e)))
+          (level/of-types world entity/thrown-types))))
+
+(defn- late-spawns [world ps t0]
+  (let [idx (by-chunk world)]
+    (into [] (mapcat #(tracking-deltas world t0 idx ps nil %)) ps)))
+
 (defn late-tracking
-  "Returns the deltas that show players the entities new this tick."
+  "Returns the deltas that show players the entities new this tick,
+  and where the thrown things flew, as their clients fly them."
   {:wake {:deltas #{:spawn-entity :remove-entity
-                    :change-dimension}}}
+                    :change-dimension}
+          :types entity/thrown-types}}
   [world d]
-  (deltas/of-vec
-    (when (entities-changed? d)
-      (let [idx (by-chunk world)
-            ps (level/player-entries world)
-            t0 (inc (long (:tick world)))
-            track #(tracking-deltas world t0 idx ps nil %)]
-        (into [] (mapcat track) ps)))))
+  (let [ps (level/player-entries world)
+        t0 (inc (long (:tick world)))]
+    (deltas/of-vec
+      (concat (when (entities-changed? d) (late-spawns world ps t0))
+              (thrown-moves world ps t0)))))
 
 (defn- self-flown?
   "Returns true when eid is a thrown thing born this tick. A vanilla
@@ -466,8 +477,7 @@
   ours gets it after its first flight, at the end of the tick."
   [world eid]
   (let [e (get-in world [:entities eid])]
-    (and (contains? entity/thrown-types (:type e))
-         (= (:born e) (:tick world)))))
+    (and (thrown? e) (= (:born e) (:tick world)))))
 
 (defn- spawn-deltas [world ps]
   (let [idx (by-chunk world)
@@ -488,7 +498,7 @@
   (let [viewers (viewed ps)
         t (long (:tick world))
         step (fn [c eid e]
-               (if (tracked? e)
+               (if (and (tracked? e) (not (thrown? e)))
                  (deltas/collect-all! c (move-deltas t viewers eid e))
                  c))]
     (collected (r/fold move-batch joined step (:entities world)))))
