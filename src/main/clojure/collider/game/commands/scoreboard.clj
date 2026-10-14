@@ -92,18 +92,21 @@
 (defn- auto-key [on?]
   (str "modify.displayAutoUpdate." (if on? "enable" "disable")))
 
-(defn- fixed [v] {:type :fixed :value v})
-
-(defn- styled [v] {:type :styled :value v})
+(defn- number-format
+  "Returns the number format of kind, :blank, :fixed or :styled, with
+  contents or style v, or nil without kind."
+  [kind v]
+  (when kind
+    (cond-> {:type kind} (not= :blank kind) (assoc :value v))))
 
 (defn- format-set [world eid o fmt]
   (modified world eid o {:format fmt}
             (str "modify.objectiveFormat." (if fmt "set" "clear"))
             :name))
 
-(defn- formatted [f]
-  (fn [world eid [nm v]]
-    (known world eid nm #(format-set world eid % (f v)))))
+(defn- formatted [world eid [kind nm v]]
+  (known world eid nm
+         #(format-set world eid % (number-format kind v))))
 
 (def ^:private named
   (unless-same :display identity (constantly "modify.displayname")
@@ -151,12 +154,17 @@
                             (line eid o ok v total))))]
       (or error (writable world eid nm write)))))
 
+(defn- line
+  "Returns the success line of key k, single or multiple by holders
+  hs, with :holders in with naming them."
+  [eid hs k & with]
+  (let [one? (= 1 (count hs))
+        k (str k (if one? ".single" ".multiple"))
+        who (if one? (:shown (first hs)) (count hs))]
+    (reply/say* eid (player-key k) (replace {:holders who} with))))
+
 (defn- set-line [eid o hs v _]
-  (if (next hs)
-    (say eid (player-key "set.success.multiple") (scoreboard/shown o)
-         (count hs) v)
-    (say eid (player-key "set.success.single") (scoreboard/shown o)
-         (:shown (first hs)) v)))
+  (line eid hs "set.success" (scoreboard/shown o) :holders v))
 
 (defn- change-line [verb]
   (fn [eid o hs v total]
@@ -203,29 +211,144 @@
   (let [{:keys [ok error]} (holders/holder world eid arg)]
     (or error (listed-scores world eid ok))))
 
-(defn- reset-line [eid hs k & with]
-  (let [one? (= 1 (count hs))
-        k (player-key (str k (if one? ".single" ".multiple")))]
-    (apply say eid k
-           (concat with [(if one? (:shown (first hs)) (count hs))]))))
-
 (defn- resets-deltas [world eid [arg]]
   (let [{:keys [ok error]} (named-holders world eid arg)
         sb (:scoreboard world)]
     (or error
         (concat (mapcat #(scoreboard/reset-all sb (:name %)) ok)
-                (reset-line eid ok "reset.all")))))
+                (line eid ok "reset.all" :holders)))))
+
+(defn- with-holders
+  "Returns (f sb hs o) of the holders hs that arg names and objective
+  o called nm, or the error deltas."
+  [world eid arg nm f]
+  (let [{:keys [ok error]} (named-holders world eid arg)]
+    (or error (known world eid nm #(f (:scoreboard world) ok %)))))
+
+(defn- each-score
+  "Returns the deltas of (f sb nm holder) of each holder hs."
+  [sb nm hs f]
+  (mapcat #(f sb nm (:name %)) hs))
 
 (defn- reset-deltas [world eid [arg nm]]
-  (let [{:keys [ok error]} (named-holders world eid arg)
-        sb (:scoreboard world)
-        reset #(scoreboard/reset-one sb nm (:name %))]
+  (with-holders world eid arg nm
+    (fn [sb hs o]
+      (concat (each-score sb nm hs scoreboard/reset-one)
+              (line eid hs "reset.specific" (scoreboard/shown o)
+                    :holders)))))
+
+(defn- unlocking [eid hs o dss]
+  (cond (not= "trigger" (:criteria o))
+        (fail eid (player-key "enable.invalid"))
+        (empty? dss) (fail eid (player-key "enable.failed"))
+        :else (concat
+                (apply concat dss)
+                (line eid hs "enable.success" (scoreboard/shown o)
+                      :holders))))
+
+(defn- enabled [world eid [arg nm]]
+  (with-holders world eid arg nm
+    (fn [sb hs o]
+      (->> (keep #(scoreboard/unlocked sb nm (:name %)) hs)
+           (unlocking eid hs o)))))
+
+(defn- name-line [eid hs o d]
+  (if d
+    (line eid hs "display.name.set.success" d :holders
+          (scoreboard/shown o))
+    (line eid hs "display.name.clear.success" :holders
+          (scoreboard/shown o))))
+
+(defn- score-named [world eid [arg nm d]]
+  (with-holders world eid arg nm
+    (fn [sb hs o]
+      (concat (each-score sb nm hs #(scoreboard/renamed %1 %2 %3 d))
+              (name-line eid hs o d)))))
+
+(defn- format-key [f]
+  (str "display.numberFormat." (if f "set" "clear") ".success"))
+
+(defn- score-formatted [world eid [kind arg nm v]]
+  (let [f (number-format kind v)
+        put #(scoreboard/reformatted %1 %2 %3 f)]
+    (with-holders world eid arg nm
+      (fn [sb hs o]
+        (concat (each-score sb nm hs put)
+                (line eid hs (format-key f) :holders
+                      (scoreboard/shown o)))))))
+
+(def ^:private simple
+  {"=" (fn [_ b] b) "+=" + "-=" - "*=" * "<" min ">" max
+   "/=" #(Math/floorDiv (long %1) (long %2))
+   "%=" #(Math/floorMod (long %1) (long %2))})
+
+(defn- value-of [st o h]
+  (:value (scoreboard/score (:sb st) (:name o) (:name h))))
+
+(defn- with-deltas [st ds]
+  (-> (update st :sb scoreboard/applied ds) (update :ds into ds)))
+
+(defn- made [st o h]
+  (with-deltas st (scoreboard/created (:sb st) (:name o) (:name h))))
+
+(defn- put-value
+  "Returns state st with the score of holder h on objective o set to
+  v by an access that made the score when fresh?."
+  [st o h v fresh?]
+  (->> (scoreboard/written (:sb st) o (:name h) (:display h) v fresh?)
+       (with-deltas st)))
+
+(def ^:private read-only-failure
+  (let [why "Cannot modify read-only score"]
+    (reply/failure {:translate "command.failed"
+                    :hover {:action :show-text :value why}})))
+
+(defn- swapped [st eid o t so h a b fresh?]
+  (let [st (assoc (put-value st o t b (:fresh st)) :fresh false)]
+    (if (scoreboard/read-only? so)
+      (reduced (assoc st :error [(out/to eid read-only-failure)]))
+      (put-value st so h a fresh?))))
+
+(defn- operated
+  "Returns state st after op of the score of target t on objective o
+  with the score of source h on objective so."
+  [eid op o t so st h]
+  (let [fresh? (nil? (scoreboard/score (:sb st) (:name so) (:name h)))
+        st (made st so h)
+        a (value-of st o t) b (value-of st so h)]
+    (cond
+      (= "><" op) (swapped st eid o t so h a b fresh?)
+      (and (zero? (long b)) (#{"/=" "%="} op))
+      (reduced
+        (assoc st :error (fail eid "arguments.operation.div0")))
+      :else (let [v (unchecked-int ((simple op) a b))]
+              (-> (put-value st o t v (:fresh st))
+                  (assoc :fresh false))))))
+
+(defn- per-target [eid op o so hs st t]
+  (let [fresh? (nil? (scoreboard/score (:sb st) (:name o) (:name t)))
+        st (reduce (partial operated eid op o t so)
+                   (assoc (made st o t) :fresh fresh?) hs)]
+    (cond-> st (:error st) reduced)))
+
+(defn- operation-line [eid ts o st]
+  (apply line eid ts "operation.success" (scoreboard/shown o) :holders
+         (when-not (next ts) [(value-of st o (first ts))])))
+
+(defn- operation [world eid ts o op hs so]
+  (let [st (reduce (partial per-target eid op o so hs)
+                   {:sb (:scoreboard world) :ds []} ts)]
+    (concat (:ds st) (or (:error st) (operation-line eid ts o st)))))
+
+(defn- from-sources [world eid ts o op [sources snm]]
+  (with-holders world eid sources snm
+    (fn [_ hs so] (operation world eid ts o op hs so))))
+
+(defn- operated-deltas [world eid [targets nm op & from]]
+  (let [{:keys [ok error]} (named-holders world eid targets)]
     (or error
-        (known world eid nm
-               (fn [o]
-                 (concat (mapcat reset ok)
-                         (reset-line eid ok "reset.specific"
-                                     (scoreboard/shown o))))))))
+        (writable world eid nm
+                  #(from-sources world eid ok % op from)))))
 
 (def handlers
   {:score-set (scoring (fn [_ v] v) set-line)
@@ -239,10 +362,11 @@
    :objective-name named
    :objective-render rendered
    :objective-auto-update updating
-   :objective-format (formatted (constantly nil))
-   :objective-format-blank (formatted (constantly {:type :blank}))
-   :objective-format-fixed (formatted fixed)
-   :objective-format-styled (formatted styled)
+   :objective-format formatted
+   :trigger-enable enabled
+   :score-name score-named
+   :score-format score-formatted
+   :score-operation operated-deltas
    :objective-add add-deltas
    :objective-remove remove-deltas
    :objectives-list list-deltas

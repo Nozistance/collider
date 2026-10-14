@@ -187,20 +187,71 @@
 
 (defn- new-score [] {:value 0 :locked true})
 
+(defn- put [sb nm h s]
+  (cons [:score-set nm h s]
+        (when (tracked? sb nm) [(out/all (out/score h nm s))])))
+
+(defn created
+  "Returns the deltas of holder h getting a new score on the objective
+  called nm, which no player sees yet, none when it has one."
+  [sb nm h]
+  (when-not (score sb nm h) [[:score-set nm h (new-score)]]))
+
+(defn applied
+  "Returns sb after the scores that deltas ds set."
+  [sb ds]
+  (reduce (fn [sb [k nm h s]]
+            (if (= :score-set k) (scored sb nm h s) sb))
+          sb ds))
+
+(defn- shown-by [o display old]
+  (when (and (:auto-update o) display (not= display (:display old)))
+    display))
+
 (defn written
   "Returns the deltas of the score of holder h on objective o set to
   v. An objective that updates the display takes display, the name
-  h shows by, when there is one."
+  h shows by, when there is one. A fresh score, new and not yet
+  sent, is sent whatever it holds."
+  ([sb o h display v]
+   (written sb o h display v (nil? (score sb (:name o) h))))
+  ([sb o h display v fresh?]
+   (let [nm (:name o) old (or (score sb nm h) (new-score))
+         shown (shown-by o display old)
+         s (cond-> (assoc old :value v) shown (assoc :display shown))]
+     (when (or fresh? shown (not= v (:value old)))
+       (put sb nm h s)))))
+
+(defn unlocked
+  "Returns the deltas of the score of holder h on the objective called
+  nm unlocked, none when it is not locked."
+  [sb nm h]
+  (let [old (score sb nm h)]
+    (when (:locked old true)
+      (let [s (assoc (or old (new-score)) :locked false)]
+        (if old [[:score-set nm h s]] (put sb nm h s))))))
+
+(defn triggered
+  "Returns the deltas of the score of holder h on objective o locked
+  and set to v, as written takes display."
   [sb o h display v]
-  (let [nm (:name o) old (score sb nm h)
-        shown (when (and (:auto-update o) display
-                         (not= display (:display old)))
-                display)
-        s (cond-> (assoc (or old (new-score)) :value v)
-            shown (assoc :display shown))]
-    (when (or (nil? old) shown (not= v (:value old)))
-      (cons [:score-set nm h s]
-            (when (tracked? sb nm) [(out/all (out/score h nm s))])))))
+  (let [nm (:name o) s (assoc (score sb nm h) :locked true)]
+    (cons [:score-set nm h s]
+          (written (scored sb nm h s) o h display v false))))
+
+(defn renamed
+  "Returns the deltas of the score of holder h on the objective called
+  nm shown by name d, none when it already is."
+  [sb nm h d]
+  (let [old (score sb nm h)]
+    (when (or (nil? old) (not= d (:display old)))
+      (put sb nm h (assoc (or old (new-score)) :display d)))))
+
+(defn reformatted
+  "Returns the deltas of the score of holder h on the objective called
+  nm shown in number format f."
+  [sb nm h f]
+  (put sb nm h (assoc (or (score sb nm h) (new-score)) :format f)))
 
 (defn reset-all
   "Returns the deltas of holder h of sb losing all its scores."

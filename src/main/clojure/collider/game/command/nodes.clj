@@ -43,6 +43,7 @@
    :objective [:objective nil]
    :criteria [:objective-criteria nil]
    :display-slot [:scoreboard-slot nil]
+   :operation [:operation nil]
    :style [:style nil]})
 
 (defn- entity-props [single? players?]

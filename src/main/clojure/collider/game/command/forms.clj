@@ -19,7 +19,7 @@
 
 (def ^:private open-commands
   "The commands every player may run."
-  #{"me" "msg" "tell" "w" "list" "help" "teammsg" "tm"})
+  #{"me" "msg" "tell" "w" "list" "help" "teammsg" "tm" "trigger"})
 
 (defn- level-of ^long [nm]
   (if (open-commands nm) 0 gamemaster))
@@ -314,6 +314,17 @@
 (defn- modifying [& more]
   (into [(lit "objectives") (lit "modify") objective-arg] more))
 
+(defn- formats
+  "The number format forms after path, each run as op with the kind
+  of format first."
+  [path op]
+  [path [:world op nil]
+   (conj path (lit "blank")) [:world op :blank]
+   (conj path (lit "fixed") [:contents [:component {}]])
+   [:world op :fixed]
+   (conj path (lit "styled") [:style [:style {}]])
+   [:world op :styled]])
+
 (def ^:private targets-arg [:targets [:score-holder {}]])
 
 (def ^:private target-arg [:target [:score-holder {:single? true}]])
@@ -331,7 +342,18 @@
     [:score [:int {:min 0 :max int-max}]]] [:world :score-remove]
    [(lit "players") (lit "reset") targets-arg] [:world :scores-reset]
    [(lit "players") (lit "reset") targets-arg objective-arg]
-   [:world :score-reset]])
+   [:world :score-reset]
+   [(lit "players") (lit "enable") targets-arg objective-arg]
+   [:world :trigger-enable]
+   [(lit "players") (lit "display") (lit "name") targets-arg
+    objective-arg [:name [:component {:default nil}]]]
+   [:world :score-name]])
+
+(def ^:private operation-form
+  [[(lit "players") (lit "operation") targets-arg
+    [:targetObjective [:objective {}]] [:operation [:operation {}]]
+    [:source [:score-holder {}]] [:sourceObjective [:objective {}]]]
+   [:world :score-operation]])
 
 (def ^:private scoreboard-form
   [:scoreboard "keep objectives and show them in display slots"
@@ -346,25 +368,37 @@
               [:type [:enum {:values #{"integer" "hearts"}}]])
    [:world :objective-render]
    (modifying (lit "displayautoupdate") [:value [:bool {}]])
-   [:world :objective-auto-update]
-   (modifying (lit "numberformat")) [:world :objective-format]
-   (modifying (lit "numberformat") (lit "blank"))
-   [:world :objective-format-blank]
-   (modifying (lit "numberformat") (lit "fixed")
-              [:contents [:component {}]])
-   [:world :objective-format-fixed]
-   (modifying (lit "numberformat") (lit "styled") [:style [:style {}]])
-   [:world :objective-format-styled]
-   [(lit "objectives") (lit "remove") objective-arg]
+   [:world :objective-auto-update]])
+
+(def ^:private objective-forms
+  [[(lit "objectives") (lit "remove") objective-arg]
    [:world :objective-remove]
    [(lit "objectives") (lit "setdisplay") [:slot [:display-slot {}]]
     [:objective [:objective {:default nil}]]]
    [:world :objective-display]])
 
-(def ^:private scoreboard-forms (into scoreboard-form player-forms))
+(def ^:private scoreboard-forms
+  (-> scoreboard-form
+      (into (formats (modifying (lit "numberformat"))
+                     :objective-format))
+      (into objective-forms)
+      (into player-forms)
+      (into (formats [(lit "players") (lit "display")
+                      (lit "numberformat") targets-arg objective-arg]
+                     :score-format))
+      (into operation-form)))
+
+(def ^:private trigger-value
+  [:value [:int {:min int-min :max int-max}]])
+
+(def ^:private trigger-form
+  [:trigger "add to or set your score on a trigger objective"
+   [objective-arg] [:world :trigger nil]
+   [objective-arg (lit "add") trigger-value] [:world :trigger :add]
+   [objective-arg (lit "set") trigger-value] [:world :trigger :set]])
 
 (def ^:private base-forms
-  [time-form team-form scoreboard-forms
+  [time-form team-form scoreboard-forms trigger-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]

@@ -9,6 +9,7 @@
             [collider.game.commands.scoreboard :as scoreboard]
             [collider.game.commands.team :as team]
             [collider.game.commands.teleport :as teleport]
+            [collider.game.commands.trigger :as trigger]
             [collider.game.commands.world :as world]))
 
 (set! *warn-on-reflection* true)
@@ -17,7 +18,7 @@
   "Every command by name, each as (f world eid args)."
   (merge fill/handlers teleport/handlers entity/handlers data/handlers
          player/handlers world/handlers say/handlers team/handlers
-         scoreboard/handlers))
+         scoreboard/handlers trigger/handlers))
 
 (defn deltas
   "Returns the deltas of player eid running the parsed command."

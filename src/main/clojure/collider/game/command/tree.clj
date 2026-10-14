@@ -142,6 +142,16 @@
       res
       (r/error-at end "argument.scoreboardDisplaySlot.invalid" v))))
 
+(def ^:private operations
+  #{"=" "+=" "-=" "*=" "/=" "%=" "<" ">" "><"})
+
+(defn- operation-read [[s n :as rd]]
+  (let [e (or (str/index-of s " " n) (count s)) v (subs s n e)]
+    (cond (not (r/can-read? rd))
+          (r/error-at rd "arguments.operation.invalid")
+          (operations v) [v [s e]]
+          :else (r/error "arguments.operation.invalid"))))
+
 (defn- int-reader [lo hi] (:parse (r/int-arg lo hi)))
 
 (defn- rule-value-read [{:keys [type min max]}]
@@ -163,6 +173,7 @@
     (:word :team :objective) r/read-unquoted
     :criteria criteria-read
     :display-slot slot-read
+    :operation operation-read
     :team-color team-color-read
     (:greedy :text) r/read-greedy
     :component component-read
