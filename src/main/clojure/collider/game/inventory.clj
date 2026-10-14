@@ -27,7 +27,7 @@
 (defn- topped-up [chs cur slot ^long take]
   (conj chs [slot (update cur :count (fnil + 1) take)]))
 
-(defn- fill-existing [inv stack ^long n]
+(defn- fill-existing [inv order stack ^long n]
   (let [cap (long (data/max-stack (:item stack)))
         step (fn [[chs n] slot]
                (let [n (long n) cur (get inv slot)
@@ -36,21 +36,39 @@
                  (if (topping-up? cur stack cap n)
                    [(topped-up chs cur slot take) (- n take)]
                    [chs n])))]
-    (reduce step [[] n] slot-order)))
+    (reduce step [[] n] order)))
 
 (defn- first-empty-slot [inv changes]
   (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
                  slot-order)))
 
+(defn- space-order [e]
+  (distinct (concat [(player/hand-slot e :main) (player/hand-slot e :off)]
+                    slot-order)))
+
 (defn add-stack
-  "Returns the slot changes that fit stack into inv, and the rest.
-  The rest is nil when the whole stack found room."
-  [inv stack]
-  (let [[changes n] (fill-existing inv stack (long (:count stack 1)))
+  "Returns the slot changes that fit stack into the inventory of
+  player e, and the rest. Room in a stack is sought in the selected
+  slot first, the off hand next and the rest in order, empty slots
+  last.
+  The rest is nil when the whole stack found room, or when nothing did
+  and e has infinite materials."
+  [e stack]
+  (let [inv (:inventory e)
+        n0 (long (:count stack 1))
+        cap (long (data/max-stack (:item stack)))
+        [changes n] (fill-existing inv (space-order e) stack n0)
+        [changes n] (loop [changes changes n (long n)]
+                      (let [slot (when (pos? n) (first-empty-slot inv changes))]
+                        (if slot
+                          (recur (conj changes [slot (assoc stack :count (min n cap))])
+                                 (- n (min n cap)))
+                          [changes n])))
         n (long n)]
-    (if-let [slot (when (pos? n) (first-empty-slot inv changes))]
-      [(conj changes [slot (assoc stack :count n)]) nil]
-      [changes (when (pos? n) (assoc stack :count n))])))
+    [changes
+     (when (and (pos? n)
+                (not (and (= n n0) (player/infinite-materials? e))))
+       (assoc stack :count n))]))
 
 (defn- holds? [inv stack]
   (some #(and (= (:item %) (:item stack))
@@ -65,7 +83,7 @@
   "Returns the deltas that put stack into the inventory of player
   eid, and throw out what does not fit."
   [world eid e stack]
-  (let [[changes left] (add-stack (:inventory e) stack)]
+  (let [[changes left] (add-stack e stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
             (when left
               [[:spawn-entity (item/dropped world eid left)]]))))

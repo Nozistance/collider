@@ -442,10 +442,14 @@
            (+ (v/z p) half pickup-inflate))]))
 
 (defn- in-box? [lo hi ie]
-  (let [p (:pos ie) half (item-half)
+  (let [p (:pos ie)
+        [half h] (if (identical? :item (:type ie))
+                   [(item-half) (item-height)]
+                   (entity/box ie))
+        half (double half) h (double h)
         x (v/x p) y (v/y p) z (v/z p)]
     (and (< (v/x lo) (+ x half)) (> (v/x hi) (- x half))
-         (< (v/y lo) (+ y (item-height))) (> (v/y hi) y)
+         (< (v/y lo) (+ y h)) (> (v/y hi) y)
          (< (v/z lo) (+ z half)) (> (v/z hi) (- z half)))))
 
 (defn- collect-deltas [ieid peid changes remaining]
@@ -456,15 +460,37 @@
       [(out/all (out/collect ieid peid))
        [:remove-entity ieid]])))
 
-(defn- pickup-one [peid [out inv :as acc] [ieid ie]]
-  (let [[changes remaining] (inventory/add-stack inv (:stack ie))]
-    (if (seq changes)
+(defn- item-taken [peid pe [out inv :as acc] ieid ie]
+  (let [[changes remaining]
+        (inventory/add-stack (assoc pe :inventory inv) (:stack ie))]
+    (if (or (seq changes) (nil? remaining))
       [(into out (collect-deltas ieid peid changes remaining))
        (into inv changes)]
       acc)))
 
+(defn- arrow-taken [peid pe [out inv :as acc] ieid ie]
+  (let [[changes remaining]
+        (case (:pickup ie)
+          :allowed (inventory/add-stack (assoc pe :inventory inv)
+                                        (:stack ie))
+          :creative-only (if (player/infinite-materials? pe)
+                           [[] nil]
+                           [[] :none])
+          [[] :none])]
+    (if (nil? remaining)
+      [(into out (collect-deltas ieid peid changes nil))
+       (into inv changes)]
+      acc)))
+
+(defn- pickup-one [peid pe acc [ieid ie]]
+  (if (identical? :arrow (:type ie))
+    (arrow-taken peid pe acc ieid ie)
+    (item-taken peid pe acc ieid ie)))
+
 (defn- ready? [ie]
-  (zero? (long (or (:pickup-delay ie) 0))))
+  (if (identical? :arrow (:type ie))
+    (and (:in-ground? ie) (<= (long (:shake ie 0)) 0))
+    (zero? (long (or (:pickup-delay ie) 0)))))
 
 (defn- takes? [pe]
   (and (entity/alive? pe) (not (game-mode/spectator? pe))))
@@ -476,7 +502,7 @@
   (let [es (:entities world) active (areas/active-chunks world)
         [lo hi] (pickup-box pe)
         taken? (fn [[_ e]]
-                 (and (identical? :item (:type e)) (ready? e)
+                 (and (#{:item :arrow} (:type e)) (ready? e)
                       (in-box? lo hi e)
                       (areas/active-at? active (:pos e))))
         entry (fn [eid]
@@ -490,7 +516,7 @@
   [world [peid pe]]
   (when (takes? pe)
     (let [items (touched world pe)
-          take (fn [acc item] (pickup-one peid acc item))]
+          take (fn [acc item] (pickup-one peid pe acc item))]
       (when (seq items)
         (first (reduce take [[] (:inventory pe)] items))))))
 
