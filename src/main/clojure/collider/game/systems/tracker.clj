@@ -160,13 +160,10 @@
               (if-let [es (lm/get idx c)] (lm/union acc es) acc))
             (lm/long-set) seen)))
 
-(defn- tracking-deltas [world t0 idx ps later? [oid o]]
+(defn- tracking-deltas [world t0 idx ps [oid o]]
   (let [near (in-view idx (or (:sent-chunks o) (lm/long-set)))
         hidden (hidden-from oid o ps)
         want (lm/difference near hidden)
-        want (if later?
-               (lm/difference want (lm/long-set (filter later? want)))
-               want)
         have (or (:tracking o) (lm/long-set))
         add (into [] (lm/difference want have))
         gone (into [] (lm/difference have want))]
@@ -447,43 +444,23 @@
                 (identical? :change-dimension tag))))
         (:world d)))
 
-(defn- thrown? [e] (contains? entity/thrown-types (:type e)))
-
-(defn- thrown-moves [world ps t]
-  (let [viewers (viewed ps)]
-    (into [] (mapcat (fn [[eid e]] (move-deltas t viewers eid e)))
-          (level/of-types world entity/thrown-types))))
-
-(defn- late-spawns [world ps t0]
-  (let [idx (by-chunk world)]
-    (into [] (mapcat #(tracking-deltas world t0 idx ps nil %)) ps)))
-
 (defn late-tracking
-  "Returns the deltas that show players the entities new this tick,
-  and where the thrown things flew, as their clients fly them."
+  "Returns the deltas that show players the entities new this tick."
   {:wake {:deltas #{:spawn-entity :remove-entity
-                    :change-dimension}
-          :types entity/thrown-types}}
+                    :change-dimension}}}
   [world d]
-  (let [ps (level/player-entries world)
-        t0 (inc (long (:tick world)))]
-    (deltas/of-vec
-      (concat (when (entities-changed? d) (late-spawns world ps t0))
-              (thrown-moves world ps t0)))))
-
-(defn- self-flown?
-  "Returns true when eid is a thrown thing born this tick. A vanilla
-  client gets it as soon as it is thrown and flies it on its own, so
-  ours gets it after its first flight, at the end of the tick."
-  [world eid]
-  (let [e (get-in world [:entities eid])]
-    (and (thrown? e) (= (:born e) (:tick world)))))
+  (deltas/of-vec
+    (when (entities-changed? d)
+      (let [idx (by-chunk world)
+            ps (level/player-entries world)
+            t0 (inc (long (:tick world)))
+            track #(tracking-deltas world t0 idx ps %)]
+        (into [] (mapcat track) ps)))))
 
 (defn- spawn-deltas [world ps]
   (let [idx (by-chunk world)
-        t0 (:tick world)
-        later? #(self-flown? world %)]
-    (deltas/fold #(tracking-deltas world t0 idx ps later? %) ps)))
+        t0 (:tick world)]
+    (deltas/fold #(tracking-deltas world t0 idx ps %) ps)))
 
 (def ^:private ^:const move-batch 32)
 
@@ -498,7 +475,7 @@
   (let [viewers (viewed ps)
         t (long (:tick world))
         step (fn [c eid e]
-               (if (and (tracked? e) (not (thrown? e)))
+               (if (tracked? e)
                  (deltas/collect-all! c (move-deltas t viewers eid e))
                  c))]
     (collected (r/fold move-batch joined step (:entities world)))))
