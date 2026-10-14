@@ -103,6 +103,7 @@
    :tnt/primed                    [:entity.tnt.primed 4]
    :snowball/throw                [:entity.snowball.throw 6]
    :arrow/hit                     [:entity.arrow.hit 6]
+   :arrow/shoot                   [:entity.arrow.shoot 7]
    :firework-rocket/launch        [:entity.firework-rocket.launch 8]
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]

@@ -2,6 +2,7 @@
   "The packet events of the tick, one after another in the order they
   came."
   (:require [collider.game.apply :as apply]
+            [collider.game.bow :as bow]
             [collider.game.camera :as camera]
             [collider.game.deltas :as deltas]
             [collider.game.input :as input]
@@ -64,7 +65,8 @@
               (spawning/arrival w' eid req)))))
 
 (def ^:private handlers
-  [[(set (keys player-input)) played]
+  [[#{:release-use} (own bow/release-deltas)]
+   [(set (keys player-input)) played]
    [#{:respawn} respawned]
    [#{:spectate} spectated]
    [#{:dig :place :use-item :sign-update} blocks/edit-deltas]

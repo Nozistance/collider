@@ -13,6 +13,8 @@
 
 (def ^:private ^:const bundle-ticks 200)
 
+(def ^:const bow-ticks 72000)
+
 (defn- sound-id [v]
   (kw (if (map? v) (get v "sound_id") v)))
 
@@ -58,5 +60,6 @@
       (consume-ticks c)
       (case item
         :spyglass spyglass-ticks
+        :bow bow-ticks
         :goat-horn (some-> (instrument-of stack) instrument-ticks)
         (when (bundle/bundle-item? stack) bundle-ticks)))))

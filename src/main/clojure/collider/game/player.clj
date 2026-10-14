@@ -301,6 +301,26 @@
       {:cooldowns (assoc (:cooldowns e) group (+ tick ticks))}]
      (out/to eid (out/cooldown group ticks))]))
 
+(def ^:private ^:table arrows
+  (delay (set (data/tag-values "item" "arrows"))))
+
+(def ^:private projectile-order
+  (vec (concat (range slots/hotbar (inc slots/hotbar-end)) slots/main
+               (map slots/armor [:feet :legs :chest :head])
+               [slots/offhand])))
+
+(defn arrow-slot
+  "Returns the slot of the arrow a bow of player e shoots, or nil. The
+  hands come first, the off one before the main."
+  [e]
+  (let [arrow? #(contains? @arrows (:item (get-in e [:inventory %])))]
+    (first (filter arrow? (concat [slots/offhand (hand-slot e :main)]
+                                  projectile-order)))))
+
+(defn- unarmed? [e stack]
+  (and (= :bow (:item stack)) (not (game-mode/instabuild? e))
+       (nil? (arrow-slot e))))
+
 (defn- start-use [e hand ^long tick]
   (let [stack (hand-stack e hand)
         n (using/ticks stack)]
@@ -309,6 +329,7 @@
       (game-mode/spectator? e) e
       (on-cooldown? e (:item stack) tick) e
       (food/refuses? e (:item stack)) e
+      (unarmed? e stack) e
       n (assoc e
           :using-item? true
           :using {:hand hand :item (:item stack) :started tick

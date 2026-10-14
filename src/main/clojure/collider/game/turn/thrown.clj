@@ -43,7 +43,7 @@
 
 (def ^:private ^:const inaccuracy 0.0172275)
 
-(def ^:private ^:const eye-drop (double (float 0.1)))
+(def ^:const eye-drop (double (float 0.1)))
 
 (def ^:private ^:const bottle-xp-color -13083194)
 
@@ -181,19 +181,26 @@
 
 (defn- eye-y ^double [e] (f32 (entity/eye-height e)))
 
-(defn- thrown [world eid e stack]
-  (let [{:keys [power offset entity drop]
-         :or {drop eye-drop}} (throwables (:item stack))
-        p (:pos e)
+(defn launched
+  "Returns the position, motion, yaw and pitch of a projectile shot by
+  e of eid at power, aimed offset degrees up and set drop below the
+  eyes. It faces its own motion and carries that of e."
+  [world eid e power offset drop]
+  (let [p (:pos e)
         dir (aim (double (:yaw e 0.0)) (double (:pitch e 0.0))
                  (double offset))
-        vel (carried e (shot-vel world eid dir (double power)))
+        vel (shot-vel world eid dir (double power))
         [yaw pitch] (projectile/facing vel)]
-    {:type  (or entity (:item stack)) :owner eid :age 0
-     :left-owner? false
-     :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) (double drop)) (v/z p)]
-     :vel   vel :yaw yaw :pitch pitch :on-ground false
-     :stack (assoc stack :count 1)}))
+    {:pos [(v/x p) (- (+ (v/y p) (eye-y e)) (double drop)) (v/z p)]
+     :vel (carried e vel) :yaw yaw :pitch pitch}))
+
+(defn- thrown [world eid e stack]
+  (let [{:keys [power offset entity drop]
+         :or {drop eye-drop}} (throwables (:item stack))]
+    (merge {:type (or entity (:item stack)) :owner eid :age 0
+            :left-owner? false :on-ground false
+            :stack (assoc stack :count 1)}
+           (launched world eid e power offset drop))))
 
 (defn- throw-sound [world eid e stack]
   (when-let [snd (:sound (throwables (:item stack)))]
