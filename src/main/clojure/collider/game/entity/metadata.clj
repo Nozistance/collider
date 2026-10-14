@@ -99,6 +99,8 @@
   [e]
   (let [m (cond-> (own-metadata e)
             (not= 300 (long (:air e 300))) (assoc :air-supply (:air e))
+            (pos? (long (:arrow-count e 0)))
+            (assoc :arrow-count (:arrow-count e))
             (pos? (long (or (:ticks-frozen e) 0)))
             (assoc :ticks-frozen (:ticks-frozen e)))
         fx (:effects e)]

@@ -177,7 +177,9 @@
     (assoc :effect-particles
            (mapv effect-particle (:effect-particles meta)))
     (contains? meta :effect-ambience)
-    (assoc :effect-ambience (boolean (:effect-ambience meta)))))
+    (assoc :effect-ambience (boolean (:effect-ambience meta)))
+    (contains? meta :arrow-count)
+    (assoc :arrow-count (long (or (:arrow-count meta) 0)))))
 
 (defn- orb-fields [meta]
   (cond-> (common-fields meta)

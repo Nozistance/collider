@@ -155,7 +155,42 @@
       (and (not (:left-owner? e))
            (= (long oid) (long (:owner e -1))))))
 
-(defn- margin ^double [e]
+(def ^:private ^:const face-slack 1.0E-7)
+
+(defn- face-hit
+  "Returns the fraction t where a ray crosses the face of box b at
+  index i along axis a, when it does so nearer than t and inside the
+  face, or t."
+  [b from d a i t]
+  (let [t (double t)
+        s (/ (- (double (b i)) (double (from a))) (double (d a)))
+        inside? (fn [^long k]
+                  (let [x (+ (double (from k)) (* s (double (d k))))]
+                    (and (< (- (double (b k)) face-slack) x)
+                         (< x (+ (double (b (+ k 3))) face-slack)))))]
+    (if (and (< 0.0 s t) (every? inside? (remove #{a} [0 1 2])))
+      s
+      t)))
+
+(defn box-clip
+  "Returns the point where a ray from to to enters box b through a
+  face it faces, or nil."
+  [b from to]
+  (let [from [(v/x from) (v/y from) (v/z from)]
+        d (mapv - [(v/x to) (v/y to) (v/z to)] from)
+        t (reduce (fn [^double t a]
+                    (let [da (double (d a))]
+                      (cond (> da face-slack) (face-hit b from d a a t)
+                            (< da (- face-slack)) (face-hit b from d a (+ a 3) t)
+                            :else t)))
+                  1.0 [0 1 2])]
+    (when (< (double t) 1.0)
+      (mapv (fn [f x] (+ (double f) (* (double t) (double x)))) from d))))
+
+(defn margin
+  "Returns how far beyond its box projectile e meets a body, growing
+  with its age."
+  ^double [e]
   (let [lived (dec (long (:age e 0)))]
     (max 0.0 (min (num/f32 0.3) (num/f32 (/ (num/f32 lived) 20.0))))))
 

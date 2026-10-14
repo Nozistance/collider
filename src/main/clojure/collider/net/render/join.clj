@@ -60,6 +60,7 @@
 
 (def ^:private game-events
   {:start-raining 1 :stop-raining 2 :change-game-mode 3
+   :play-arrow-hit-sound 6
    :rain-level-change 7 :thunder-level-change 8
    :immediate-respawn 11 :limited-crafting 12
    :level-chunks-load-start 13})

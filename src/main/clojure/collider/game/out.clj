@@ -196,6 +196,11 @@
 (defn stats [stats]
   {:msg :stats :stats stats})
 
+(defn arrow-hit-player
+  "Returns the effect that a player's arrow hit another player."
+  []
+  {:msg :arrow-hit-player})
+
 (defn game-rules [rules]
   {:msg :game-rules :rules rules})
 

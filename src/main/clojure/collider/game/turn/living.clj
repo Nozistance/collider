@@ -2,6 +2,7 @@
   "The base tick before the step of a living entity and the touch of
   blocks after it."
   (:require [collider.game.effect.account :as account]
+            [collider.game.entity.arrows :as arrows]
             [collider.game.entity.hurt :as hurt]))
 
 (set! *warn-on-reflection* true)
@@ -13,10 +14,11 @@
       [e ds])))
 
 (defn- base-of [world eid e]
-  (cond-> []
-    (hurt/based? world e) (into (hurt/base-deltas world eid e))
-    (not (pos? (double (:health e))))
-    (into (hurt/timer-deltas world eid e))))
+  (-> (cond-> []
+        (hurt/based? world e) (into (hurt/base-deltas world eid e))
+        (not (pos? (double (:health e))))
+        (into (hurt/timer-deltas world eid e)))
+      (into (arrows/loose-deltas eid e))))
 
 (defn based
   "Returns living entity eid after its base tick, and its deltas.

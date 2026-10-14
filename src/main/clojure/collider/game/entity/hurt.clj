@@ -145,6 +145,16 @@
         (when-not (zero? n) n)))
     :else amount))
 
+(defn hurts?
+  "Returns true when amount from src hurts living entity e. Inside
+  its hurt window only more than its last hurt does."
+  [world e amount src]
+  (let [n (taken world e amount src)]
+    (boolean
+      (and n (pos? (double (:health e 0.0)))
+           (or (<= (long (or (:hurt-resist e) 0)) 10)
+               (> (num/f32 n) (num/f32 (or (:last-damage e) 0.0))))))))
+
 (defn damage-deltas
   "Returns the deltas of entity eid taking amount from src, none when
   it takes nothing."

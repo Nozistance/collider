@@ -306,6 +306,8 @@
 (def ^:private world-fx
   {:rule-flag      (fn [_ m] [(rule-flag-packet m)])
    :rain-started   (fn [_ _] [(rain-packet :start-raining)])
+   :arrow-hit-player
+   (fn [_ _] [(join/game-event-packet :play-arrow-hit-sound 0.0)])
    :rain-stopped   (fn [_ _] [(rain-packet :stop-raining)])
    :rain-level     (weather-fx :rain-level-change)
    :thunder-level  (weather-fx :thunder-level-change)

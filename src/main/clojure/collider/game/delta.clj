@@ -327,6 +327,7 @@
                      [:pitch number?]]
      :rule-flag [[:kind :keyword] [:on? :boolean]]
      :rain-started []
+     :arrow-hit-player []
      :rain-stopped []
      :rain-level [[:level number?]]
      :thunder-level [[:level number?]]

@@ -4,6 +4,7 @@
             [collider.game.block.screen :as screen]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.arrows :as arrows]
             [collider.game.entity.hurt :as hurt]
             [collider.num :as num]
             [collider.parallel :as par]
@@ -99,7 +100,8 @@
         (into (hurt/wall-deltas world eid e))
         (into (hurt/air-deltas world eid e))
         (into (hurt/touch-deltas world eid e))
-        (into (body-deltas world eid e)))))
+        (into (body-deltas world eid e))
+        (into (arrows/loose-deltas eid e)))))
 
 (defn damage
   "Returns the deltas of every item and orb this tick. A mob takes
