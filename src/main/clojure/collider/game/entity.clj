@@ -18,7 +18,7 @@
 
 (def thrown-types
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
-    :experience-bottle :wind-charge :firework-rocket})
+    :experience-bottle :wind-charge :firework-rocket :arrow})
 
 (defn player?
   [e]
@@ -81,7 +81,7 @@
     :area-effect-cloud (types/map->Cloud m)
     (:painting :item-frame :glow-item-frame) (types/map->Hanging m)
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
-     :experience-bottle :firework-rocket)
+     :experience-bottle :firework-rocket :arrow)
     (types/map->Projectile m)
     (compact (types/map->Mob m))))
 
@@ -146,7 +146,8 @@
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
 (defn- kind [type]
-  (cond (contains? thrown-types type) :thrown
+  (cond (= :arrow type) :arrow
+        (contains? thrown-types type) :thrown
         (contains? hanging/types type) :hanging
         (#{:item :tnt :falling-block :area-effect-cloud
            :experience-orb} type) type
@@ -162,6 +163,8 @@
    :tnt [:fuse :origin :owner]
    :falling-block [:block :time :fall :hurt :hurt-max]
    :thrown [:owner :left-owner? :stack :life :lifetime :attached]
+   :arrow [:owner :left-owner? :stack :life :in-ground? :shake
+           :last-state :pickup :crit?]
    :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults
@@ -170,11 +173,13 @@
    :experience-orb {:value 0 :count 1 :age 0 :health 5.0}
    :tnt {:fuse 80}
    :falling-block {:time 0}
-   :thrown {:left-owner? false}})
+   :thrown {:left-owner? false}
+   :arrow {:left-owner? false :life 0}})
 
 (def ^:private fresh
   {:mob {:task nil :no-action 0}
-   :thrown {:age 0}})
+   :thrown {:age 0}
+   :arrow {:age 0}})
 
 (def ^:private timers
   [:love-until :baby-until :breed-ready-at :egg-at

@@ -216,7 +216,8 @@
 
 (defn- moved-now? [e ^Track tr due? ^long ticks]
   (boolean (and due?
-                (or (not (near-baseline? e tr))
+                (or (= :arrow (:type e))
+                    (not (near-baseline? e tr))
                     (zero? (rem ticks resync-interval))))))
 
 (defn- turned-now? [^Track tr due? ^long yaw ^long pitch]
@@ -272,7 +273,8 @@
     (new Frame x y z dx dy dz yaw pitch head ground since
          (boolean due?) vel mdata mdiff equip
          (moved-now? e tr due? ticks)
-         (turned-now? tr due? yaw pitch)
+         (or (and (boolean due?) (= :arrow (:type e)))
+             (turned-now? tr due? yaw pitch))
          rel?
          (boolean (and due? (not= head (long (tr-head tr)))))
          meta-changed?
@@ -359,6 +361,7 @@
           :lightning-bolt    still-update-interval
           :player            update-interval}
          (zipmap entity/thrown-types (repeat 10))
+         {:arrow 20}
          (zipmap hanging/types (repeat still-update-interval))))
 
 (defn- update-freq ^long [e]

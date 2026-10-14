@@ -18,6 +18,7 @@
             [collider.game.projectile :as projectile]
             [collider.game.stack :as stack]
             [collider.game.blast :as blast]
+            [collider.game.turn.arrow :as arrow]
             [collider.game.turn.overlay :as overlay]
             [collider.game.turn.rocket :as rocket]
             [collider.num :as num]
@@ -463,6 +464,7 @@
 
 (defn- step-deltas [world eid e]
   (cond (= :firework-rocket (:type e)) (rocket/step-deltas world eid e)
+        (= :arrow (:type e)) (arrow/step-deltas world eid e)
         (wind? e) (or (wind-gone world eid e) (moving-deltas world eid e))
         :else (moving-deltas world eid e)))
 
@@ -547,9 +549,11 @@
   "Returns the box [x0 z0 x1 z1] that thrown e sweeps in its move
   this tick."
   [world e]
-  (let [p (:pos e) q (v/add p (drift world e))]
-    [(min (v/x p) (v/x q)) (min (v/z p) (v/z q))
-     (max (v/x p) (v/x q)) (max (v/z p) (v/z q))]))
+  (if (= :arrow (:type e))
+    (arrow/reach e)
+    (let [p (:pos e) q (v/add p (drift world e))]
+      [(min (v/x p) (v/x q)) (min (v/z p) (v/z q))
+       (max (v/x p) (v/x q)) (max (v/z p) (v/z q))])))
 
 (defn ridden
   "Returns [w ds], world w after the turn of thrown eid, e, among

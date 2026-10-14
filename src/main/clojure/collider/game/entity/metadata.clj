@@ -48,6 +48,8 @@
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
     {:wind-charge (constantly {})
+     :arrow (fn [e] {:crit? (boolean (:crit? e))
+                     :in-ground? (boolean (:in-ground? e))})
      :firework-rocket
      (fn [e] (cond-> (thrown-metadata e)
                (:attached e) (assoc :attached (:attached e))))}))

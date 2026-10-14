@@ -76,6 +76,11 @@
    :falling-block
    {:parent :entity :fields [[:start-pos :block-pos [0 0 0]]]}
    :projectile {:parent :entity :fields []}
+   :abstract-arrow
+   {:parent :projectile
+    :fields [[:arrow-flags :byte 0] [:pierce-level :byte 0]
+             [:in-ground :boolean false]]}
+   :arrow {:parent :abstract-arrow :fields [[:effect-color :int -1]]}
    :throwable-projectile {:parent :projectile :fields []}
    :throwable-item-projectile
    {:parent :throwable-projectile :fields [[:item :item nil]]}

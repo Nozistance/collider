@@ -128,7 +128,7 @@
 
 (defn- class-of [kind]
   (cond (= :wind-charge kind) :projectile
-        (= :firework-rocket kind) kind
+        (#{:firework-rocket :arrow} kind) kind
         (entity/thrown-types kind) :throwable-item-projectile
         (kinds kind) (get renamed-classes kind kind)))
 
@@ -205,6 +205,11 @@
     (cond-> (stack-fields meta)
       (:attached meta) (assoc :attached (:attached meta)))
     :tnt (tnt-fields meta)
+    :arrow (cond-> {}
+             (contains? meta :crit?)
+             (assoc :arrow-flags (if (:crit? meta) 1 0))
+             (contains? meta :in-ground?)
+             (assoc :in-ground (boolean (:in-ground? meta))))
     :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)
     :experience-orb (orb-fields meta)

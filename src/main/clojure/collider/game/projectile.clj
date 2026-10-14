@@ -11,7 +11,8 @@
             [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -84,30 +85,67 @@
         z (cell-range (v/z from) (v/z to))]
     [x y z]))
 
-(defn- abs-box [[x y z] b]
+(defn abs-box
+  "Returns collision box b of a block at cell in world space."
+  [[x y z] b]
   (let [c (fn ^double [^long i ^long o]
             (+ (double o) (/ (double (nth b i)) 16.0)))]
     [(c 0 x) (c 1 y) (c 2 z) (c 3 x) (c 4 y) (c 5 z)]))
 
+(defn point
+  "Returns the point at fraction t of d from from."
+  [from d ^double t]
+  [(+ (v/x from) (* t (v/x d))) (+ (v/y from) (* t (v/y d)))
+   (+ (v/z from) (* t (v/z d)))])
+
+(defn inside?
+  "Returns true when point p lies in box b, its far sides open."
+  [b p]
+  (and (<= (double (b 0)) (v/x p)) (< (v/x p) (double (b 3)))
+       (<= (double (b 1)) (v/y p)) (< (v/y p) (double (b 4)))
+       (<= (double (b 2)) (v/z p)) (< (v/z p) (double (b 5)))))
+
+(defn- dot ^double [d k]
+  (let [[x y z] (dir/offset k) f num/f32]
+    (f (+ (f (+ (f (* (f (v/x d)) (double x)))
+                (f (* (f (v/y d)) (double y)))))
+          (f (* (f (v/z d)) (double z)))))))
+
+(defn- facing-away
+  "Returns the face a ray along d meets head on."
+  [d]
+  (let [best (reduce (fn [[_ hi :as best] k]
+                       (let [x (dot d k)]
+                         (if (> x (double hi)) [k x] best)))
+                     [:north Float/MIN_VALUE] dir/six)]
+    (dir/opposite (first best))))
+
+(def ^:private ^:const entry-step 0.001)
+
 (defn- cell-clip [chunks cell from d]
   (let [st (chunk/at chunks cell)]
     (when (block/solid? st)
-      (reduce (fn [best b]
-                (nearer best
-                        (reach/box-entry from d (abs-box cell b))
-                        nil))
-              nil (block/collision-boxes st)))))
+      (let [bs (mapv #(abs-box cell %) (block/collision-boxes st))
+            p (point from d entry-step)]
+        (if (some #(inside? % p) bs)
+          [entry-step (facing-away d)]
+          (reduce (fn [best b] (nearer best (reach/box-entry from d b) nil))
+                  nil bs))))))
+
+(def ^:private ^:const min-ray-sq 1.0E-7)
 
 (defn block-clip
   "Returns [t face cell] of the first block a ray from along d
-  meets, or nil."
+  meets, or nil. A ray that starts its first thousandth inside a
+  block meets it there, and a ray too short meets nothing."
   [world from d]
-  (reduce (fn [best cell]
-            (nearer best
-                    (when (chunk/in-range? (nth cell 1))
-                      (cell-clip (:chunks world) cell from d))
-                    [cell]))
-          nil (cells from (v/add from d))))
+  (when (>= (v/dot d d) min-ray-sq)
+    (reduce (fn [best cell]
+              (nearer best
+                      (when (chunk/in-range? (nth cell 1))
+                        (cell-clip (:chunks world) cell from d))
+                      [cell]))
+            nil (cells from (v/add from d)))))
 
 (defn- skip? [eid e oid o]
   (or (= (long oid) (long eid))
@@ -159,12 +197,6 @@
         (not (overlaps? (swept (body-box e (:pos e)) d 1.0)
                         (target-box o)))
         true)))
-
-(defn point
-  "Returns the point at fraction t of d from from."
-  [from d ^double t]
-  [(+ (v/x from) (* t (v/x d))) (+ (v/y from) (* t (v/y d)))
-   (+ (v/z from) (* t (v/z d)))])
 
 (defn- wrapped ^double [^double old ^double new]
   (cond (< (num/f32 (- new old)) -180.0) (recur (num/f32 (- old 360.0)) new)
