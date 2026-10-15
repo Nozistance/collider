@@ -166,8 +166,8 @@
   once at strength scale. A hurt comes from src."
   [acc k a scale src]
   (case k
-    :instant-health (healed acc (double (effect/strength 4 a scale)))
-    :instant-damage (hurt acc (double (effect/strength 6 a scale)) src)
+    :instant-health (healed acc (effect/strength 4 a scale))
+    :instant-damage (hurt acc (effect/strength 6 a scale) src)
     (second (acted acc k a))))
 
 (defn potion-laid

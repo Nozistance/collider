@@ -283,8 +283,9 @@
      :from at :player? (entity/player? o) :attacker (or o e)
      :direct-attacker e}))
 
-(defn- affected? [o]
-  (and (account/living? o) (pos? (double (:health o 0.0)))))
+(defn- affected-in? [box o]
+  (and (account/living? o) (pos? (double (:health o 0.0)))
+       (projectile/overlaps? box (projectile/target-box o))))
 
 (defn- reported [world oid o ds]
   (let [now (hurt/hurt-now world oid o ds)]
@@ -308,8 +309,8 @@
     (reported world oid o (account/deltas acc o))))
 
 (defn- splash-gap ^double [pb o ^double m]
-  (projectile/gap-sq pb (projectile/inflated (projectile/target-box o)
-                                             m m m)))
+  (let [b (projectile/inflated (projectile/target-box o) m m m)]
+    (projectile/gap-sq pb b)))
 
 (defn- splash-deltas [world eid e d at]
   (let [pb (projectile/body-box e at)
@@ -317,8 +318,7 @@
         m (projectile/margin e)
         src (magic-from world eid (assoc e :vel d) at)]
     (for [[oid o] (par/keyed (:entities world))
-          :when (and (affected? o)
-                     (projectile/overlaps? area (projectile/target-box o)))
+          :when (affected-in? area o)
           :let [g (splash-gap pb o m)]
           :when (< g splash-range-sq)
           ds (splashed-deltas world oid o (:stack e)
@@ -479,17 +479,16 @@
 (defn- in-cloud [world e ^double r]
   (let [box (cloud-box e r)]
     (for [[oid o] (par/keyed (:entities world))
-          :when (and (affected? o)
-                     (projectile/overlaps? box (projectile/target-box o)))]
+          :when (affected-in? box o)]
       [oid o])))
 
 (defn- kept-victims [e ^long age]
   (into {} (remove (fn [[_ at]] (>= age (long at)))) (:victims e)))
 
 (defn- clouded-deltas [world eid e oid o]
-  (let [acc (assoc (account/account oid o) :world world)
-        acc (account/potion-laid acc (:stack e) 0.5
-                                 (magic-from world eid e (:pos e)))]
+  (let [src (magic-from world eid e (:pos e))
+        acc (-> (account/account oid o) (assoc :world world)
+                (account/potion-laid (:stack e) 0.5 src))]
     (reported world oid o (account/deltas acc o))))
 
 (defn- out-of? [e r vs [oid o]]
