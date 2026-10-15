@@ -1,6 +1,7 @@
 (ns collider.game.commands.config
   "Config reloads and the game rules players ask for and set."
-  (:require [collider.game.commands.reply :as reply]
+  (:require [collider.game.command.forms :as forms]
+            [collider.game.commands.reply :as reply]
             [collider.game.commands.world :as world-commands]
             [collider.game.gamerules :as rules]
             [collider.game.out :as out]))
@@ -37,8 +38,9 @@
   [(out/to eid (out/system-chat {:text text}))])
 
 (defn- shown-deltas [eid settings]
-  (mapcat (fn [[k v]] (told eid (str (name k) " " (pr-str v))))
-          (sort-by key settings)))
+  (let [kept (filter #(contains? forms/settings (name (key %))) settings)]
+    (mapcat (fn [[k v]] (told eid (str (name k) " " (pr-str v))))
+            (sort-by key kept))))
 
 (defn- written-deltas [eid k v restart?]
   (told eid (str (name k) " is " (pr-str v) " in config.edn, "
