@@ -121,6 +121,21 @@
          :else (joined-deltas a b)))
   (^Deltas [a b & more] (reduce merge (merge a b) more)))
 
+(defn- tail [x y] (subvec (vec y) (count x)))
+
+(defn since
+  "Returns the deltas b holds past a, b being a with more deltas
+  joined to it."
+  ^Deltas [^Deltas a ^Deltas b]
+  (let [ea (entities-of a)
+        more (fn [[eid ds]]
+               (let [n (count (get ea eid))]
+                 (when (> (count ds) n) [eid (subvec (vec ds) n)])))]
+    (->Deltas (tail (world-of a) (world-of b))
+              (into (lm/long-map) (keep more) (entities-of b))
+              (tail (out-of a) (out-of b))
+              (tail (input-of a) (input-of b)))))
+
 (defn inert?
   "Returns true when d changes nothing in the world it applies to."
   [^Deltas d]

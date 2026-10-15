@@ -2,7 +2,7 @@
   (:require [clojure.string :as str]
             [collider.cli :as cli]
             [collider.log :as log])
-  (:import (java.util.concurrent ConcurrentLinkedQueue)))
+  (:import (java.util Queue)))
 
 (set! *warn-on-reflection* true)
 
@@ -126,7 +126,7 @@
           (some (fn [[id e]] (when (= nm (:name e)) id)) (:entities lv)))
         (vals (:levels world))))
 
-(defn- set-hooks! [{:keys [world ^ConcurrentLinkedQueue queue]} f]
+(defn- set-hooks! [{:keys [world ^Queue queue]} f]
   (doseq [[k fs] (f (:hooks @world))]
     (.offer queue [:hooks-set k fs])))
 

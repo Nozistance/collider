@@ -9,7 +9,7 @@
             [collider.net.events :as events]
             [collider.net.server :as server]
             [collider.proto.codec :as c])
-  (:import (java.util.concurrent ConcurrentLinkedQueue)
+  (:import (java.util Queue)
            (java.util.concurrent.atomic AtomicInteger)))
 
 (set! *warn-on-reflection* true)
@@ -102,7 +102,7 @@
   (server/send! conn (disconnect-packet reason))
   (server/close! conn))
 
-(defn- joined! [conn ^ConcurrentLinkedQueue queue eid]
+(defn- joined! [conn ^Queue queue eid]
   (let [{nm :name :keys [settings profile addr]} (server/info conn)]
     (server/put! conn :eid eid)
     (server/put! conn :state :play)
@@ -256,7 +256,7 @@
          (catch Throwable t
            (log/once! :packets-in log/warn "packet watcher failed:" (str t))))))
 
-(defn- play-packet! [conn {:keys [^ConcurrentLinkedQueue queue] :as io} m]
+(defn- play-packet! [conn {:keys [^Queue queue] :as io} m]
   (when (= :play (server/conn-state conn))
     (when-let [eid (:eid (server/info conn))]
       (if (events/bad-move? m)
@@ -294,7 +294,7 @@
   (server/put! conn :settings (events/client-settings m)))
 
 (defn- dispatch!
-  [conn {:keys [^ConcurrentLinkedQueue queue settings] :as io} m]
+  [conn {:keys [^Queue queue settings] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention] (intention! conn io m)
     [:status :status-request] (server/send! conn (status-response io))

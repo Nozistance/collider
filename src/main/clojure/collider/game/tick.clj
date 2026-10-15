@@ -275,21 +275,25 @@
   between two ticks. Phases are those of the tick by default."
   ([acc events] (early acc events phases))
   ([[world ds] events phases]
-   (let [[w bd] (entered-batch world
-                               (batch-of world
-                                         (filtered-events world events)))
-         bd (into {} (map (fn [dim] [dim (get bd dim deltas/empty-deltas)]))
+   (let [evs (filtered-events world events)
+         [w bd] (entered-batch world (batch-of world evs))
+         bd (into {} (map (fn [dim]
+                            [dim (get bd dim deltas/empty-deltas)]))
                   dims)
          [w bd] (reduce run-phase [w bd] (filter early? phases))]
      [[w (merge-with deltas/merge ds bd)] (merged bd)])))
 
 (defn late
-  "Returns the world and the deltas of the whole tick acc after the
-  phases from the level tick on."
+  "Returns the world, the deltas of the whole tick acc and those of
+  its phases from the level tick on, after those phases."
   ([acc] (late acc phases))
-  ([acc phases]
-   (let [[world' ds] (reduce run-phase acc (remove early? phases))]
-     [world' (merged ds)])))
+  ([[_ before :as acc] phases]
+   (let [[world' ds] (reduce run-phase acc (remove early? phases))
+         part (fn [dim]
+                (deltas/since (get before dim deltas/empty-deltas)
+                              (get ds dim deltas/empty-deltas)))]
+     [world' (merged ds)
+      (merged (into {} (map (juxt identity part)) dims))])))
 
 (defn tick
   "Returns the world and the deltas after one tick of the events.
@@ -299,4 +303,4 @@
   ([world events phases]
    (par/in-pool
      #(let [[acc] (early (open world) events phases)]
-        (late acc phases)))))
+        (pop (late acc phases))))))

@@ -7,7 +7,8 @@
             [collider.parallel :as par])
   (:import (collider.game.deltas.record Deltas)
            (java.util Arrays)
-           (java.util.concurrent ConcurrentLinkedQueue)
+           (java.util Queue)
+           (java.util.concurrent BlockingQueue TimeUnit)
            (java.util.concurrent.atomic AtomicBoolean AtomicLong)))
 
 (set! *warn-on-reflection* true)
@@ -20,9 +21,17 @@
 
 (def ^:private ^:const mspt-window 100)
 
-(defn- poll! [^ConcurrentLinkedQueue q] (.poll q))
+(defn- poll! [^Queue q] (.poll q))
 
-(defn- queue-empty? [^ConcurrentLinkedQueue q] (.isEmpty q))
+(defn- queue-empty? [^Queue q] (.isEmpty q))
+
+(defn- poll-for
+  "Returns the next event of q, waiting up to ns for it, or nil. A
+  queue that cannot wait is only looked at after the wait."
+  [q ^long ns]
+  (if (instance? BlockingQueue q)
+    (.poll ^BlockingQueue q ns TimeUnit/NANOSECONDS)
+    (do (^[long] Thread/sleep (quot ns 1000000)) (poll! q))))
 
 (defn- count-up! ^long [^AtomicLong c] (.getAndIncrement c))
 
@@ -105,14 +114,6 @@
 
 (def ^:private ^:const ns-per-ms 1000000)
 
-(defn- pace ^long [^long next-ns ^long step-ns]
-  (let [target (+ next-ns step-ns)
-        now (System/nanoTime)
-        target (if (> (- now target) catch-up-ns) now target)
-        sleep (quot (- target now) ns-per-ms)]
-    (when (pos? sleep) (^[long] Thread/sleep sleep))
-    target))
-
 (defn- tick-input [world-atom perf io]
   (-> @world-atom
       (assoc :time-ms (System/currentTimeMillis))
@@ -120,13 +121,6 @@
               io (merge io))))
 
 (def ^:private ^:const crash-streak 20)
-
-(defn- safe-tick [world events phases]
-  (try (tick/tick world events phases)
-       (catch Throwable t
-         (log/failure! ::tick "tick failed, its events retry once" t)
-         (swap! (:failures world) conj ["the tick" t])
-         nil)))
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (deltas/out-of deltas))
@@ -147,20 +141,97 @@
     (aset counts (int (rem (count-of counter) window-size))
           (delta-count d))))
 
-(defn- run-tick! [{:keys [carried] :as st} world-atom queue deliver! perf
-                  opts]
+(defn- opened! [{:keys [open perf]} world-atom opts]
+  (or @open
+      (let [w (ticked-world world-atom @perf opts)]
+        (reset! open (par/in-pool #(tick/open w))))))
+
+(defn- held-back
+  "Returns deltas d without the block events, which wait for the level
+  tick as the blockEvents of a level do, and those events."
+  [^Deltas d]
+  (let [{held true now false} (group-by #(= :block-event (:msg %))
+                                        (deltas/out-of d))]
+    [(assoc d :out (vec now)) (vec held)]))
+
+(defn- early-run [st world-atom opts evs]
+  (let [acc (opened! st world-atom opts)]
+    (par/in-pool #(tick/early acc evs (phases-of opts)))))
+
+(defn- early!
+  "Runs the events evs that came before the tick at once and sends
+  what they did. A batch that fails waits for the tick with the
+  events after it."
+  [{:keys [open heard held carried early-off] :as st} world-atom
+   deliver! opts evs]
+  (if @early-off
+    (swap! carried into evs)
+    (try
+      (let [[acc bd] (early-run st world-atom opts evs)
+            w (first acc)
+            [now later] (held-back bd)]
+        (reset! open acc)
+        (swap! heard into evs)
+        (swap! held into later)
+        (reset! world-atom (dissoc w :failures))
+        (send-out! deliver! w now))
+      (catch Throwable t
+        (log/failure! ::tick (str "events failed before the tick,"
+                                  " they wait for it") t)
+        (reset! early-off true)
+        (swap! carried into evs)))))
+
+(defn- with-held [^Deltas d held]
+  (if (seq held) (assoc d :out (into held (deltas/out-of d))) d))
+
+(defn- closed!
+  "Ends the tick of st: the last events, then the level tick."
+  [st world-atom opts evs]
+  (let [[acc] (early-run st world-atom opts evs)]
+    (par/in-pool #(tick/late acc (phases-of opts)))))
+
+(defn- reset-tick! [{:keys [open heard held early-off]}]
+  (reset! open nil) (reset! heard []) (reset! held [])
+  (reset! early-off false))
+
+(defn- run-tick! [{:keys [carried open heard held] :as st} world-atom
+                  queue deliver! perf opts]
+  (reset! (:perf st) perf)
   (let [fresh (drain! queue)
-        world (ticked-world world-atom perf opts)
         events (into @carried fresh)
-        done (safe-tick world events (phases-of opts))]
-    (if-let [[world' deltas] done]
-      (do (reset! carried [])
-          (reset! world-atom (dissoc world' :failures))
-          (record-deltas! st deltas)
-          (when-let [f (:on-tick opts)] (f world' events deltas))
-          (send-out! deliver! world' deltas))
+        world (first (opened! st world-atom opts))
+        done (try (closed! st world-atom opts events)
+                  (catch Throwable t
+                    (log/failure! ::tick (str "tick failed, its events"
+                                              " retry once") t)
+                    (swap! (:failures world) conj ["the tick" t])
+                    nil))]
+    (if-let [[world' whole part] done]
+      (let [all (into @heard events)]
+        (reset! carried [])
+        (reset! world-atom (dissoc world' :failures))
+        (record-deltas! st whole)
+        (when-let [f (:on-tick opts)] (f world' all whole))
+        (send-out! deliver! world' (with-held part @held)))
       (reset! carried fresh))
+    (reset-tick! st)
     @(:failures world)))
+
+(defn- waited!
+  "Runs the events that come before the next tick, step-ns after
+  next-ns, as they come, and returns when that tick is due."
+  [st world-atom queue deliver! opts next-ns step-ns]
+  (let [target (+ (long next-ns) (long step-ns))
+        now (System/nanoTime)
+        target (if (> (- now target) catch-up-ns) now target)]
+    (loop []
+      (let [left (- target (System/nanoTime))]
+        (when (pos? left)
+          (when-some [e (poll-for queue left)]
+            (early! st world-atom deliver! opts
+                    (into [e] (drain! queue)))
+            (recur)))))
+    target))
 
 (defn- streaks [old failures]
   (let [n #(inc (long (first (old % [0]))))]
@@ -189,6 +260,11 @@
    :counter (AtomicLong. 0)
    :stamps  (long-array tps-window)
    :carried (atom [])
+   :open    (atom nil)
+   :heard   (atom [])
+   :held    (atom [])
+   :perf    (atom nil)
+   :early-off (atom false)
    :streaks (atom {})
    :running (AtomicBoolean. true)})
 
@@ -219,7 +295,8 @@
           (if (idle? opts n queue)
             (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil n))
             (let [p (tick! i perf)
-                  at (pace next-ns nominal-tick-ns)]
+                  at (waited! st world-atom queue deliver! opts
+                              next-ns nominal-tick-ns)]
               (recur at (inc i) p n))))))))
 
 (defn- daemon! ^Thread [^Runnable f ^String name]

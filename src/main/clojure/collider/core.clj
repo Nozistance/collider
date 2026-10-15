@@ -24,7 +24,8 @@
            (collider.game.deltas.record Deltas)
            (java.lang.management ManagementFactory)
            (java.net BindException ServerSocket URL)
-           (java.util.concurrent ConcurrentLinkedQueue)))
+           (java.util Queue)
+           (java.util.concurrent LinkedBlockingQueue)))
 
 (set! *warn-on-reflection* true)
 
@@ -33,7 +34,7 @@
 (def ^:private shutdown-reason
   {:translate "multiplayer.disconnect.server_shutdown"})
 
-(defn- on-loaded [^ConcurrentLinkedQueue queue dim id]
+(defn- on-loaded [^Queue queue dim id]
   #(.offer queue [:chunk-loaded dim id %]))
 
 (defn- chunk-io! [{:keys [saver store]} queue world ^Deltas deltas]
@@ -64,7 +65,7 @@
             (or (:why (ex-data e)) [(ex-message e)])]))))
 
 (defn- config-io!
-  [settings ^ConcurrentLinkedQueue queue ^Deltas deltas]
+  [settings ^Queue queue ^Deltas deltas]
   (doseq [m (deltas/out-of deltas) :when (= :config-op (:msg m))]
     (Thread/startVirtualThread
       ^Runnable #(.offer queue (config-answer settings m)))))
@@ -109,7 +110,7 @@
   (stop server)
   (exit! 1))
 
-(defn- reload-io! [edge ^ConcurrentLinkedQueue queue ^Deltas deltas]
+(defn- reload-io! [edge ^Queue queue ^Deltas deltas]
   (doseq [m (deltas/out-of deltas)
           :when (identical? :reload (:msg m))]
     (Thread/startVirtualThread
@@ -175,7 +176,7 @@
      :lock l}))
 
 (defn- open-net [{:keys [settings world save! opts adds]}]
-  (let [queue (ConcurrentLinkedQueue.)
+  (let [queue (LinkedBlockingQueue.)
         conns (atom {})
         io {:queue queue :conns conns :settings settings :save! save!
             :world world :on-packet #'session/handle-packet

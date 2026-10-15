@@ -13,8 +13,9 @@
                     EOFException OutputStream)
            (java.net ServerSocket Socket SocketException
                      SocketTimeoutException)
+           (java.util Queue)
            (java.util.concurrent
-             BlockingQueue ConcurrentLinkedQueue LinkedBlockingQueue
+             BlockingQueue LinkedBlockingQueue
              TimeUnit)
            (java.util.concurrent.atomic AtomicBoolean AtomicInteger)
            (java.util.zip Deflater Inflater)))
@@ -172,7 +173,7 @@
   (:eid (first (swap-vals! (:props conn) dissoc :eid))))
 
 (defn- disconnected! [^Conn conn io]
-  (let [{:keys [conns ^ConcurrentLinkedQueue queue save!]} io
+  (let [{:keys [conns ^Queue queue save!]} io
         w (who conn)]
     (when-let [eid (take-eid! conn)]
       (swap! conns dissoc eid)
