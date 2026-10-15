@@ -119,7 +119,9 @@
 (defn- spawned [w spec]
   (let [eid (long (:next-eid w schema/first-eid))
         t (:tick w)
-        e (assoc (born-yaw spec t eid) :born t)]
+        e (cond-> (assoc (born-yaw spec t eid) :born t)
+            (= :item (:type spec))
+            (assoc :age-offset (long (:age spec 0))))]
     (-> w
         (assoc-in [:entities eid] (entity/of e))
         (assoc :next-eid (inc eid)))))

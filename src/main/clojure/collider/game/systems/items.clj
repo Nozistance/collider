@@ -373,9 +373,13 @@
            (< (long (:count s 1))
               (long (data/max-stack (:item s))))))))
 
+(defn- tick-count
+  "Returns the ticks item e has lived since it came or was loaded."
+  ^long [e]
+  (- (long (or (:age e) 0)) (long (or (:age-offset e) 0))))
+
 (defn- merge-due? [e from]
-  (zero? (rem (long (or (:age e) 0))
-              (merge-rate from (:pos e)))))
+  (zero? (rem (tick-count e) (merge-rate from (:pos e)))))
 
 (defn- of-long ^long [e k] (long (or (get e k) 0)))
 
@@ -386,13 +390,15 @@
   longer pickup delay and the younger age."
   [a b]
   (let [n (+ (count-of a) (count-of b))
-        d (max (of-long a :pickup-delay) (of-long b :pickup-delay))]
+        d (max (of-long a :pickup-delay) (of-long b :pickup-delay))
+        age (min (of-long a :age) (of-long b :age))]
     (assoc a :stack (assoc (:stack a) :count n)
-             :age (min (of-long a :age) (of-long b :age))
-             :pickup-delay d)))
+             :age age :pickup-delay d
+             :age-offset (- age (tick-count a)))))
 
 (defn- absorb-deltas [ea a eb]
-  [[:merge-entity ea (select-keys a [:stack :age :pickup-delay])]
+  [[:merge-entity ea
+    (select-keys a [:stack :age :pickup-delay :age-offset])]
    [:remove-entity eb]])
 
 (defn- took

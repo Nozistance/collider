@@ -283,6 +283,7 @@
 (defn- kind-extras [e k m tick]
   (case k
     :mob (mob-extras e m tick)
+    :item (assoc e :age-offset (long (:age e 0)))
     :falling-block (update e :block #(or % (block/state :sand)))
     :hanging (assoc e :check-at (hanging/first-check-at tick))
     e))
