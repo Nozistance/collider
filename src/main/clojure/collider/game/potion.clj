@@ -1,5 +1,5 @@
 (ns collider.game.potion
-  "The contents of a potion: its effects and its colour."
+  "The contents of a potion, its effects and its colour."
   (:require [collider.data :as data]
             [collider.game.effect :as effect]))
 
