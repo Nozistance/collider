@@ -417,7 +417,7 @@
 (def ^:private collider-form
   [:collider "the tools of this server"
    [(lit "dump")] [:world :collider-dump]
-   [(lit "dump") [:seconds [:int {:min 1 :max 10}]]]
+   [(lit "dump") [:seconds [:int {:min 1 :max 5}]]]
    [:world :collider-dump]
    [(lit "tps")] [:world :collider-tps]
    [(lit "config")] [:world :collider-config-show]

@@ -1,7 +1,6 @@
 (ns collider.persist.dump
   "The last ticks a debug dump holds and the file it writes."
   (:require [clojure.java.io :as io]
-            [clojure.pprint :as pprint]
             [clojure.walk :as walk]
             [collider.game.deltas :as deltas]
             [collider.log :as log]
@@ -67,17 +66,42 @@
     (printable? x) x
     :else (str "#" (.getSimpleName (class x)))))
 
+(defn- line [^Writer w ^String indent x]
+  (.write w "\n")
+  (.write w indent)
+  (.write w (pr-str (walk/prewalk plain x))))
 
-(defn- pprinted [ring ^Writer w]
+(defn- lines [^Writer w ^String head ^String indent xs]
+  (.write w head)
+  (doseq [x xs] (line w indent x))
+  (.write w "]"))
+
+(defn- tick-out [^Writer w {:keys [tick events world entities out]}]
+  (.write w (str "{:tick " (pr-str tick)))
+  (lines w "\n :events [" "  " events)
+  (lines w "\n :world [" "  " world)
+  (.write w "\n :entities {")
+  (doseq [[eid ds] entities]
+    (lines w (str "\n  " eid " [") "   " ds))
+  (.write w "}")
+  (lines w "\n :out [" "  " out)
+  (.write w "}\n"))
+
+(defn- printed
+  "Prints the ticks of ring to w as one EDN vector, every delta,
+  event and effect on a line of its own, a tick at a time."
+  [ring ^Writer w]
   (binding [*print-length* nil *print-level* nil *print-meta* false]
-    (pprint/pprint (walk/prewalk plain (vec ring)) w)))
+    (.write w "[")
+    (doseq [e ring] (tick-out w e))
+    (.write w "]\n")))
 
 (defn edn-of
-  "Returns the ticks of ring as EDN text laid out to read, plain data
-  only."
+  "Returns the ticks of ring as EDN text, a line to each delta, plain
+  data only."
   [ring]
   (let [w (StringWriter.)]
-    (pprinted ring w)
+    (printed ring w)
     (str w)))
 
 (defn dump!
@@ -85,7 +109,7 @@
   [ring file]
   (Thread/startVirtualThread
     #(try (io/make-parents file)
-          (with-open [w (io/writer file)] (pprinted ring w))
+          (with-open [w (io/writer file)] (printed ring w))
           (log/info "dumped" (count ring) "ticks to" file)
           (catch Throwable t
             (log/warn "could not dump to" file (ex-message t))))))

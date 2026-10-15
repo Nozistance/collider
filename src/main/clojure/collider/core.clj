@@ -46,7 +46,7 @@
         (saver/fetch-chunk! saver store dim id done))
       nil)))
 
-(def ^:private ^:const dumped-ticks 200)
+(def ^:private ^:const dumped-ticks 100)
 
 (defn- recording [ring]
   (fn [world events deltas]
