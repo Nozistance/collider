@@ -45,8 +45,8 @@
    {:msg :team :method method :team t :members members}))
 
 (defn objective
-  "Returns the effect that tells players of objective o by method, 0
-  shown, 1 gone, 2 changed."
+  "Returns the effect that tells players of objective o by method,
+  :add, :remove or :change."
   [method o]
   {:msg :objective :method method :objective o})
 

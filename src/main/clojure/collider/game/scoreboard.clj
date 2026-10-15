@@ -17,11 +17,12 @@
   "The operators of scoreboard players operation."
   #{"=" "+=" "-=" "*=" "/=" "%=" "<" ">" "><"})
 
+(def ^:private slot-ids (zipmap slot-names (range)))
+
 (defn slot-id
   "Returns the id of the display slot called nm, or nil."
   [nm]
-  (let [i (.indexOf ^java.util.List slot-names nm)]
-    (when-not (neg? i) i)))
+  (slot-ids nm))
 
 (def ^:private kept
   "The criteria the game sets for each player, with how they show."
@@ -110,7 +111,7 @@
 (defn- tracking [sb nm method]
   (concat [(out/objective method (named sb nm))]
           (map #(out/display-slot % nm) (slots-of sb nm))
-          (when (zero? (long method)) (score-fx sb nm))))
+          (when (= :add method) (score-fx sb nm))))
 
 (defn shows
   "Returns sb with slot showing the objective called nm, none when nm
@@ -123,7 +124,7 @@
 (defn- old-fx [sb' slot old nm]
   (if (seq (slots-of sb' old))
     [(out/display-slot slot nm)]
-    (tracking sb' old 1)))
+    (tracking sb' old :remove)))
 
 (defn display-fx
   "Returns the effects of slot of sb showing the objective called nm
@@ -134,7 +135,7 @@
             (when nm
               (if (seq (slots-of sb nm))
                 [(out/display-slot slot nm)]
-                (tracking sb' nm 0))))))
+                (tracking sb' nm :add))))))
 
 (defn removal-fx
   "Returns the effects of the objective called nm going from sb."
@@ -314,4 +315,4 @@
   (->> (range (count slot-names))
        (keep #(get (:slots sb) %))
        distinct
-       (mapcat #(tracking sb % 0))))
+       (mapcat #(tracking sb % :add))))

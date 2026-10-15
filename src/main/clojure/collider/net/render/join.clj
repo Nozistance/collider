@@ -220,10 +220,13 @@
     :method (team-methods method)
     :players (if (#{:join :leave} method) members (:players t))}))
 
+(def ^:private objective-methods {:add 0 :remove 1 :change 2})
+
 (defn objective-packet
   "Returns the packet that tells a player of objective o by method."
   [method o]
-  {:packet :set-objective :name (:name o) :method method
+  {:packet :set-objective :name (:name o)
+   :method (objective-methods method)
    :display (:display o) :render (:render o) :format (:format o)})
 
 (defn display-packet

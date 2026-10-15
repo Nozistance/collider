@@ -73,7 +73,7 @@
   (let [o' (merge o m) nm (:name o)]
     (concat [[:objective-set nm m]]
             (when (scoreboard/tracked? (:scoreboard world) nm)
-              [(out/all (out/objective 2 o'))])
+              [(out/all (out/objective :change o'))])
             (apply say eid (key-of key) (map #(% o') fs)))))
 
 (defn- set-field [world eid o k v key fs]
@@ -108,7 +108,7 @@
   (known world eid nm
          #(format-set world eid % (number-format kind v))))
 
-(def ^:private named
+(def ^:private display-renamed
   (unless-same :display identity (constantly "modify.displayname")
                :name scoreboard/shown))
 
@@ -359,7 +359,7 @@
    :holder-scores holder-scores
    :scores-reset resets-deltas
    :score-reset reset-deltas
-   :objective-name named
+   :objective-name display-renamed
    :objective-render rendered
    :objective-auto-update updating
    :objective-format formatted
