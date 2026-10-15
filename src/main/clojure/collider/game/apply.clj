@@ -308,6 +308,17 @@
   (let [inp (or (:input lv) input/unheard)]
     (assoc lv :input (assoc inp :quits-from (count (:quits inp))))))
 
+(defn batch-opened
+  "Returns world as a batch of input opens on it. The players who left
+  before it are no more news to it."
+  [world]
+  (reduce-kv
+    (fn [w dim lv]
+      (if-let [{:keys [quits]} (:input lv)]
+        (assoc-in w [:levels dim :input :quits-from] (count quits))
+        w))
+    world (:levels world)))
+
 (defn added
   "Returns world with one more batch of input deltas d of level dim,
   heard after those of the tick so far. The players who leave in it

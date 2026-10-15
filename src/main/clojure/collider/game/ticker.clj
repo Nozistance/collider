@@ -185,13 +185,20 @@
   (if (seq held) (assoc d :out (into held (deltas/out-of d))) d))
 
 (defn- closed!
-  "Ends the tick of st with its last events and the level tick."
+  "Ends the tick of st with its last events and the level tick.
+  Returns the world, the deltas of the whole tick and those to send,
+  the last events and the level tick."
   [st world-atom opts evs]
-  (let [[acc] (early-run st world-atom opts evs)]
-    (par/in-pool #(tick/late acc (phases-of opts)))))
+  (let [[acc bd] (early-run st world-atom opts evs)
+        [now later] (held-back bd)
+        phases (phases-of opts)
+        [w whole part] (par/in-pool #(tick/late acc phases))]
+    (swap! (:held st) into later)
+    [w whole (deltas/merge now part)]))
 
-(defn- reset-tick! [{:keys [open heard held early-off]}]
-  (reset! open nil) (reset! heard []) (reset! held [])
+(defn- reset-tick! [{:keys [open heard early-off]}]
+  (reset! open nil)
+  (reset! heard [])
   (reset! early-off false))
 
 (defn- run-tick! [{:keys [carried heard held] :as st} world-atom
@@ -202,8 +209,9 @@
         world (first (opened! st world-atom opts))
         done (try (closed! st world-atom opts events)
                   (catch Throwable t
-                    (log/failure! ::tick (str "tick failed, its events"
-                                              " retry once") t)
+                    (log/failure! ::tick
+                                  (str "tick failed, its last events"
+                                       " retry once") t)
                     (swap! (:failures world) conj ["the tick" t])
                     nil))]
     (if-let [[world' whole part] done]
@@ -212,7 +220,8 @@
         (reset! world-atom (dissoc world' :failures))
         (record-deltas! st whole)
         (when-let [f (:on-tick opts)] (f world' all whole))
-        (send-out! deliver! world' (with-held part @held)))
+        (send-out! deliver! world' (with-held part @held))
+        (reset! held []))
       (reset! carried fresh))
     (reset-tick! st)
     @(:failures world)))

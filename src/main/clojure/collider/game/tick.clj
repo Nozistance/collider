@@ -275,7 +275,8 @@
   between two ticks. Phases are those of the tick by default."
   ([acc events] (early acc events phases))
   ([[world ds] events phases]
-   (let [evs (filtered-events world events)
+   (let [world (apply/batch-opened world)
+         evs (filtered-events world events)
          [w bd] (entered-batch world (batch-of world evs))
          bd (into {} (map (fn [dim]
                             [dim (get bd dim deltas/empty-deltas)]))
