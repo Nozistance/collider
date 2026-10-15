@@ -1,7 +1,8 @@
 (ns collider.game.potion
   "The contents of a potion, its effects and its colour."
   (:require [collider.data :as data]
-            [collider.game.effect :as effect]))
+            [collider.game.effect :as effect]
+            [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
 
@@ -61,14 +62,16 @@
   (let [c (contents stack)]
     (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
 
-(defn- instant? [e]
-  (:instant? (get (data/mob-effects) (:effect e))))
+(defn instant?
+  "Returns true when effect k acts at once."
+  [k]
+  (boolean (:instant? (get (data/mob-effects) k))))
 
 (defn has-instant-effects?
   "Returns true when the potion itself acts at once.
   Custom effects do not count."
   [stack]
-  (boolean (some instant? (brewed (contents stack)))))
+  (boolean (some (comp instant? :effect) (brewed (contents stack)))))
 
 (defn- empty-contents? [c]
   (and (nil? (:potion c)) (nil? (:custom-color c))
@@ -93,8 +96,13 @@
       (effect/instance n (amplifier e)))))
 
 (defn instances
-  "Returns the [k instance] pairs that the potion in stack lays, in
-  order, each lasting scale of its time."
-  [stack scale]
+  "Returns the [k instance] pairs of the potion in stack, in order."
+  [stack]
   (for [e (effects (contents stack))]
-    [(:effect e) (effect/scaled (instance-of e) scale)]))
+    [(:effect e) (instance-of e)]))
+
+(defn duration-scale
+  "Returns the part of their time the effects in stack last."
+  ^double [stack]
+  (double (or (stack/component stack :potion-duration-scale) 1.0)))
+

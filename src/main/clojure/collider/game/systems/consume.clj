@@ -157,13 +157,18 @@
     :play-sound (sounded acc (:sound ce))
     acc))
 
+(defn- drinker-source [eid e]
+  {:type :indirect-magic :cause eid :direct eid :from (:pos e)
+   :player? true :attacker e :direct-attacker e})
+
 (defn effect-deltas
   "Returns the deltas of the consume effects of c on player eid.
   They come in their order. Draw returns the next number from 0 to 1
   each call."
-  [world eid e c draw]
-  (let [acc (reduce #(consumed world draw %1 %2)
-                    (account/account eid e) (:effects c))]
+  [world eid e stack c draw]
+  (let [acc (-> (account/account eid e) (assoc :world world)
+                (account/potion-laid stack 1.0 (drinker-source eid e)))
+        acc (reduce #(consumed world draw %1 %2) acc (:effects c))]
     (when (or (:changed? acc) (seq (:ds acc)))
       (account/deltas acc e))))
 
@@ -187,7 +192,7 @@
              [:award eid (keyword "used" (name item)) 1]]
             (when-let [f (get-in (data/items) [item :food])]
               (fed-deltas world eid e c f))
-            (effect-deltas world eid e c (draws world eid))
+            (effect-deltas world eid e stack c (draws world eid))
             (inventory/use-item-deltas world eid e hand)
             (player/cooldown-deltas eid e item (:tick world))
             (stopped eid))))

@@ -62,6 +62,17 @@
        (axis-overlaps? (a 1) (a 4) (b 1) (b 4))
        (axis-overlaps? (a 2) (a 5) (b 2) (b 5))))
 
+(defn gap-sq
+  "Returns the square of the gap between boxes a and b, 0 when they
+  touch."
+  ^double [a b]
+  (let [gap (fn ^double [^long i]
+              (max (- (double (a i)) (double (b (+ i 3))))
+                   (- (double (b i)) (double (a (+ i 3))))
+                   0.0))
+        x (gap 0) y (gap 1) z (gap 2)]
+    (+ (* x x) (* y y) (* z z))))
+
 (defn hittable?
   "Returns true when a projectile can hit e."
   [e]

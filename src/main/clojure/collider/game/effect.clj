@@ -69,12 +69,22 @@
 (defn- map-duration [^long d f]
   (if (or (= infinite d) (zero? d)) d (f d)))
 
+(defn timed
+  "Returns instance i with its time put through f, unless it is
+  endless or over."
+  [i f]
+  (update i :duration map-duration f))
+
+(defn ends-within?
+  "Returns true when instance i ends within n ticks."
+  [i ^long n]
+  (and (not (endless? i)) (<= (long (:duration i)) n)))
+
 (defn scaled
   "Returns instance i lasting scale of its time, at least a tick."
   [i scale]
-  (let [k (num/f32 scale)
-        f #(max 1 (long (Math/floor (num/f32 (* (num/f32 %) k)))))]
-    (update i :duration map-duration f)))
+  (let [k (num/f32 scale)]
+    (timed i #(max 1 (long (Math/floor (num/f32 (* (num/f32 %) k))))))))
 
 (defn- ticked-down [i]
   (cond-> (update i :duration map-duration dec)
@@ -97,6 +107,11 @@
 
 (defn- shift-int ^long [^long a ^long n]
   (num/i32 (bit-shift-left a (bit-and n 31))))
+
+(defn strength
+  "Returns base shifted left by amplifier a, at scale, half up."
+  ^long [^long base ^long a ^double scale]
+  (long (+ (* scale (double (shift-int base a))) 0.5)))
 
 (defn due?
   "Returns true when effect k with amplifier a acts at tick count c.

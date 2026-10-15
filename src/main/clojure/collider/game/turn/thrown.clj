@@ -7,6 +7,8 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
+            [collider.game.effect :as effect]
+            [collider.game.effect.account :as account]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
             [collider.game.entity.size :as size]
@@ -270,16 +272,59 @@
      :yaw      0.0 :pitch 0.0 :on-ground false :owner (:owner e)
      :radius   3.0 :stack stack :color (potion/color stack)
      :waiting? false :age 0 :duration 600 :wait-time 10
-     :radius-per-tick (/ -3.0 600.0) :radius-on-use -0.5
+     :radius-per-tick (num/f32 (/ -3.0 600.0)) :radius-on-use -0.5
      :victims {}}))
 
 (defn- floored [at] (mapv #(long (Math/floor (double %))) at))
 
-(defn- potion-deltas [world e at hit]
+(defn- magic-from [world eid e at]
+  (let [o (some->> (:owner e) (get (:entities world)))]
+    {:type :indirect-magic :cause (if o (:owner e) eid) :direct eid
+     :from at :player? (entity/player? o) :attacker (or o e)
+     :direct-attacker e}))
+
+(defn- affected? [o]
+  (and (account/living? o) (pos? (double (:health o 0.0)))))
+
+(defn- reported [world oid o ds]
+  (into (vec ds) (hurt/report-deltas world oid (hurt/hurt-now world oid o ds))))
+
+(defn- splashed-deltas [world oid o stack scale src]
+  (let [s (potion/duration-scale stack)
+        lay (fn [acc [k i]]
+              (if (potion/instant? k)
+                (account/instant acc k (:amplifier i) scale src)
+                (let [i (assoc (effect/timed i #(long (+ (* scale (double %) s)
+                                                          0.5)))
+                               :icon? (:visible? i))]
+                  (if (effect/ends-within? i 20) acc (account/land acc k i)))))
+        acc (reduce lay (assoc (account/account oid o) :world world)
+                    (potion/instances stack))]
+    (reported world oid o (account/deltas acc o))))
+
+(defn- splash-deltas [world eid e d at]
+  (let [pb (projectile/body-box e at)
+        area (projectile/inflated pb 4.0 2.0 4.0)
+        m (projectile/margin e)
+        src (magic-from world eid (assoc e :vel d) at)]
+    (for [[oid o] (par/keyed (:entities world))
+          :when (and (affected? o)
+                     (projectile/overlaps? area (projectile/target-box o)))
+          :let [g (projectile/gap-sq
+                    pb (projectile/inflated (projectile/target-box o) m m m))]
+          :when (< g splash-range-sq)
+          ds (splashed-deltas world oid o (:stack e)
+                              (- 1.0 (/ (Math/sqrt g) 4.0)) src)]
+      ds)))
+
+(defn- potion-deltas [world eid e d at hit]
   (let [stack (:stack e) water? (potion/water? stack)]
     (concat (when (and water? (= :block (:kind hit)))
               (dowse-deltas world hit))
             (when water? (doused-deltas world e at))
+            (when (and (not water?) (potion/has-effects? stack)
+                       (= :splash-potion (:type e)))
+              (splash-deltas world eid e d at))
             (when (and (not water?) (potion/has-effects? stack)
                        (= :lingering-potion (:type e)))
               [[:spawn-entity (cloud-spec e at)]])
@@ -379,7 +424,7 @@
     :ender-pearl
     (concat (hurt-deltas world eid e d hit) (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)
-    (delta/authored (potion-deltas world (assoc e :pos at) at hit)
+    (delta/authored (potion-deltas world eid (assoc e :pos at) d at hit)
                     (delta/entity-author eid e))))
 
 (defn- hit-deltas [world eid e d at hit]
@@ -422,40 +467,55 @@
 (defn- cloud-box [e ^double r]
   (projectile/box-of (:pos e) r (size/height :area-effect-cloud)))
 
-(defn- touched [world e ^double r ^long age]
+(defn- in-cloud [world e ^double r]
   (let [box (cloud-box e r)]
     (for [[oid o] (par/keyed (:entities world))
-          :when (and (projectile/hittable? o) (not (game-mode/spectator? o))
-                     (not (contains? (:victims e) oid))
-                     (projectile/overlaps? box (projectile/target-box o))
-                     (<= (v/dist-xz-sq (:pos e) (:pos o)) (* r r)))]
-      [oid (+ age cloud-reapply)])))
+          :when (and (affected? o)
+                     (projectile/overlaps? box (projectile/target-box o)))]
+      [oid o])))
 
 (defn- kept-victims [e ^long age]
   (into {} (remove (fn [[_ at]] (>= age (long at)))) (:victims e)))
 
-(defn- cloud-contact [world e ^long age ^double r]
+(defn- clouded-deltas [world eid e oid o]
+  (let [acc (assoc (account/account oid o) :world world)
+        acc (account/potion-laid acc (:stack e) 0.5
+                                 (magic-from world eid e (:pos e)))]
+    (reported world oid o (account/deltas acc o))))
+
+(defn- used
+  "Returns [radius victims deltas] after the cloud lays its potion on
+  entity o, or reduced once it has shrunk away."
+  [world eid e age [r vs ds :as acc] [oid o]]
+  (if (or (contains? vs oid)
+          (> (v/dist-xz-sq (:pos e) (:pos o)) (* (double r) (double r))))
+    acc
+    (let [r (num/f32 (+ (double r) (double (:radius-on-use e))))
+          acc [r (assoc vs oid (+ (long age) cloud-reapply))
+               (into ds (clouded-deltas world eid e oid o))]]
+      (cond-> acc (< r cloud-min-radius) reduced))))
+
+(defn- cloud-contact [world eid e age r]
   (cond
-    (pos? (rem age cloud-period)) [r (:victims e)]
-    (not (potion/has-effects? (:stack e))) [r {}]
+    (pos? (rem (long age) cloud-period)) [r (:victims e) nil]
+    (not (potion/has-effects? (:stack e))) [r {} nil]
     :else
-    (let [left (kept-victims e age)
-          taken (touched world (assoc e :victims left) r age)]
-      [(+ r (* (count taken) (double (:radius-on-use e))))
-       (into left taken)])))
+    (reduce #(used world eid e age %1 %2)
+            [r (kept-victims e age) []] (in-cloud world e r))))
 
 (defn- cloud-merge [eid ^long age r victims]
   [[:merge-entity eid {:age age :waiting? false :radius r
                        :victims victims}]])
 
 (defn- cloud-active [world eid e ^long age]
-  (let [r (+ (double (:radius e)) (double (:radius-per-tick e)))]
+  (let [r (num/f32 (+ (double (:radius e)) (double (:radius-per-tick e))))]
     (if (< r cloud-min-radius)
       [[:remove-entity eid]]
-      (let [[r' victims] (cloud-contact world e age r)]
-        (if (< r' cloud-min-radius)
-          [[:remove-entity eid]]
-          (cloud-merge eid age r' victims))))))
+      (let [[r' victims ds] (cloud-contact world eid e age r)]
+        (into (if (< (double r') cloud-min-radius)
+                [[:remove-entity eid]]
+                (cloud-merge eid age r' victims))
+              ds)))))
 
 (defn- cloud-deltas [world eid e]
   (let [age (inc (long (:age e 0))) wait (long (:wait-time e))]

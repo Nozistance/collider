@@ -9,7 +9,8 @@
             [collider.game.entity.hurt :as hurt]
             [collider.game.food :as food]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.out :as out]))
+            [collider.game.out :as out]
+            [collider.game.potion :as potion]))
 
 (set! *warn-on-reflection* true)
 
@@ -159,6 +160,27 @@
     :saturation [true (fed acc (inc a))]
     :absorption [(pos? (double (:absorption (:e acc) 0.0))) acc]
     [true acc]))
+
+(defn instant
+  "Returns the account after instant effect k of amplifier a acts at
+  once at strength scale. A hurt comes from src."
+  [acc k a scale src]
+  (case k
+    :instant-health (healed acc (double (effect/strength 4 a scale)))
+    :instant-damage (hurt acc (double (effect/strength 6 a scale)) src)
+    (second (acted acc k a))))
+
+(defn potion-laid
+  "Returns the account after the potion in stack lands: an instant
+  effect acts at once at strength, hurting as src, the others stay
+  their time at the scale of stack."
+  [acc stack strength src]
+  (let [s (potion/duration-scale stack)]
+    (reduce (fn [acc [k i]]
+              (if (potion/instant? k)
+                (instant acc k (:amplifier i) strength src)
+                (land acc k (effect/scaled i s))))
+            acc (potion/instances stack))))
 
 (defn- event [acc k i ev]
   (case ev

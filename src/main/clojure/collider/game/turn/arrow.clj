@@ -9,7 +9,6 @@
             [collider.game.out :as out]
             [collider.game.potion :as potion]
             [collider.game.projectile :as projectile]
-            [collider.game.stack :as stack]
             [collider.game.team :as team]
             [collider.num :as num]
             [collider.parallel :as par]
@@ -198,9 +197,8 @@
 (defn- laid [e]
   (if (= :spectral-arrow (:type e))
     glowing
-    (let [st (:stack e)]
-      (potion/instances
-        st (or (stack/component st :potion-duration-scale) 1.0)))))
+    (let [st (:stack e) s (potion/duration-scale st)]
+      (for [[k i] (potion/instances st)] [k (effect/scaled i s)]))))
 
 (defn- landed [acc [k i]] (account/land acc k i))
 
