@@ -204,7 +204,8 @@
   "Returns the players who left level lv in its last batch of input."
   [lv]
   (let [{:keys [quits quits-from]} (:input lv)]
-    (subvec (vec quits) (min (long (or quits-from 0)) (count quits)))))
+    (subvec (vec quits)
+            (min (long (or quits-from 0)) (count quits)))))
 
 (defn server-view
   "Returns the shared keys of world with all players as entities, and

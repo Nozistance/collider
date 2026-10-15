@@ -17,10 +17,12 @@
      (told eid (str "Dumping the last " s " s of deltas to " file))]))
 
 (defn- fmt [pattern x]
-  (String/format Locale/ROOT pattern (to-array [(double (or x 0.0))])))
+  (String/format Locale/ROOT pattern
+                 (to-array [(double (or x 0.0))])))
 
 (defn- tps-deltas [world eid _]
-  (if-let [{:keys [tps mspt p50-ms p99-ms deltas-per-tick]} (:perf world)]
+  (if-let [{:keys [tps mspt p50-ms p99-ms deltas-per-tick]}
+           (:perf world)]
     (mapv #(told eid %)
           [(str "TPS " (fmt "%.1f" tps))
            (str "MSPT " (fmt "%.2f" mspt) " ms")

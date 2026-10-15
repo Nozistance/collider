@@ -61,7 +61,8 @@
   (cond
     (instance? V3 x) [(v/x x) (v/y x) (v/z x)]
     (record? x) (into {} x)
-    (and (instance? IPersistentMap x) (not (clojure-map? x))) (into {} x)
+    (and (instance? IPersistentMap x) (not (clojure-map? x)))
+    (into {} x)
     (some-> (class x) (.isArray)) (vec x)
     (printable? x) x
     :else (str "#" (.getSimpleName (class x)))))

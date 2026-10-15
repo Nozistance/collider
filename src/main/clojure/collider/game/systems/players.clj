@@ -181,4 +181,5 @@
   [world _]
   (let [ps (level/player-entries world)]
     (deltas/of-vec
-      (into [] cat [(latency-deltas world ps) (header-deltas world)]))))
+      (into [] cat [(latency-deltas world ps)
+                    (header-deltas world)]))))

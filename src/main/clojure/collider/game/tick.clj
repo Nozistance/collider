@@ -278,9 +278,7 @@
    (let [world (apply/batch-opened world)
          evs (filtered-events world events)
          [w bd] (entered-batch world (batch-of world evs))
-         bd (into {} (map (fn [dim]
-                            [dim (get bd dim deltas/empty-deltas)]))
-                  dims)
+         bd (zipmap dims (map #(get bd % deltas/empty-deltas) dims))
          [w bd] (reduce run-phase [w bd] (filter early? phases))]
      [[w (merge-with deltas/merge ds bd)] (merged bd)])))
 

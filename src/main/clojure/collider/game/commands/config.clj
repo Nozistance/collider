@@ -38,7 +38,8 @@
   [(out/to eid (out/system-chat {:text text}))])
 
 (defn- shown-deltas [eid settings]
-  (let [kept (filter #(contains? forms/settings (name (key %))) settings)]
+  (let [ours? #(contains? forms/settings (name (key %)))
+        kept (filter ours? settings)]
     (mapcat (fn [[k v]] (told eid (str (name k) " " (pr-str v))))
             (sort-by key kept))))
 

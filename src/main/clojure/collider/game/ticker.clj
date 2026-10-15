@@ -158,23 +158,28 @@
   (let [acc (opened! st world-atom opts)]
     (par/in-pool #(tick/early acc evs (phases-of opts)))))
 
+(defn- took!
+  "Keeps batch evs of tick acc, its deltas bd, and sends what they
+  did but the block events."
+  [{:keys [open heard held]} world-atom deliver! evs [acc bd]]
+  (let [w (first acc)
+        [now later] (held-back bd)]
+    (reset! open acc)
+    (swap! heard into evs)
+    (swap! held into later)
+    (reset! world-atom (dissoc w :failures))
+    (send-out! deliver! w now)))
+
 (defn- early!
   "Runs the events evs that came before the tick at once and sends
   what they did. A batch that fails waits for the tick with the
   events after it."
-  [{:keys [open heard held carried early-off] :as st} world-atom
-   deliver! opts evs]
+  [{:keys [carried early-off] :as st} world-atom deliver! opts evs]
   (if @early-off
     (swap! carried into evs)
     (try
-      (let [[acc bd] (early-run st world-atom opts evs)
-            w (first acc)
-            [now later] (held-back bd)]
-        (reset! open acc)
-        (swap! heard into evs)
-        (swap! held into later)
-        (reset! world-atom (dissoc w :failures))
-        (send-out! deliver! w now))
+      (took! st world-atom deliver! evs
+             (early-run st world-atom opts evs))
       (catch Throwable t
         (log/failure! ::tick (str "events failed before the tick,"
                                   " they wait for it") t)
@@ -201,27 +206,34 @@
   (reset! heard [])
   (reset! early-off false))
 
-(defn- run-tick! [{:keys [carried heard held] :as st} world-atom
-                  queue deliver! perf opts]
+(defn- closed-or-nil [st world-atom opts world events]
+  (try (closed! st world-atom opts events)
+       (catch Throwable t
+         (log/failure! ::tick (str "tick failed, its last events"
+                                   " retry once") t)
+         (swap! (:failures world) conj ["the tick" t])
+         nil)))
+
+(defn- ticked!
+  "Keeps tick world' of the events of the tick, its deltas whole, and
+  sends part with the block events held back."
+  [{:keys [carried heard held] :as st} world-atom deliver! opts events
+   [world' whole part]]
+  (reset! carried [])
+  (reset! world-atom (dissoc world' :failures))
+  (record-deltas! st whole)
+  (when-let [f (:on-tick opts)] (f world' (into @heard events) whole))
+  (send-out! deliver! world' (with-held part @held))
+  (reset! held []))
+
+(defn- run-tick! [{:keys [carried] :as st} world-atom queue deliver!
+                  perf opts]
   (reset! (:perf st) perf)
   (let [fresh (drain! queue)
         events (into @carried fresh)
-        world (first (opened! st world-atom opts))
-        done (try (closed! st world-atom opts events)
-                  (catch Throwable t
-                    (log/failure! ::tick
-                                  (str "tick failed, its last events"
-                                       " retry once") t)
-                    (swap! (:failures world) conj ["the tick" t])
-                    nil))]
-    (if-let [[world' whole part] done]
-      (let [all (into @heard events)]
-        (reset! carried [])
-        (reset! world-atom (dissoc world' :failures))
-        (record-deltas! st whole)
-        (when-let [f (:on-tick opts)] (f world' all whole))
-        (send-out! deliver! world' (with-held part @held))
-        (reset! held []))
+        world (first (opened! st world-atom opts))]
+    (if-let [done (closed-or-nil st world-atom opts world events)]
+      (ticked! st world-atom deliver! opts events done)
       (reset! carried fresh))
     (reset-tick! st)
     @(:failures world)))
