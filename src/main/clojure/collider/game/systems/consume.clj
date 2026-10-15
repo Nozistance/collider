@@ -166,8 +166,9 @@
   They come in their order. Draw returns the next number from 0 to 1
   each call."
   [world eid e stack c draw]
-  (let [acc (-> (account/account eid e) (assoc :world world)
-                (account/potion-laid stack 1.0 (drinker-source eid e)))
+  (let [src (drinker-source eid e)
+        acc (-> (account/account eid e) (assoc :world world)
+                (account/potion-laid stack 1.0 src))
         acc (reduce #(consumed world draw %1 %2) acc (:effects c))]
     (when (or (:changed? acc) (seq (:ds acc)))
       (account/deltas acc e))))

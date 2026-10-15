@@ -287,20 +287,29 @@
   (and (account/living? o) (pos? (double (:health o 0.0)))))
 
 (defn- reported [world oid o ds]
-  (into (vec ds) (hurt/report-deltas world oid (hurt/hurt-now world oid o ds))))
+  (let [now (hurt/hurt-now world oid o ds)]
+    (into (vec ds) (hurt/report-deltas world oid now))))
+
+(defn- splash-timed [i ^double scale ^double s]
+  (-> (effect/timed i #(long (+ (* scale (double %) s) 0.5)))
+      (assoc :icon? (:visible? i))))
+
+(defn- splash-lay [scale s src acc [k i]]
+  (if (potion/instant? k)
+    (account/instant acc k (:amplifier i) scale src)
+    (let [i (splash-timed i scale s)]
+      (if (effect/ends-within? i 20) acc (account/land acc k i)))))
 
 (defn- splashed-deltas [world oid o stack scale src]
   (let [s (potion/duration-scale stack)
-        lay (fn [acc [k i]]
-              (if (potion/instant? k)
-                (account/instant acc k (:amplifier i) scale src)
-                (let [i (assoc (effect/timed i #(long (+ (* scale (double %) s)
-                                                          0.5)))
-                               :icon? (:visible? i))]
-                  (if (effect/ends-within? i 20) acc (account/land acc k i)))))
-        acc (reduce lay (assoc (account/account oid o) :world world)
+        acc (reduce #(splash-lay scale s src %1 %2)
+                    (assoc (account/account oid o) :world world)
                     (potion/instances stack))]
     (reported world oid o (account/deltas acc o))))
+
+(defn- splash-gap ^double [pb o ^double m]
+  (projectile/gap-sq pb (projectile/inflated (projectile/target-box o)
+                                             m m m)))
 
 (defn- splash-deltas [world eid e d at]
   (let [pb (projectile/body-box e at)
@@ -310,8 +319,7 @@
     (for [[oid o] (par/keyed (:entities world))
           :when (and (affected? o)
                      (projectile/overlaps? area (projectile/target-box o)))
-          :let [g (projectile/gap-sq
-                    pb (projectile/inflated (projectile/target-box o) m m m))]
+          :let [g (splash-gap pb o m)]
           :when (< g splash-range-sq)
           ds (splashed-deltas world oid o (:stack e)
                               (- 1.0 (/ (Math/sqrt g) 4.0)) src)]
@@ -424,8 +432,9 @@
     :ender-pearl
     (concat (hurt-deltas world eid e d hit) (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)
-    (delta/authored (potion-deltas world eid (assoc e :pos at) d at hit)
-                    (delta/entity-author eid e))))
+    (delta/authored
+      (potion-deltas world eid (assoc e :pos at) d at hit)
+      (delta/entity-author eid e))))
 
 (defn- hit-deltas [world eid e d at hit]
   (concat
@@ -483,14 +492,20 @@
                                  (magic-from world eid e (:pos e)))]
     (reported world oid o (account/deltas acc o))))
 
+(defn- out-of? [e r vs [oid o]]
+  (or (contains? vs oid)
+      (> (v/dist-xz-sq (:pos e) (:pos o)) (* (double r) (double r)))))
+
+(defn- shrunk ^double [e r]
+  (num/f32 (+ (double r) (double (:radius-on-use e)))))
+
 (defn- used
   "Returns [radius victims deltas] after the cloud lays its potion on
   entity o, or reduced once it has shrunk away."
-  [world eid e age [r vs ds :as acc] [oid o]]
-  (if (or (contains? vs oid)
-          (> (v/dist-xz-sq (:pos e) (:pos o)) (* (double r) (double r))))
+  [world eid e age [r vs ds :as acc] [oid o :as t]]
+  (if (out-of? e r vs t)
     acc
-    (let [r (num/f32 (+ (double r) (double (:radius-on-use e))))
+    (let [r (shrunk e r)
           acc [r (assoc vs oid (+ (long age) cloud-reapply))
                (into ds (clouded-deltas world eid e oid o))]]
       (cond-> acc (< r cloud-min-radius) reduced))))
@@ -508,7 +523,8 @@
                        :victims victims}]])
 
 (defn- cloud-active [world eid e ^long age]
-  (let [r (num/f32 (+ (double (:radius e)) (double (:radius-per-tick e))))]
+  (let [r (num/f32 (+ (double (:radius e))
+                     (double (:radius-per-tick e))))]
     (if (< r cloud-min-radius)
       [[:remove-entity eid]]
       (let [[r' victims ds] (cloud-contact world eid e age r)]

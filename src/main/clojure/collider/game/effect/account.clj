@@ -171,8 +171,8 @@
     (second (acted acc k a))))
 
 (defn potion-laid
-  "Returns the account after the potion in stack lands: an instant
-  effect acts at once at strength, hurting as src, the others stay
+  "Returns the account after the potion in stack lands. An instant
+  effect acts at once at strength, hurting as src. The others stay
   their time at the scale of stack."
   [acc stack strength src]
   (let [s (potion/duration-scale stack)]
