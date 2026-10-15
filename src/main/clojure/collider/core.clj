@@ -50,7 +50,8 @@
 
 (defn- recording [ring]
   (fn [world events deltas]
-    (swap! ring dump/recorded dumped-ticks (:tick world) events deltas)))
+    (swap! ring dump/recorded dumped-ticks (:tick world) events
+           deltas)))
 
 (defn- config-answer [settings {:keys [op eid key value]}]
   (if (= :show op)
@@ -62,7 +63,8 @@
            [:config-refused eid key
             (or (:why (ex-data e)) [(ex-message e)])]))))
 
-(defn- config-io! [settings ^ConcurrentLinkedQueue queue ^Deltas deltas]
+(defn- config-io!
+  [settings ^ConcurrentLinkedQueue queue ^Deltas deltas]
   (doseq [m (deltas/out-of deltas) :when (= :config-op (:msg m))]
     (Thread/startVirtualThread
       ^Runnable #(.offer queue (config-answer settings m)))))

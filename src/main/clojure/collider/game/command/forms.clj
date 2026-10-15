@@ -1,8 +1,7 @@
 (ns collider.game.command.forms
   "The commands players run, with their arguments and permission
   levels."
-  (:require [collider.config :as config]
-            [collider.game.out :as out]))
+  (:require [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
 
@@ -408,6 +407,13 @@
    [trigger-arg (lit "add") trigger-value] [:world :trigger :add]
    [trigger-arg (lit "set") trigger-value] [:world :trigger :set]])
 
+(def settings
+  "The names of the settings the collider config command writes."
+  #{"port" "motd" "max-players" "max-connections" "view-distance"
+    "simulation-distance" "compression-threshold" "encryption"
+    "save-dir" "commit-period-ms" "pause-when-empty-seconds"
+    "game-mode" "force-game-mode"})
+
 (def ^:private collider-form
   [:collider "the tools of this server"
    [(lit "dump")] [:world :collider-dump]
@@ -416,7 +422,7 @@
    [(lit "tps")] [:world :collider-tps]
    [(lit "config")] [:world :collider-config-show]
    [(lit "config")
-    [:key [:enum {:values (set (map name config/settable))}]]
+    [:key [:enum {:values settings}]]
     [:value [:text {}]]]
    [:world :collider-config-set]])
 

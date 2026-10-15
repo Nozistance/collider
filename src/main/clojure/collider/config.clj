@@ -139,7 +139,8 @@
   ^String [^String text k v]
   (let [m (re-matcher (key-re k) text)]
     (if (.find m)
-      (str (subs text 0 (.start m 3)) (pr-str v) (subs text (.end m 3)))
+      (str (subs text 0 (.start m 3)) (pr-str v)
+           (subs text (.end m 3)))
       (let [i (str/last-index-of text "}")]
         (str (subs text 0 i) "\n " (pr-str k) " " (pr-str v)
              (subs text i))))))
@@ -153,7 +154,9 @@
         text (if (.exists f) (slurp f) "{}")
         m' (checked path (assoc (edn/read-string text) k v))
         kept (in-place text k v)]
-    (spit f (if (= m' (edn/read-string kept)) kept (render (ordered m'))))
+    (spit f (if (= m' (edn/read-string kept))
+              kept
+              (render (ordered m'))))
     {:restart? (boolean (some #{k} fixed-keys))}))
 
 (defn- restart-warning [old ks]
