@@ -390,12 +390,15 @@
 (defn- patch-value [[id gone?]]
   (if gone? dfu/tag-unit #(decode id %)))
 
+(defn- patch-entry [{:keys [components removed]} [[id gone?] v]]
+  (if gone?
+    {:components (dissoc components id) :removed (conj removed id)}
+    {:components (assoc components id v) :removed (disj removed id)}))
+
 (defn- patch [m]
-  (let [part #(into %1 (keep (fn [[[id gone?] v]] (%2 id gone? v))) m)]
-    (not-empty
-      (into {} (filter (comp seq val))
-            {:components (part {} (fn [id gone? v] (when-not gone? [id v])))
-             :removed (part #{} (fn [id gone? _] (when gone? id)))}))))
+  (not-empty
+    (into {} (filter (comp seq val))
+          (reduce patch-entry {:components {} :removed #{}} m))))
 
 (def ^:private patch-of
   (dfu/mapped (dfu/dispatched-map patch-key patch-value) patch))
