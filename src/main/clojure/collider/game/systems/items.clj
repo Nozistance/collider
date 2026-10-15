@@ -283,13 +283,18 @@
   (let [d (long (or (:pickup-delay e) 0))]
     (if (= no-pickup-delay d) d (max 0 (dec d)))))
 
-(defn- stepped [e s age]
-  (cond-> {:pos (:pos s) :vel (:vel s) :on-ground (:on-ground s)
+(defn- changed [e m]
+  (into {} (remove (fn [[k v]] (= v (get e k)))) m))
+
+(defn- stepped
+  "Returns what the step s of item e changes in it, aged to age."
+  [e s age]
+  (let [m {:pos (:pos s) :vel (:vel s) :on-ground (:on-ground s)
            :support (:support s) :no-blocks? (:no-blocks? s)
            :needs-sync? (needs-sync? e s)
-           :age age
-           :pickup-delay (delay-left e)}
-    (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))
+           :age age :pickup-delay (delay-left e)}]
+    (changed e (cond-> m
+                 (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))))
 
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
