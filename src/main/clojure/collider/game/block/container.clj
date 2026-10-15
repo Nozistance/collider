@@ -287,6 +287,8 @@
         roll #(random/of-key t pos :furnace-xp %)]
     (furnace/award-deltas old at roll [:furnace eid])))
 
+(defn- seen [items] (mapv (juxt identity bundle/selected) items))
+
 (defn- furnace-store [world eid m items]
   (let [pos (first (:cells m))
         old (be/at world pos)
@@ -295,14 +297,16 @@
               (assoc-in [:items 1] (nth items 1))
               (assoc-in [:items 2] (nth items 2))
               (cond-> got (assoc :used {})))]
-    (concat (when (not= old e) [[:set-block-entity pos e]])
+    (concat (when (or (not= old e)
+                      (not= (seen (:items old)) (seen (:items e))))
+              [[:set-block-entity pos e]])
             (when got (furnace-paid world eid pos old)))))
 
 (defn- cell-store [world items n i pos]
   (let [old (be/at world pos)
         n (long n) i (long i)
         part (padded (subvec (vec items) (* i n) (* (inc i) n)) n)]
-    (when (not= (padded (:items old) n) part)
+    (when (not= (seen (padded (:items old) n)) (seen part))
       [:set-block-entity pos (assoc old :items part)])))
 
 (defn store-deltas

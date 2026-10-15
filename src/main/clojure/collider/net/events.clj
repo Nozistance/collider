@@ -102,7 +102,10 @@
    :container-button-click
    (fn [eid m] [:menu-button eid (:container m) (:button m)])
    :bundle-item-selected
-   (fn [eid m] [:bundle-select eid (:slot m) (:selected m)])})
+   (fn [eid {:keys [slot selected]}]
+     (when (< (long selected) -1)
+       (throw (ex-info "invalid selected index" {:index selected})))
+     [:bundle-select eid slot selected])})
 
 (defn- client-command-event [eid m]
   (case (long (:action m))

@@ -61,15 +61,24 @@
     (let [at (fn [i x] (when (stack/same-kind? x s) i))]
       (first (keep-indexed at stacks)))))
 
-(defn- with-contents [bundle stacks]
-  (stack/put bundle :bundle-contents (mapv stack/template stacks)))
+(defn selected
+  "Returns the index of the stack picked to come out of bundle first,
+  or -1 when none is picked."
+  ^long [bundle]
+  (let [v (stack/component bundle :bundle-contents)]
+    (long (:selected (meta v) -1))))
 
-(defn- selected ^long [bundle] (long (:bundle-selected bundle -1)))
+(defn- picked [templates ^long i]
+  (with-meta templates (when (<= 0 i) {:selected i})))
 
-(defn- select-in [bundle ^long n ^long i]
-  (if (and (not= i (selected bundle)) (< -1 i n))
-    (assoc bundle :bundle-selected i)
-    (dissoc bundle :bundle-selected)))
+(defn- with-contents [bundle stacks ^long i]
+  (stack/put bundle :bundle-contents
+             (picked (mapv stack/template stacks) i)))
+
+(defn- select-in [bundle ^long i]
+  (let [v (stack/component bundle :bundle-contents)
+        hit? (and (not= i (selected bundle)) (< -1 i (count v)))]
+    (stack/put bundle :bundle-contents (picked v (if hit? i -1)))))
 
 (defn- without [v ^long i]
   (into (subvec v 0 i) (subvec v (inc i))))
@@ -90,7 +99,8 @@
             (min (stack/size stack) (room stacks (weight stack)))
             0)]
     (if (pos? n)
-      [(with-contents bundle (merged stacks stack n)) n]
+      (let [i (selected bundle)]
+        [(with-contents bundle (merged stacks stack n) i) n])
       [bundle 0])))
 
 (defn remove-one
@@ -101,9 +111,7 @@
         i (selected bundle)
         i (if (< -1 i (count stacks)) i 0)]
     (if (seq stacks)
-      [(-> (with-contents bundle (without stacks i))
-           (dissoc :bundle-selected))
-       (nth stacks i)]
+      [(with-contents bundle (without stacks i) -1) (nth stacks i)]
       [bundle nil])))
 
 (defn select
@@ -111,5 +119,5 @@
   or with none picked when i is out of range or already picked."
   [bundle i]
   (if (bundle? bundle)
-    (select-in bundle (count (contents bundle)) (long i))
+    (select-in bundle (long i))
     bundle))
