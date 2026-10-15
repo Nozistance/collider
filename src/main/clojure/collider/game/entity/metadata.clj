@@ -53,7 +53,8 @@
                      :burning? (boolean (:burning? e))})
      :firework-rocket
      (fn [e] (cond-> (thrown-metadata e)
-               (:attached e) (assoc :attached (:attached e))))}))
+               (:attached e) (assoc :attached (:attached e))
+               (:shot-at-angle? e) (assoc :shot-at-angle? true)))}))
 
 (defn- using-hand [e]
   (if (:using-item? e) (or (get-in e [:using :hand]) :main) false))

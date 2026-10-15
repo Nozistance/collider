@@ -205,7 +205,8 @@
     :item (merge (common-fields meta) (stack-fields meta))
     :firework-rocket
     (cond-> (stack-fields meta)
-      (:attached meta) (assoc :attached (:attached meta)))
+      (:attached meta) (assoc :attached (:attached meta))
+      (:shot-at-angle? meta) (assoc :shot-at-angle true))
     :tnt (tnt-fields meta)
     :arrow (cond-> (common-fields meta)
              (contains? meta :crit?)

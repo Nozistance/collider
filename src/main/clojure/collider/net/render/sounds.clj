@@ -107,6 +107,8 @@
    :crossbow/loading-start        [:item.crossbow.loading-start 7]
    :crossbow/loading-middle       [:item.crossbow.loading-middle 7]
    :crossbow/loading-end          [:item.crossbow.loading-end 7]
+   :crossbow/shoot                [:item.crossbow.shoot 7]
+   :crossbow/hit                  [:item.crossbow.hit 6]
    :firework-rocket/launch        [:entity.firework-rocket.launch 8]
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]

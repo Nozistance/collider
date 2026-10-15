@@ -4,6 +4,7 @@
             [collider.game.apply :as apply]
             [collider.game.book :as book]
             [collider.game.changes :as changes]
+            [collider.game.crossbow :as crossbow]
             [collider.game.inventory :as inventory]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
@@ -125,6 +126,7 @@
    [(item-is :fire-charge)
     (when-hand (spending (on-args tools/firecharge-deltas)))]
    [(item-is :firework-rocket) rocket-deltas]
+   [(item-is :crossbow) (when-use (on-at crossbow/shoot-deltas))]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]

@@ -70,10 +70,11 @@
       (>= life lifetime) [[:remove-entity eid]]
       :else (into [[:merge-entity eid (assoc m :life life)]] out))))
 
-(defn- hit-sound [world eid at]
+(defn- hit-sound [world eid e]
   (let [r (num/f32 (random/of-key (:tick world) eid :arrow-hit))
         d (num/f32 (+ (num/f32 (* r (num/f32 0.2))) (num/f32 0.9)))]
-    (out/all (out/sound :arrow/hit at 1.0 (num/f32 (/ (num/f32 1.2) d))))))
+    (out/all (out/sound (:hit-sound e :arrow/hit) (:pos e) 1.0
+                        (num/f32 (/ (num/f32 1.2) d))))))
 
 (defn- stuck-at [at d]
   (mapv (fn [a c] (- (double a) (* set-back (Math/signum (double c)))))
@@ -179,7 +180,7 @@
                  (pos? (long (:fire e 0)))
                  (assoc :fire (max (long (:fire o 0)) ignite-ticks)))])
         (into (told-owner world e oid o))
-        (conj (hit-sound world eid (:pos e)) [:remove-entity eid]))))
+        (conj (hit-sound world eid e) [:remove-entity eid]))))
 
 (def ^:private ^:const bounce-turn (num/f32 20.0))
 
@@ -238,7 +239,7 @@
   (if b
     (let [cell (nth b 2) e (stuck world e at (:vel e) cell)]
       (ended world eid e
-             (into [(hit-sound world eid (:pos e))]
+             (into [(hit-sound world eid e)]
                    (projectile/block-hit-deltas world e cell))))
     (ended world eid (assoc e :pos at :needs-sync? false) nil)))
 

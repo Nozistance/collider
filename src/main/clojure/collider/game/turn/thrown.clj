@@ -181,18 +181,24 @@
 
 (defn- eye-y ^double [e] (f32 (entity/eye-height e)))
 
-(defn launched
+(defn shot
   "Returns the position, motion, yaw and pitch of a projectile shot by
-  e of eid at power, aimed offset degrees up and set drop below the
-  eyes. It faces its own motion and carries that of e."
-  [world eid e power offset drop]
+  e of eid along dir at power, set drop below the eyes. It faces its
+  own motion."
+  [world eid e dir power drop]
   (let [p (:pos e)
-        dir (aim (double (:yaw e 0.0)) (double (:pitch e 0.0))
-                 (double offset))
         vel (shot-vel world eid dir (double power))
         [yaw pitch] (projectile/facing vel)]
     {:pos [(v/x p) (- (+ (v/y p) (eye-y e)) (double drop)) (v/z p)]
-     :vel (carried e vel) :yaw yaw :pitch pitch}))
+     :vel vel :yaw yaw :pitch pitch}))
+
+(defn launched
+  "Returns the shot of e of eid at power, aimed offset degrees up and
+  set drop below the eyes. It carries the motion of e."
+  [world eid e power offset drop]
+  (let [dir (aim (double (:yaw e 0.0)) (double (:pitch e 0.0))
+                 (double offset))]
+    (update (shot world eid e dir power drop) :vel #(carried e %))))
 
 (defn- thrown [world eid e stack]
   (let [{:keys [power offset entity drop]

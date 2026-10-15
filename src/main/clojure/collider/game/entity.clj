@@ -162,9 +162,10 @@
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
    :falling-block [:block :time :fall :hurt :hurt-max]
-   :thrown [:owner :left-owner? :stack :life :lifetime :attached]
+   :thrown [:owner :left-owner? :stack :life :lifetime :attached
+            :shot-at-angle?]
    :arrow [:owner :left-owner? :stack :life :in-ground? :shake
-           :last-state :pickup :crit? :fire]
+           :last-state :pickup :crit? :fire :hit-sound]
    :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults

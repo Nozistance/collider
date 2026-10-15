@@ -1,9 +1,14 @@
 (ns collider.game.crossbow
   "A crossbow charged."
-  (:require [collider.game.mode :as game-mode]
+  (:require [collider.game.bow :as bow]
+            [collider.game.glide :as glide]
+            [collider.game.inventory :as inventory]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.stack :as stack]
+            [collider.game.turn.rocket :as rocket]
+            [collider.game.turn.thrown :as thrown]
             [collider.game.using :as using]
             [collider.num :as num]
             [collider.random :as random]))
@@ -15,6 +20,8 @@
 (def ^:private ^:const start-at (double (float 0.2)))
 
 (def ^:private ^:const mid-at (double (float 0.5)))
+
+(def ^:private ^:const rocket-drop (double (float 0.15)))
 
 (defn- charged? [stack]
   (boolean (seq (stack/component stack :charged-projectiles))))
@@ -91,3 +98,42 @@
     (when (and (= :crossbow item)
                (= :crossbow (:item (player/hand-stack e hand))))
       (tick-deltas world eid e (long remaining)))))
+
+(defn- rocket? [stack] (= :firework-rocket (:item stack)))
+
+(defn- shot [world eid e ammo power]
+  (let [dir (glide/look (double (:pitch e 0.0)) (double (:yaw e 0.0)))
+        drop (if (rocket? ammo) rocket-drop thrown/eye-drop)
+        flight (thrown/shot world eid e dir power drop)]
+    (if (rocket? ammo)
+      (merge (rocket/rocket world eid ammo (:pos flight)) flight
+             {:shot-at-angle? true})
+      (assoc (bow/arrow eid ammo
+                        (if (stack/component ammo :intangible-projectile)
+                          :creative-only
+                          :allowed)
+                        true flight)
+             :hit-sound :crossbow/hit))))
+
+(defn shoot-deltas
+  "Returns the deltas of player eid, e, shooting the charged crossbow
+  in hand, or nil when it holds no charge. The charge leaves along the
+  look, an arrow wears the crossbow by one, a rocket by three."
+  [world eid e]
+  (let [hand (:use-hand e)
+        slot (player/hand-slot e hand)
+        held (player/hand-stack e hand)
+        charge (map stack/of-template
+                    (stack/component held :charged-projectiles))]
+    (when (and (= :crossbow (:item held)) (seq charge))
+      (let [ammo (first charge)
+            power (if (some rocket? charge) 1.6 3.15)
+            emptied (stack/put held :charged-projectiles [])]
+        (concat
+          [(out/all (out/sound :crossbow/shoot (:pos e) 1.0 1.0))
+           [:spawn-entity (shot world eid e ammo power)]
+           [:set-slot eid slot emptied]]
+          (inventory/hurt-item-deltas (:tick world) eid
+                                      (assoc-in e [:inventory slot] emptied)
+                                      hand (if (rocket? ammo) 3 1))
+          [[:award eid :used/crossbow 1]])))))

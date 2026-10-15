@@ -20,12 +20,14 @@
         p (f (/ (f ticks) (f 20.0)))]
     (min 1.0 (f (/ (f (+ (f (* p p)) (f (* p (f 2.0))))) (f 3.0))))))
 
-(defn- arrow [world eid e ammo pow creative?]
+(defn arrow
+  "Returns an arrow of eid that carries one of ammo, flies as flight
+  and may be picked up as pickup says."
+  [eid ammo pickup crit? flight]
   (merge {:type :arrow :owner eid :age 0 :left-owner? false
-          :on-ground false :stack (assoc ammo :count 1)
-          :pickup (if creative? :creative-only :allowed)
-          :crit? (== 1.0 pow) :life 0 :shake 0 :in-ground? false}
-         (thrown/launched world eid e (* 3.0 pow) 0.0 thrown/eye-drop)))
+          :on-ground false :stack (assoc ammo :count 1) :pickup pickup
+          :crit? crit? :life 0 :shake 0 :in-ground? false}
+         flight))
 
 (defn- shoot-sound [world eid e ^double pow]
   (let [f num/f32
@@ -45,7 +47,11 @@
     (when (and (or slot creative?) (>= pow least-power))
       (let [ammo (if slot (get-in e [:inventory slot]) {:item :arrow})]
         (concat
-          [[:spawn-entity (arrow world eid e ammo pow creative?)]]
+          [[:spawn-entity
+            (arrow eid ammo (if creative? :creative-only :allowed)
+                   (== 1.0 pow)
+                   (thrown/launched world eid e (* 3.0 pow) 0.0
+                                    thrown/eye-drop))]]
           (when-not creative? [[:set-slot eid slot (spent ammo)]])
           (inventory/hurt-item-deltas (:tick world) eid e hand 1)
           [(shoot-sound world eid e pow)

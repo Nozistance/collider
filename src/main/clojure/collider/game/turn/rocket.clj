@@ -107,7 +107,7 @@
     [(out/all (out/sound :firework-rocket/launch at 3.0 1.0))]))
 
 (defn- free-motion [world e]
-  (let [d (sped-up e)]
+  (let [d (if (:shot-at-angle? e) (:vel e) (sped-up e))]
     [(:pos e) d (assoc (moved world e d) :vel d) nil]))
 
 (defn- hand
@@ -190,7 +190,9 @@
 (defn- drift ^double [world eid k]
   (* 0.002297 (- (draw world eid [k 0]) (draw world eid [k 1]))))
 
-(defn- rocket [world eid stack at]
+(defn rocket
+  "Returns a new rocket of stack that player eid sets off at at."
+  [world eid stack at]
   (let [flight (long (:flight-duration
                        (stack/component stack :fireworks) 0))]
     {:type :firework-rocket :owner eid :left-owner? false :age 0 :life 0

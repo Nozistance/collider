@@ -56,6 +56,8 @@
 
 (defn- no-contents [v] (empty-or-throw "bundle_contents" (vec v)))
 
+(defn- no-charge [v] (empty-or-throw "charged_projectiles" (vec v)))
+
 (def ^:private crafted-components
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
@@ -64,6 +66,7 @@
    "minecraft:repair_cost"          [:repair-cost identity]
    "minecraft:enchantable"          [:enchantable #(get % "value")]
    "minecraft:bundle_contents"      [:bundle-contents no-contents]
+   "minecraft:charged_projectiles"  [:charged-projectiles no-charge]
    "minecraft:dye"                  [:dye kw]
    "minecraft:attribute_modifiers"  [:attribute-modifiers modifiers]
    "minecraft:instrument"           [:instrument kw]
