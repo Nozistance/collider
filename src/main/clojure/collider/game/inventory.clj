@@ -43,8 +43,19 @@
                  slot-order)))
 
 (defn- space-order [e]
-  (distinct (concat [(player/hand-slot e :main) (player/hand-slot e :off)]
-                    slot-order)))
+  (let [hands [(player/hand-slot e :main) (player/hand-slot e :off)]]
+    (distinct (concat hands slot-order))))
+
+(defn- fill-empty
+  "Returns changes with n of stack put into empty slots of inv, at
+  most cap in each, and the count that found no slot."
+  [inv changes stack n cap]
+  (let [cap (long cap)]
+    (loop [changes changes n (long n)]
+      (if-let [slot (when (pos? n) (first-empty-slot inv changes))]
+        (recur (conj changes [slot (assoc stack :count (min n cap))])
+               (- n (min n cap)))
+        [changes n]))))
 
 (defn add-stack
   "Returns the slot changes that fit stack into the inventory of
@@ -58,12 +69,7 @@
         n0 (long (:count stack 1))
         cap (long (data/max-stack (:item stack)))
         [changes n] (fill-existing inv (space-order e) stack n0)
-        [changes n] (loop [changes changes n (long n)]
-                      (let [slot (when (pos? n) (first-empty-slot inv changes))]
-                        (if slot
-                          (recur (conj changes [slot (assoc stack :count (min n cap))])
-                                 (- n (min n cap)))
-                          [changes n])))
+        [changes n] (fill-empty inv changes stack (long n) cap)
         n (long n)]
     [changes
      (when (and (pos? n)

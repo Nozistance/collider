@@ -34,7 +34,8 @@
   (let [lv (targets/level-view world dim)
         inv (or (:inventory e) {})
         stack (assoc proto :count n)
-        [changes left] (inventory/add-stack (assoc e :inventory inv) stack)
+        [changes left] (inventory/add-stack (assoc e :inventory inv)
+                                            stack)
         set (fn [[slot s]] [:set-slot id slot s])
         spilled (when left
                   [[:spawn-entity (item/dropped lv id left true 0)]])]

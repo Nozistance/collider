@@ -154,7 +154,8 @@
     (boolean
       (and n (pos? (double (:health e 0.0)))
            (or (<= (long (or (:hurt-resist e) 0)) 10)
-               (> (num/f32 n) (num/f32 (or (:last-damage e) 0.0))))))))
+               (> (num/f32 n)
+                  (num/f32 (or (:last-damage e) 0.0))))))))
 
 (defn damage-deltas
   "Returns the deltas of entity eid taking amount from src, none when
@@ -412,9 +413,8 @@
   that does not burn and was not lit keeps no fire."
   ^long [world e r0 moves]
   (let [[half height] (box-of e)
-        steps (partition-by #(nth % 4)
-                            (inside/met (:chunks world) moves half height
-                                        @burners))
+        met (inside/met (:chunks world) moves half height @burners)
+        steps (partition-by #(nth % 4) met)
         r (long (first (reduce (stepped-fire fire-lit identity false)
                                [r0 []] steps)))
         r (if (rained-on? world e) (min 0 r) r)]

@@ -66,7 +66,8 @@
         life (inc (long (:life e 0)))]
     (cond
       (and (not= (:last-state e) st) (falls? world e))
-      (into [[:merge-entity eid (assoc m :in-ground? false :life 0)]] out)
+      (let [m (assoc m :in-ground? false :life 0)]
+        (into [[:merge-entity eid m]] out))
       (>= life lifetime) [[:remove-entity eid]]
       :else (into [[:merge-entity eid (assoc m :life life)]] out))))
 
@@ -77,8 +78,8 @@
                         (num/f32 (/ (num/f32 1.2) d))))))
 
 (defn- stuck-at [at d]
-  (mapv (fn [a c] (- (double a) (* set-back (Math/signum (double c)))))
-        at d))
+  (let [back #(- (double %1) (* set-back (Math/signum (double %2))))]
+    (mapv back at d)))
 
 (defn- after-move [e d]
   (cond-> d
@@ -87,7 +88,8 @@
 
 (defn- wet [world e]
   (let [[half h] (entity/box e)
-        f (liquid/fluid-info (:chunks world) (:pos e) half h (:vel e))]
+        f (liquid/fluid-info (:chunks world) (:pos e) half h
+                             (:vel e))]
     (cond-> {:in-water? (pos? (double (:water f)))}
       (not (:in-ground? e)) (assoc :vel (v/add (:vel e) (:push f))))))
 
@@ -104,7 +106,8 @@
   (let [[half h] (entity/box e)
         b (projectile/box-of (:pos e) half h)
         grow (fn [^long i ^double x]
-               (+ (double (b i)) (if (< i 3) (min x 0.0) (max x 0.0))))
+               (+ (double (b i))
+                  (if (< i 3) (min x 0.0) (max x 0.0))))
         b (mapv grow (range 6) (concat d d))]
     (projectile/inflated b 1.0 1.0 1.0)))
 
@@ -138,7 +141,8 @@
   "Returns the bodies arrow e meets on its way from to to, each
   [oid o at], nearest first by where they stand."
   [world eid e to]
-  (let [from (:pos e) area (searched e (:vel e)) m (projectile/margin e)
+  (let [from (:pos e) area (searched e (:vel e))
+        m (projectile/margin e)
         met (for [[oid o] (par/keyed (:entities world))
                   :when (and (target? world eid e oid o)
                              (projectile/overlaps?
@@ -174,11 +178,13 @@
 (defn- hit-deltas [world eid e oid o n src]
   (let [ds (hurt/damage-deltas world oid o n src)]
     (-> (vec ds)
-        (into (hurt/report-deltas world oid (hurt/hurt-now world oid o ds)))
+        (into (hurt/report-deltas world oid
+                                  (hurt/hurt-now world oid o ds)))
         (conj [:merge-entity oid
                (cond-> {:arrow-count (inc (long (:arrow-count o 0)))}
                  (pos? (long (:fire e 0)))
-                 (assoc :fire (max (long (:fire o 0)) ignite-ticks)))])
+                 (assoc :fire (max (long (:fire o 0))
+                                   ignite-ticks)))])
         (into (told-owner world e oid o))
         (conj (hit-sound world eid e) [:remove-entity eid]))))
 
@@ -186,7 +192,8 @@
 
 (defn- bounced [world eid e]
   (let [r (num/f32 (random/of-key (:tick world) eid :bounce))
-        turn (num/f32 (+ (num/f32 170.0) (num/f32 (* r bounce-turn))))]
+        turn (num/f32 (+ (num/f32 170.0)
+                         (num/f32 (* r bounce-turn))))]
     (assoc e :vel (scaled (scaled (:vel e) -0.5) 0.2)
            :yaw (num/f32 (+ (num/f32 (:yaw e 0.0)) turn)))))
 
@@ -201,8 +208,8 @@
 (defn- struck [world eid {:keys [e ds] :as acc} [oid o]]
   (let [n (damage world eid e) src (arrow-source world eid e)]
     (if (hurt/hurts? world o n src)
-      (reduced (assoc acc :gone? true
-                      :ds (into ds (hit-deltas world eid e oid o n src))))
+      (let [hit (hit-deltas world eid e oid o n src)]
+        (reduced (assoc acc :gone? true :ds (into ds hit))))
       (let [e (bounced world eid e)]
         (if (< (v/dot (:vel e) (:vel e)) 1.0E-7)
           (reduced (assoc acc :gone? true
@@ -254,7 +261,9 @@
         [yaw pitch] (projectile/rotated e move)
         span (projectile/span (:pos e) move)
         b (projectile/block-clip world (:pos e) span)
-        at (if b (projectile/point (:pos e) span (b 0)) (v/add (:pos e) move))
+        at (if b
+             (projectile/point (:pos e) span (b 0))
+             (v/add (:pos e) move))
         e (assoc e :vel d :yaw yaw :pitch pitch
                  :left-owner? (projectile/left-owner? world e d)
                  :shake (shaken e))

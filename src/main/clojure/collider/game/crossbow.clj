@@ -101,6 +101,11 @@
 
 (defn- rocket? [stack] (= :firework-rocket (:item stack)))
 
+(defn- pickup-of [ammo]
+  (if (stack/component ammo :intangible-projectile)
+    :creative-only
+    :allowed))
+
 (defn- shot [world eid e ammo power]
   (let [dir (glide/look (double (:pitch e 0.0)) (double (:yaw e 0.0)))
         drop (if (rocket? ammo) rocket-drop thrown/eye-drop)
@@ -108,12 +113,21 @@
     (if (rocket? ammo)
       (merge (rocket/rocket world eid ammo (:pos flight)) flight
              {:shot-at-angle? true})
-      (assoc (bow/arrow eid ammo
-                        (if (stack/component ammo :intangible-projectile)
-                          :creative-only
-                          :allowed)
-                        true flight)
+      (assoc (bow/arrow eid ammo (pickup-of ammo) true flight)
              :hit-sound :crossbow/hit))))
+
+(defn- fired-deltas [world eid e hand slot held charge]
+  (let [ammo (first charge)
+        power (if (some rocket? charge) 1.6 3.15)
+        emptied (stack/put held :charged-projectiles [])
+        e' (assoc-in e [:inventory slot] emptied)]
+    (concat
+      [(out/all (out/sound :crossbow/shoot (:pos e) 1.0 1.0))
+       [:spawn-entity (shot world eid e ammo power)]
+       [:set-slot eid slot emptied]]
+      (inventory/hurt-item-deltas (:tick world) eid e' hand
+                                  (if (rocket? ammo) 3 1))
+      [[:award eid :used/crossbow 1]])))
 
 (defn shoot-deltas
   "Returns the deltas of player eid, e, shooting the charged crossbow
@@ -126,14 +140,4 @@
         charge (map stack/of-template
                     (stack/component held :charged-projectiles))]
     (when (and (= :crossbow (:item held)) (seq charge))
-      (let [ammo (first charge)
-            power (if (some rocket? charge) 1.6 3.15)
-            emptied (stack/put held :charged-projectiles [])]
-        (concat
-          [(out/all (out/sound :crossbow/shoot (:pos e) 1.0 1.0))
-           [:spawn-entity (shot world eid e ammo power)]
-           [:set-slot eid slot emptied]]
-          (inventory/hurt-item-deltas (:tick world) eid
-                                      (assoc-in e [:inventory slot] emptied)
-                                      hand (if (rocket? ammo) 3 1))
-          [[:award eid :used/crossbow 1]])))))
+      (fired-deltas world eid e hand slot held charge))))

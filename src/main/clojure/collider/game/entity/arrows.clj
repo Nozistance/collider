@@ -11,5 +11,6 @@
     (when (pos? n)
       (let [t (long (:arrow-time e 0))
             t (dec (if (<= t 0) (* 20 (- 30 n)) t))]
-        [[:merge-entity eid (cond-> {:arrow-time t}
-                              (<= t 0) (assoc :arrow-count (dec n)))]]))))
+        [[:merge-entity eid
+          (cond-> {:arrow-time t}
+            (<= t 0) (assoc :arrow-count (dec n)))]]))))

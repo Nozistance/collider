@@ -45,7 +45,9 @@
         creative? (game-mode/instabuild? e)
         pow (power (- using/bow-ticks (long remaining)))]
     (when (and (or slot creative?) (>= pow least-power))
-      (let [ammo (if slot (get-in e [:inventory slot]) {:item :arrow})]
+      (let [ammo (if slot
+                   (get-in e [:inventory slot])
+                   {:item :arrow})]
         (concat
           [[:spawn-entity
             (arrow eid ammo (if creative? :creative-only :allowed)
@@ -65,5 +67,6 @@
   [world [_ eid]]
   (let [e (get-in world [:entities eid])
         {:keys [hand item] :as u} (:using e)]
-    (when (and (= :bow item) (= :bow (:item (player/hand-stack e hand))))
+    (when (and (= :bow item)
+               (= :bow (:item (player/hand-stack e hand))))
       (shot-deltas world eid e u))))

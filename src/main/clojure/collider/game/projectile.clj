@@ -131,7 +131,8 @@
             p (point from d entry-step)]
         (if (some #(inside? % p) bs)
           [entry-step (facing-away d)]
-          (reduce (fn [best b] (nearer best (reach/box-entry from d b) nil))
+          (reduce (fn [best b]
+                    (nearer best (reach/box-entry from d b) nil))
                   nil bs))))))
 
 (def ^:private ^:const min-ray-sq 1.0E-7)
@@ -180,14 +181,15 @@
   [b from to]
   (let [from [(v/x from) (v/y from) (v/z from)]
         d (mapv - [(v/x to) (v/y to) (v/z to)] from)
-        t (reduce (fn [^double t a]
-                    (let [da (double (d a))]
-                      (cond (> da face-slack) (face-hit b from d a a t)
-                            (< da (- face-slack)) (face-hit b from d a (+ a 3) t)
-                            :else t)))
-                  1.0 [0 1 2])]
-    (when (< (double t) 1.0)
-      (mapv (fn [f x] (+ (double f) (* (double t) (double x)))) from d))))
+        hit (fn [^double t a]
+              (let [da (double (d a))]
+                (cond (> da face-slack) (face-hit b from d a a t)
+                      (< da (- face-slack))
+                      (face-hit b from d a (+ a 3) t)
+                      :else t)))
+        t (double (reduce hit 1.0 [0 1 2]))]
+    (when (< t 1.0)
+      (mapv (fn [f x] (+ (double f) (* t (double x)))) from d))))
 
 (defn margin
   "Returns how far beyond its box projectile e meets a body, growing
@@ -300,9 +302,11 @@
     (cond
       (and (= :chorus-flower (block/type-of st))
            (may-interact? world e) (may-break? world e))
-      (changes/change-deltas world [[cell 0 [[:break st] [:drop st]]]])
+      (changes/change-deltas world
+                             [[cell 0 [[:break st] [:drop st]]]])
       (and (block/tnt? st) (burning? e) (may-interact? world e)
            (get-in world [:rules :tnt-explodes] true))
       (primed-deltas world e cell)
       (lights? world e st)
-      (changes/change-deltas world [[cell (block/with st :lit :true)]]))))
+      (changes/change-deltas world
+                             [[cell (block/with st :lit :true)]]))))
