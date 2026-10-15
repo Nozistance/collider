@@ -687,7 +687,8 @@
   "Returns speed vel of body e with the push of the current it stands
   in, as its tick begins."
   [world e vel half height]
-  (v/add vel (:push (fluid-of world e (num/f32 half) (num/f32 height)))))
+  (v/add vel (:push (fluid-after world e (:pos e) (num/f32 half)
+                                 (num/f32 height) vel))))
 
 (defn body-moved
   "Returns the move of living body e with no will of its own after
