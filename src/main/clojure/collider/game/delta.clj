@@ -292,6 +292,8 @@
      :load-chunk [[:id :int]]
      :store-chunk [[:id :int] [:payload :map]]
      :debug-dump [[:ticks :int] [:file :string]]
+     :config-op [[:op :keyword] [:eid :int] [:key [:maybe :keyword]]
+                 [:value [:maybe :string]]]
      :break-effect [[:pos Pos] [:state State]]
      :destroy-stage [[:eid Eid] [:pos Pos] [:stage :int]]
      :explosion [[:center Vec3] [:radius number?] [:blocks :int]

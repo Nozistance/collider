@@ -74,6 +74,12 @@
 (defn store-chunk [id payload]
   {:msg :store-chunk :id id :payload payload})
 
+(defn config-op
+  "Returns the effect that asks the host to show the settings to
+  player eid, op :show, or to write setting k as text, op :set."
+  [op eid k text]
+  {:msg :config-op :op op :eid eid :key k :value text})
+
 (defn debug-dump
   "Returns the effect that asks the host to write the last ticks of
   deltas to file."

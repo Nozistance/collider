@@ -107,6 +107,55 @@
            (log/warn "could not write" (str f) "-" (ex-message e))
            false))))))
 
+(def settable
+  "The settings a command may write, the plugins aside."
+  (into [] (comp (map first) (remove #{:plugins}))
+        (rest (rest Settings))))
+
+(def ^:private text-keys #{:motd :save-dir})
+
+(defn value-of
+  "Returns the value of setting k that text spells."
+  [k ^String text]
+  (if (text-keys k)
+    text
+    (let [v (edn/read-string text)]
+      (if (symbol? v) (keyword v) v))))
+
+(defn- ordered [m]
+  (let [rank (zipmap (keys defaults) (range))]
+    (sort-by #(rank (key %) (count rank)) m)))
+
+(def ^:private value-re "(\"(?:[^\"\\\\]|\\\\.)*\"|[^\\s,}\\]]+)")
+
+(defn- key-re [k]
+  (re-pattern (str "(?m)^([^;\\n]*?[\\s{,])"
+                   (java.util.regex.Pattern/quote (str k))
+                   "(\\s+)" value-re)))
+
+(defn- in-place
+  "Returns config text with the value of k set to v, its comments and
+  layout kept, or with the pair added before the last brace."
+  ^String [^String text k v]
+  (let [m (re-matcher (key-re k) text)]
+    (if (.find m)
+      (str (subs text 0 (.start m 3)) (pr-str v) (subs text (.end m 3)))
+      (let [i (str/last-index-of text "}")]
+        (str (subs text 0 i) "\n " (pr-str k) " " (pr-str v)
+             (subs text i))))))
+
+(defn written!
+  "Writes setting k as v into config path and returns whether the
+  running server takes a restart for it. Comments in the file stay.
+  Throws, writing nothing, when the settings would be bad."
+  [path k v]
+  (let [f (io/file (str path))
+        text (if (.exists f) (slurp f) "{}")
+        m' (checked path (assoc (edn/read-string text) k v))
+        kept (in-place text k v)]
+    (spit f (if (= m' (edn/read-string kept)) kept (render (ordered m'))))
+    {:restart? (boolean (some #{k} fixed-keys))}))
+
 (defn- restart-warning [old ks]
   (log/warn (str file ":") (str/join ", " (map pr-str ks))
             "take a restart, keeping"

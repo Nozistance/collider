@@ -1,7 +1,8 @@
 (ns collider.game.command.forms
   "The commands players run, with their arguments and permission
   levels."
-  (:require [collider.game.out :as out]))
+  (:require [collider.config :as config]
+            [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
 
@@ -412,7 +413,12 @@
    [(lit "dump")] [:world :collider-dump]
    [(lit "dump") [:seconds [:int {:min 1 :max 10}]]]
    [:world :collider-dump]
-   [(lit "tps")] [:world :collider-tps]])
+   [(lit "tps")] [:world :collider-tps]
+   [(lit "config")] [:world :collider-config-show]
+   [(lit "config")
+    [:key [:enum {:values (set (map name config/settable))}]]
+    [:value [:text {}]]]
+   [:world :collider-config-set]])
 
 (def ^:private base-forms
   [time-form team-form scoreboard-forms trigger-form collider-form

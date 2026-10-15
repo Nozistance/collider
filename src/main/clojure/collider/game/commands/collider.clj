@@ -29,6 +29,14 @@
            (str "deltas a tick " (fmt "%.1f" deltas-per-tick))])
     [(told eid "No timing yet")]))
 
+(defn- config-show-deltas [_world eid _]
+  [(out/all (out/config-op :show eid nil nil))])
+
+(defn- config-set-deltas [_world eid [k text]]
+  [(out/all (out/config-op :set eid (keyword k) text))])
+
 (def handlers
   {:collider-dump dump-deltas
-   :collider-tps tps-deltas})
+   :collider-tps tps-deltas
+   :collider-config-show config-show-deltas
+   :collider-config-set config-set-deltas})

@@ -343,6 +343,7 @@
    :load-chunk     (fn [_ _] nil)
    :store-chunk    (fn [_ _] nil)
    :debug-dump     (fn [_ _] nil)
+   :config-op      (fn [_ _] nil)
    :reload         (fn [_ _] nil)
    :reloaded       (fn [_ _] (reloaded-packets))
    :view-distance  (fn [_ m]

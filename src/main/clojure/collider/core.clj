@@ -52,6 +52,21 @@
   (fn [world events deltas]
     (swap! ring dump/recorded dumped-ticks (:tick world) events deltas)))
 
+(defn- config-answer [settings {:keys [op eid key value]}]
+  (if (= :show op)
+    [:config-shown eid @settings]
+    (try (let [v (config/value-of key value)
+               {:keys [restart?]} (config/written! config/file key v)]
+           [:config-written eid key v restart?])
+         (catch Exception e
+           [:config-refused eid key
+            (or (:why (ex-data e)) [(ex-message e)])]))))
+
+(defn- config-io! [settings ^ConcurrentLinkedQueue queue ^Deltas deltas]
+  (doseq [m (deltas/out-of deltas) :when (= :config-op (:msg m))]
+    (Thread/startVirtualThread
+      ^Runnable #(.offer queue (config-answer settings m)))))
+
 (defn- dump-io! [ring ^Deltas deltas]
   (doseq [{:keys [msg ticks file]} (deltas/out-of deltas)
           :when (= :debug-dump msg)]
@@ -213,6 +228,7 @@
                (when saver (chunk-io! base queue w d))
                (reload-io! reload queue d)
                (dump-io! (:ring base) d)
+               (config-io! settings queue d)
                (deliver! conns w d))
         opts (ticker-opts base conns)
         ticker (ticker/start-ticker! world queue out! opts)]

@@ -33,8 +33,27 @@
   [world [_ commit]]
   [[:set-config (assoc (:config world) :commit commit)]])
 
+(defn- told [eid text]
+  [(out/to eid (out/system-chat {:text text}))])
+
+(defn- shown-deltas [eid settings]
+  (mapcat (fn [[k v]] (told eid (str (name k) " " (pr-str v))))
+          (sort-by key settings)))
+
+(defn- written-deltas [eid k v restart?]
+  (told eid (str (name k) " is " (pr-str v) " in config.edn, "
+                 (if restart?
+                   "it takes a restart"
+                   "/reload applies it"))))
+
+(defn- refused-deltas [eid k why]
+  (mapcat #(told eid (str (name k) " not written: " %)) why))
+
 (defn- config-event-deltas [world [tag eid m :as ev]]
   (case tag
+    :config-shown (shown-deltas eid m)
+    :config-written (let [[_ _ k v r] ev] (written-deltas eid k v r))
+    :config-refused (let [[_ _ k why] ev] (refused-deltas eid k why))
     :config-loaded (config-loaded world m)
     :config-failed (reply/fail eid "commands.reload.failure")
     :commit-synced (commit-synced world ev)

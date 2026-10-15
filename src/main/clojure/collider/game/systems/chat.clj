@@ -148,4 +148,5 @@
 (def tags
   #{:chat :tab-complete :change-game-mode :teleport-to-entity
     :rules-request :set-rules :config-loaded :config-failed
-    :commit-synced :hooks-set})
+    :commit-synced :hooks-set :config-shown :config-written
+    :config-refused})
