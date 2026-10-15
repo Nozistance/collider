@@ -18,11 +18,36 @@
   "A ring that holds no tick yet."
   PersistentQueue/EMPTY)
 
+(def ^:private chunk-deltas #{:add-chunk :restore-chunk})
+
+(defn- light-delta [d]
+  (let [tag (nth d 0)]
+    (cond (chunk-deltas tag) (assoc d 2 :omitted)
+          (= :level-deltas tag) (update d 2 #(mapv light-delta %))
+          :else d)))
+
+(defn- light-event [ev]
+  (if (= :chunk-loaded (nth ev 0)) (assoc ev 3 :omitted) ev))
+
+(defn- unsaved [m]
+  (cond-> m (= :store-chunk (:msg m)) (assoc :payload :omitted)))
+
+(defn- light
+  "Returns tick t of events and deltas d as a dump keeps it, the
+  chunks in it left out."
+  [t events d]
+  (cond-> {:tick t :events (mapv light-event events)}
+    (instance? Deltas d)
+    (assoc :world (mapv light-delta (deltas/world-of d))
+           :entities (deltas/entities-of d)
+           :out (mapv unsaved (deltas/out-of d)))))
+
 (defn recorded
   "Returns ring with tick t, its events and its deltas d at the end,
-  the oldest ticks dropped past n."
+  the oldest ticks dropped past n. The chunks the tick loads, stores
+  or receives stay out of it."
   [ring n t events d]
-  (let [r (conj ring {:tick t :events events :deltas d})]
+  (let [r (conj ring (light t events d))]
     (if (> (count r) (long n)) (pop r) r)))
 
 (defn- clojure-map? [x]
@@ -42,19 +67,10 @@
     (printable? x) x
     :else (str "#" (.getSimpleName (class x)))))
 
-(defn- unsaved [m]
-  (cond-> m (= :store-chunk (:msg m)) (assoc :payload :omitted)))
-
-(defn- entry [{:keys [deltas] :as e}]
-  (cond-> (dissoc e :deltas)
-    (instance? Deltas deltas)
-    (assoc :world (deltas/world-of deltas)
-           :entities (deltas/entities-of deltas)
-           :out (mapv unsaved (deltas/out-of deltas)))))
 
 (defn- pprinted [ring ^Writer w]
   (binding [*print-length* nil *print-level* nil *print-meta* false]
-    (pprint/pprint (walk/prewalk plain (mapv entry ring)) w)))
+    (pprint/pprint (walk/prewalk plain (vec ring)) w)))
 
 (defn edn-of
   "Returns the ticks of ring as EDN text laid out to read, plain data

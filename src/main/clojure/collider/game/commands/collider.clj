@@ -32,6 +32,9 @@
 (defn- config-show-deltas [_world eid _]
   [(out/all (out/config-op :show eid nil nil))])
 
+(defn- config-get-deltas [_world eid [k]]
+  [(out/all (out/config-op :show eid (keyword k) nil))])
+
 (defn- config-set-deltas [_world eid [k text]]
   [(out/all (out/config-op :set eid (keyword k) text))])
 
@@ -39,4 +42,5 @@
   {:collider-dump dump-deltas
    :collider-tps tps-deltas
    :collider-config-show config-show-deltas
+   :collider-config-get config-get-deltas
    :collider-config-set config-set-deltas})

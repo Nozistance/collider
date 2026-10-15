@@ -421,6 +421,8 @@
    [:world :collider-dump]
    [(lit "tps")] [:world :collider-tps]
    [(lit "config")] [:world :collider-config-show]
+   [(lit "config") [:key [:enum {:values settings}]]]
+   [:world :collider-config-get]
    [(lit "config")
     [:key [:enum {:values settings}]]
     [:value [:text {}]]]

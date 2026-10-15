@@ -55,7 +55,7 @@
 
 (defn- config-answer [settings {:keys [op eid key value]}]
   (if (= :show op)
-    [:config-shown eid @settings]
+    [:config-shown eid (cond-> @settings key (select-keys [key]))]
     (try (let [v (config/value-of key value)
                {:keys [restart?]} (config/written! config/file key v)]
            [:config-written eid key v restart?])
