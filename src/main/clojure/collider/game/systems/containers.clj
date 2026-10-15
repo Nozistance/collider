@@ -5,6 +5,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
+            [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
@@ -356,7 +357,7 @@
     (delta/authored (screen/left-behind-deltas w eid e) eid :player)))
 
 (defn- quit-deltas [world]
-  (mapcat #(left-deltas world %) (get-in world [:input :quits])))
+  (mapcat #(left-deltas world %) (level/new-quits world)))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]

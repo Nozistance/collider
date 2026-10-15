@@ -200,12 +200,18 @@
 
 (def ^:private player-type #{:player})
 
+(defn new-quits
+  "Returns the players who left level lv in its last batch of input."
+  [lv]
+  (let [{:keys [quits quits-from]} (:input lv)]
+    (subvec (vec quits) (min (long (or quits-from 0)) (count quits)))))
+
 (defn server-view
   "Returns the shared keys of world with all players as entities, and
-  as :quits the players who left in this tick."
+  as :quits the players who left in the last batch of input."
   [world]
   (let [players (mapcat #(of-types (val %) player-type))
-        quits (mapcat #(get-in (val %) [:input :quits]))]
+        quits (mapcat #(new-quits (val %)))]
     (assoc (dissoc world :levels)
       :entities (into (lm/long-map) players (:levels world))
       :quits (into [] quits (:levels world)))))

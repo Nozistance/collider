@@ -239,6 +239,58 @@
              pd)]
     (reduce #(step %1 %2 (get pd %2)) acc dims)))
 
+(def ^:private before-level
+  (into #{#'spawning/placing #'chunks/chunk-loading} packet-systems))
+
+(defn- early? [phase] (some before-level phase))
+
+(defn open
+  "Returns the world and the deltas of each level as a tick opens,
+  before any of its events."
+  [world]
+  (begin world []))
+
+(defn- batch-of [world events]
+  (let [by (group-by #(event-dim world %) (arrived events))]
+    (into {} (for [dim dims :let [evs (by dim)] :when (seq evs)]
+               [dim (assoc deltas/empty-deltas :input (vec evs))]))))
+
+(defn- entered-batch [world bd]
+  (reduce-kv
+    (fn [[w ds] dim d]
+      (let [n (count (get-in w [:levels dim :input :heeded]))
+            w (apply/added w dim d)]
+        [w (assoc ds dim (apply/heeded-since w dim d n))]))
+    [world {}] bd))
+
+(defn- filtered-events [world events]
+  (if-let [fs (hooked world :event-filters)]
+    (passed fs world events vector?)
+    events))
+
+(defn early
+  "Returns the world and the deltas of each level of tick acc after a
+  batch of its events, and the deltas of the batch alone. The batch
+  runs the phases before the level tick, as a server runs the tasks
+  between two ticks. Phases are those of the tick by default."
+  ([acc events] (early acc events phases))
+  ([[world ds] events phases]
+   (let [[w bd] (entered-batch world
+                               (batch-of world
+                                         (filtered-events world events)))
+         bd (into {} (map (fn [dim] [dim (get bd dim deltas/empty-deltas)]))
+                  dims)
+         [w bd] (reduce run-phase [w bd] (filter early? phases))]
+     [[w (merge-with deltas/merge ds bd)] (merged bd)])))
+
+(defn late
+  "Returns the world and the deltas of the whole tick acc after the
+  phases from the level tick on."
+  ([acc] (late acc phases))
+  ([acc phases]
+   (let [[world' ds] (reduce run-phase acc (remove early? phases))]
+     [world' (merged ds)])))
+
 (defn tick
   "Returns the world and the deltas after one tick of the events.
   The event filters of the world pass the events before the tick,
@@ -246,9 +298,5 @@
   ([world events] (tick world events phases))
   ([world events phases]
    (par/in-pool
-     #(let [evs (if-let [fs (hooked world :event-filters)]
-                  (passed fs world events vector?)
-                  events)
-            acc (begin world evs)
-            [world' ds] (reduce run-phase acc phases)]
-        [world' (merged ds)]))))
+     #(let [[acc] (early (open world) events phases)]
+        (late acc phases)))))

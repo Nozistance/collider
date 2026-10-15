@@ -38,7 +38,7 @@
        (catch Throwable t (dropped! #'event d t))))
 
 (defn- applied-input [world input]
-  (loop [w world acc input/unheard xs (seq input)]
+  (loop [w world acc (or (:input world) input/unheard) xs (seq input)]
     (if-let [d (first xs)]
       (if-let [[w' acc'] (heard-event w acc d)]
         (recur w' acc' (next xs))
@@ -303,6 +303,25 @@
     world
     (let [lv (dissoc (get (:levels world) dim) :input)]
       (level/with-level world dim (apply-level lv d)))))
+
+(defn- opened-input [lv]
+  (let [inp (or (:input lv) input/unheard)]
+    (assoc lv :input (assoc inp :quits-from (count (:quits inp))))))
+
+(defn added
+  "Returns world with one more batch of input deltas d of level dim,
+  heard after those of the tick so far. The players who leave in it
+  count from :quits-from of the input record."
+  [world dim d]
+  (let [lv (opened-input (get (:levels world) dim))]
+    (level/with-level world dim (apply-level lv d))))
+
+(defn heeded-since
+  "Returns the input deltas d of level dim with only the events the
+  world heeds past the first n."
+  [world dim d ^long n]
+  (let [h (get-in world [:levels dim :input :heeded] [])]
+    (assoc d :input (subvec h (min n (count h))))))
 
 (defn applied
   "Returns the world after ds and ds as applied.
