@@ -321,8 +321,8 @@
           :when (affected-in? area o)
           :let [g (splash-gap pb o m)]
           :when (< g splash-range-sq)
-          ds (splashed-deltas world oid o (:stack e)
-                              (- 1.0 (/ (Math/sqrt g) 4.0)) src)]
+          :let [k (- 1.0 (/ (Math/sqrt g) 4.0))]
+          ds (splashed-deltas world oid o (:stack e) k src)]
       ds)))
 
 (defn- potion-deltas [world eid e d at hit]
