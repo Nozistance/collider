@@ -21,8 +21,14 @@
   "The commands every player may run."
   #{"me" "msg" "tell" "w" "list" "help" "teammsg" "tm" "trigger"})
 
+(def ^:private owner-commands
+  "The commands only the owner level may run."
+  #{"collider"})
+
 (defn- level-of ^long [nm]
-  (if (open-commands nm) 0 gamemaster))
+  (cond (open-commands nm) 0
+        (owner-commands nm) owner-level
+        :else gamemaster))
 
 (defn allowed?
   "Returns true when permission level may run what needs need.
@@ -401,8 +407,15 @@
    [trigger-arg (lit "add") trigger-value] [:world :trigger :add]
    [trigger-arg (lit "set") trigger-value] [:world :trigger :set]])
 
+(def ^:private collider-form
+  [:collider "the tools of this server"
+   [(lit "dump")] [:world :collider-dump]
+   [(lit "dump") [:seconds [:int {:min 1 :max 10}]]]
+   [:world :collider-dump]
+   [(lit "tps")] [:world :collider-tps]])
+
 (def ^:private base-forms
-  [time-form team-form scoreboard-forms trigger-form
+  [time-form team-form scoreboard-forms trigger-form collider-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]

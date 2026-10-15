@@ -15,6 +15,7 @@
             [collider.net.render :as render]
             [collider.net.server :as server]
             [collider.net.session :as session]
+            [collider.persist.dump :as dump]
             [collider.persist.lock :as lock]
             [collider.persist.saver :as saver]
             [collider.persist.store :as store]
@@ -44,6 +45,17 @@
       (let [done (on-loaded queue dim id)]
         (saver/fetch-chunk! saver store dim id done))
       nil)))
+
+(def ^:private ^:const dumped-ticks 200)
+
+(defn- recording [ring]
+  (fn [world events deltas]
+    (swap! ring dump/recorded dumped-ticks (:tick world) events deltas)))
+
+(defn- dump-io! [ring ^Deltas deltas]
+  (doseq [{:keys [msg ticks file]} (deltas/out-of deltas)
+          :when (= :debug-dump msg)]
+    (dump/dump! (take-last ticks @ring) file)))
 
 (defn- deliver! [conns world deltas]
   (let [cs @conns]
@@ -142,6 +154,7 @@
         save! (when saver #(saver/want-save! saver))]
     {:settings (atom cfg) :opts opts :store store :saved saved
      :world world :saver saver :save! save! :handle (promise)
+     :ring (atom dump/empty-ring)
      :lock l}))
 
 (defn- open-net [{:keys [settings world save! opts adds]}]
@@ -175,6 +188,7 @@
 
 (defn- ticker-opts [base conns]
   (cond-> {:io-input (io-input base conns)
+           :on-tick (recording (:ring base))
            :settings (:settings base)
            :on-pause (commit-now base)
            :on-crash (on-crash (:handle base))}
@@ -198,6 +212,7 @@
         out! (fn [w d]
                (when saver (chunk-io! base queue w d))
                (reload-io! reload queue d)
+               (dump-io! (:ring base) d)
                (deliver! conns w d))
         opts (ticker-opts base conns)
         ticker (ticker/start-ticker! world queue out! opts)]

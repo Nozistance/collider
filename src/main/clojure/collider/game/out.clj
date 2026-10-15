@@ -74,6 +74,12 @@
 (defn store-chunk [id payload]
   {:msg :store-chunk :id id :payload payload})
 
+(defn debug-dump
+  "Returns the effect that asks the host to write the last ticks of
+  deltas to file."
+  [ticks file]
+  {:msg :debug-dump :ticks ticks :file file})
+
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 

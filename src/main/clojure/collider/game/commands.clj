@@ -1,6 +1,7 @@
 (ns collider.game.commands
   "The commands players run, by name."
-  (:require [collider.game.commands.data :as data]
+  (:require [collider.game.commands.collider :as collider]
+            [collider.game.commands.data :as data]
             [collider.game.commands.entity :as entity]
             [collider.game.commands.fill :as fill]
             [collider.game.commands.player :as player]
@@ -18,7 +19,7 @@
   "Every command by name, each as (f world eid args)."
   (merge fill/handlers teleport/handlers entity/handlers data/handlers
          player/handlers world/handlers say/handlers team/handlers
-         scoreboard/handlers trigger/handlers))
+         scoreboard/handlers trigger/handlers collider/handlers))
 
 (defn deltas
   "Returns the deltas of player eid running the parsed command."

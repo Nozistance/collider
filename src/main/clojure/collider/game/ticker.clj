@@ -157,6 +157,7 @@
       (do (reset! carried [])
           (reset! world-atom (dissoc world' :failures))
           (record-deltas! st deltas)
+          (when-let [f (:on-tick opts)] (f world' events deltas))
           (send-out! deliver! world' deltas))
       (reset! carried fresh))
     @(:failures world)))
