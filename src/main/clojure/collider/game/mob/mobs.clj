@@ -215,7 +215,7 @@
            :yaw         0.0 :pitch 0.0 :on-ground false
            (look-key type) look
            :task        nil
-           :no-action   0
+           :idle-since  tick
            :health      (max-health type)
            :health-sent (max-health type)
            :arrived     [(inc (* 2 (long tick))) nil]}

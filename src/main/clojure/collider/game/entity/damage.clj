@@ -198,13 +198,13 @@
 (defn- hurt-item [e ^double health ^double amount]
   (assoc e :health (double (long (- health amount)))))
 
-(defn- quieted [e]
-  (if (instance? Mob e) (assoc e :no-action 0) e))
+(defn- quieted [e tick]
+  (if (instance? Mob e) (assoc e :idle-since tick) e))
 
 (defn- hurt-living [e health amount src tick eid]
   (if (> (long (or (:hurt-resist e) 0)) (/ max-resist 2.0))
-    (hurt-again (quieted e) health amount src tick)
-    (hurt-fully (quieted e) health amount src tick eid)))
+    (hurt-again (quieted e tick) health amount src tick)
+    (hurt-fully (quieted e tick) health amount src tick eid)))
 
 (defn hurt
   "Returns entity e after amount of damage from source src.

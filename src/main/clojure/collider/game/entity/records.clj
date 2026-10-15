@@ -2,7 +2,7 @@
   "Entity record types.")
 
 (defrecord Mob [pos vel on-ground yaw pitch head-yaw walked wet?
-                jump-cd task follow look no-action say-tick health
+                jump-cd task follow look idle-since say-tick health
                 hurt-resist last-damage death-time health-sent
                 panic-until baby-until love-until breed-ready-at
                 tempt-cooldown-until type color variant sheared? track

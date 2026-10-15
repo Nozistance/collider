@@ -135,7 +135,7 @@
   "Returns the fields of mob new that a turn changed from mob old."
   [old new]
   (gen/diff-fields old new :pos :vel :yaw :pitch :on-ground :task
-                   :follow :no-action :baby-until :breed-ready-at
+                   :follow :idle-since :baby-until :breed-ready-at
                    :tempt-cooldown-until :say-tick
                    :stick-cooldown-until :egg-at :walked :head-yaw
                    :look :jump-cd :wet? :sheared? :nav :move :jump
@@ -178,7 +178,7 @@
    :arrow {:left-owner? false :life 0}})
 
 (def ^:private fresh
-  {:mob {:task nil :no-action 0}
+  {:mob {:task nil}
    :thrown {:age 0}
    :arrow {:age 0}})
 
@@ -269,7 +269,7 @@
   (let [top (mobs/max-health (:type m))]
     (-> e
         (assoc :head-yaw (:yaw e) :health-sent top
-               :health (or (:health m) top))
+               :health (or (:health m) top) :idle-since (long tick))
         (update (mobs/look-key (:type m)) #(or % 0))
         (cond-> (:carrots m) (assoc :hop {:carrots (:carrots m)}))
         (cond-> (:scute-time m)

@@ -516,8 +516,21 @@
     (sense/watched? ws (:pos e) idle-reset-sq)
     (sense/player-within? world (:pos e) idle-reset-sq watcher?)))
 
-(defn- idle-count [world e]
-  (if (watched? world e) 0 (long (or (:no-action e) 0))))
+(defn idle-ticks
+  "Returns how many ticks mob e has idled at tick t, one while a
+  player keeps it from idling."
+  ^long [e ^long t]
+  (if-let [s (:idle-since e)] (- t (long s)) 1))
+
+(defn- idled
+  "Returns mob e at tick t with how long it idles, and the tick it
+  idles from when that changed. A player near it keeps the count at
+  one, and from there it grows a tick at a time."
+  [world e ^long t]
+  (let [s (:idle-since e)
+        s' (cond (watched? world e) nil s s :else (- t 2))]
+    (cond-> (assoc e :no-action (idle-ticks (assoc e :idle-since s') t))
+      (not= s s') (assoc :idle-since s'))))
 
 (def ^:private flag-bits
   {:move 1 :look 2 :jump 4 :target 8})
@@ -549,10 +562,7 @@
   Goals run on every second tick, and on the first two. A goal that
   wants every tick gets every tick."
   [spec world eid e t tempters]
-  (let [n (inc (long (idle-count world e)))
-        e (if (== n (long (or (:no-action e) 0)))
-            e
-            (assoc e :no-action n))]
+  (let [e (idled world e (long t))]
     (goals/think spec world eid e t tempters (full-pass? eid e t))))
 
 (defn egg-result
