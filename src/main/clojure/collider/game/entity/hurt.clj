@@ -566,7 +566,8 @@
             (:chunks world) (:pos e) half height :water))))
 
 (defn- burnt-down
-  "Returns the fire left after the base tick, the flag it shows."
+  "Returns the fire left once the base tick burns it down, which the
+  burning flag shows. Water puts it out."
   ^long [^long fire wet?]
   (cond (not (pos? fire)) fire
         wet? 0

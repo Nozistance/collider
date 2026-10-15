@@ -80,7 +80,8 @@
         hits (for [[id o] es :when (not= id skip)
                    :let [r (lifted-body o cell lo hi)] :when r]
                [id o r])]
-    [(reduce (fn [es [id o [_ p]]] (assoc es id (assoc o :pos p))) es hits)
+    [(reduce (fn [es [id o [_ p]]] (assoc es id (assoc o :pos p)))
+             es hits)
      (into ds (mapcat (fn [[id o r]] (body-deltas id o r))) hits)]))
 
 (defn lifted
@@ -89,5 +90,5 @@
   grows. A body lifted twice rises from where the first lift left it."
   ([world changes] (lifted world changes nil))
   ([world changes skip]
-   (nth (reduce (partial lift-one skip) [(:entities world) []] changes)
-        1)))
+   (second (reduce (partial lift-one skip) [(:entities world) []]
+                   changes))))

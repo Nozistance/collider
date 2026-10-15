@@ -151,15 +151,17 @@
 
 (def ^:private ^:const everywhere -1)
 
+(defn- player-near? [world radius c]
+  (some (fn [eid]
+          (when-let [q (get-in world [:entities eid :pos])]
+            (within? radius q c)))
+        (vals (:players world))))
+
 (defn fire-spreads-at?
   "Returns true when fire may catch and spread at block p of level
   world, near enough to a player or with no limit."
   [world p]
-  (let [radius (long (get-in world [:rules :fire-spread-radius-around-player]
-                             128))]
+  (let [rule [:rules :fire-spread-radius-around-player]
+        radius (long (get-in world rule 128))]
     (or (= radius everywhere)
-        (let [c (v/centre p)]
-          (some (fn [eid]
-                  (when-let [q (get-in world [:entities eid :pos])]
-                    (within? radius q c)))
-                (vals (:players world)))))))
+        (player-near? world radius (v/centre p)))))

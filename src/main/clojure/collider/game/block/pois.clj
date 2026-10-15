@@ -21,9 +21,8 @@
   (delay (boolean-array (map (comp some? type-of)
                              (range (data/block-state-count))))))
 
-(defn- section-of [[x y z]]
-  [(bit-shift-right (long x) 4) (bit-shift-right (long y) 4)
-   (bit-shift-right (long z) 4)])
+(defn- section-of [p]
+  (mapv #(bit-shift-right (long %) 4) p))
 
 (defn- added [{:keys [cells cap] :or {cells [] cap 16}} p]
   (if (some #{p} cells)
@@ -57,19 +56,20 @@
                    :when (type-of st)]
                [p 0 st]))))
 
+(defn- section-loaded [chunks c cx cz pois si]
+  (let [s (chunk/chunk-section c si)
+        sec [cx (- (long si) chunk/section-offset) cz]]
+    (if (and s (not (contains? pois sec)) (chunk/holds? s @any))
+      (scanned pois chunks sec)
+      pois)))
+
 (defn loaded
   "Returns pois with the sections of chunk id of chunks that it
   lacks, each filled in the order a scan of it meets its points."
   [pois chunks id]
   (let [[cx cz] (chunk/id->pos id)
         c (chunk/chunk-at chunks cx cz)]
-    (reduce (fn [pois si]
-              (let [s (chunk/chunk-section c si)
-                    sec [cx (- (long si) chunk/section-offset) cz]]
-                (if (and s (not (contains? pois sec))
-                         (chunk/holds? s @any))
-                  (scanned pois chunks sec)
-                  pois)))
+    (reduce (partial section-loaded chunks c cx cz)
             pois (range chunk/section-count))))
 
 (defn listed

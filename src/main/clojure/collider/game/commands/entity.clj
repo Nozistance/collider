@@ -1,7 +1,6 @@
 (ns collider.game.commands.entity
   "The kill, summon, tag and swing commands."
   (:require [collider.game.command.targets :as targets]
-            [collider.game.lightning :as lightning]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
              :refer [answer entity-name fail name-list say success]]
@@ -9,6 +8,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
             [collider.game.entity.save-data :as save-data]
+            [collider.game.lightning :as lightning]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
@@ -74,9 +74,10 @@
   (let [dim (targets/source-dim world)
         mob (if (= :lightning-bolt type)
               (lightning/bolt at (:tick world))
-              (summon-mob world eid type at nbt))]
+              (summon-mob world eid type at nbt))
+        said (out/to eid (out/system-chat (summon-msg type)))]
     (concat (targets/in-level world dim [[:spawn-entity mob]])
-            (success [(out/to eid (out/system-chat (summon-msg type)))]))))
+            (success [said]))))
 
 (defn- summon-deltas [world eid [type x y z nbt]]
   (let [p (targets/source-pos world)

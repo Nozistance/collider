@@ -4,6 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather]
             [collider.world.space.column :as column]))
@@ -28,14 +29,14 @@
 
 (defn- chunk-rods [w cx cz]
   (when (contains? (:chunks w) (chunk/pos->id cx cz))
-    (for [si (range chunk/section-count)
-          p (pois/listed (:pois w) [cx (- si chunk/section-offset) cz]
-                         :lightning-rod)]
-      p)))
+    (mapcat #(pois/listed (:pois w) [cx (- % chunk/section-offset) cz]
+                          :lightning-rod)
+            (range chunk/section-count))))
 
 (defn- rods-around [w [x _ z]]
-  (let [r (inc (Math/floorDiv (long rod-reach) 16))
-        cx (bit-shift-right (long x) 4) cz (bit-shift-right (long z) 4)]
+  (let [r (inc (quot rod-reach 16))
+        cx (bit-shift-right (long x) 4)
+        cz (bit-shift-right (long z) 4)]
     (for [j (range (- cz r) (+ cz r 1)) i (range (- cx r) (+ cx r 1))
           p (chunk-rods w i j)]
       p)))
@@ -48,12 +49,9 @@
         found (filter #(and (near? %) (topmost? (:chunks w) %))
                       (rods-around w center))]
     (when (seq found)
-      (let [closer #(if (< (dist-sq %2 center) (dist-sq %1 center)) %2 %1)
-            [x y z] (reduce closer found)]
+      (let [d #(dist-sq % center)
+            [x y z] (reduce #(if (< (d %2) (d %1)) %2 %1) found)]
         [x (inc (long y)) z]))))
-
-(defn- cell-of [pos]
-  (mapv #(long (Math/floor (double %))) pos))
 
 (defn- in-column? [[cx _ cz] e]
   (let [h (double (nth (size/box e) 0)) [x _ z] (:pos e)
@@ -71,14 +69,14 @@
   (and (entity/living? e) (entity/alive? e)
        (not (entity/removed? e))
        (in-column? center e) (above? center e)
-       (weather/can-see-sky? (:chunks world) (cell-of (:pos e)))))
+       (weather/can-see-sky? (:chunks world) (v/cell (:pos e)))))
 
 (defn- body-target [world center]
   (let [es (filterv #(struck-body? world center %)
                     (vals (:entities world)))]
     (when (seq es)
       (let [r (random/of-key (:tick world) center :bolt-body)]
-        (cell-of (:pos (nth es (random/below r (count es)))))))))
+        (v/cell (:pos (nth es (random/below r (count es)))))))))
 
 (defn target
   "Returns the cell a storm strikes for the random cell pos of level
@@ -95,12 +93,14 @@
 (def ^:private ^:const strike-odds 1.0E-5)
 
 (defn- storm? [world]
-  (and (weather/raining? world) (> (weather/thunder-level world) 0.9)))
+  (and (weather/raining? world)
+       (> (weather/thunder-level world) 0.9)))
 
 (defn- storm-cell [world cid]
   (let [[cx cz] (chunk/id->pos cid)
         r #(random/below (random/of-key (:tick world) cid %) 16)]
-    [(+ (* 16 (long cx)) (r :bolt-x)) 0 (+ (* 16 (long cz)) (r :bolt-z))]))
+    [(+ (* 16 (long cx)) (r :bolt-x)) 0
+     (+ (* 16 (long cz)) (r :bolt-z))]))
 
 (defn storm-bolt
   "Returns the bolt a storm strikes in chunk cid of level world this

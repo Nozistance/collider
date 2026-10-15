@@ -8,13 +8,12 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.item :as item]
+            [collider.game.lightning :as lightning]
             [collider.game.loot :as loot]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
-            [collider.game.lightning :as lightning]
             [collider.parallel :as par]
             [collider.random :as random]
-            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripstone :as dripstone]
@@ -170,19 +169,19 @@
   (delta/authored (changes/set-deltas world changes runs)
                   (nth (peek runs) 0)))
 
-(defn- turns [world changes]
-  (let [chunks (:chunks world)]
-    (nth (reduce (fn [[seen ts] [p st]]
-                   (let [old (get seen p (chunk/at chunks p))]
-                     [(assoc seen p st)
-                      (cond-> ts (lift/rises? old st) (conj [p old st]))]))
-                 [{} []] changes)
-         1)))
+(defn- lifts [world changes]
+  (let [chunks (:chunks world)
+        step (fn [[seen ls] [p st]]
+               (let [old (get seen p (chunk/at chunks p))
+                     ls (cond-> ls
+                          (lift/rises? old st) (conj [p old st]))]
+                 [(assoc seen p st) ls]))]
+    (second (reduce step [{} []] changes))))
 
 (defn- result-deltas [world results changes drips runs]
   (let [woken (drip-schedules world drips)]
     (concat (when (seq changes) (changed world changes runs))
-            (lift/lifted world (turns world changes))
+            (lift/lifted world (lifts world changes))
             (when (seq woken) [[:schedule-ticks woken]])
             (drip-events drips)
             (drop-spawns world results))))

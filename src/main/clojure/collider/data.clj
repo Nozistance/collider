@@ -22,8 +22,9 @@
   (let [root (.toPath (io/file dir))
         md (MessageDigest/getInstance "SHA-1")
         rel #(str/replace (str (.relativize root (.toPath ^File %)))
-                          "\\" "/")]
-    (doseq [f (sort-by rel (filter File/.isFile (file-seq (io/file dir))))]
+                          "\\" "/")
+        files (filter File/.isFile (file-seq (io/file dir)))]
+    (doseq [f (sort-by rel files)]
       (.update md (.getBytes ^String (rel f) "UTF-8"))
       (.update md (Files/readAllBytes (.toPath ^File f))))
     (format "%040x" (BigInteger. 1 (.digest md)))))

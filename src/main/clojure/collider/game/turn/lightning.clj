@@ -10,6 +10,7 @@
             [collider.game.mob.spec :as spec]
             [collider.game.out :as out]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.block.oxidation :as oxidation]
             [collider.world.blocks.fire :as fire]
@@ -29,9 +30,6 @@
 (def ^:private unhurt
   #{:armor-stand :painting :item-frame :glow-item-frame :leash-knot})
 
-(defn- cell-of [[x y z]]
-  (mapv #(long (Math/floor (double %))) [x y z]))
-
 (defn- roll [world eid & ks]
   (random/of-key [(:tick world) eid ks]))
 
@@ -45,17 +43,15 @@
   (mapv + p (mapv #(dec (random/below % 3)) offs)))
 
 (defn- fire-deltas
-  "Returns the deltas of the fires bolt eid at pos sets, in its cell and
-  in n cells around it."
+  "Returns the deltas of the fires bolt eid at pos sets, in its cell
+  and in n cells around it."
   [world eid pos n]
-  (let [p (cell-of pos)
+  (let [p (v/cell pos)
         r #(roll world eid :fire %1 %2)
         near (for [i (range n)] (shifted p (map #(r i %) [0 1 2])))]
     (when (areas/fire-spreads-at? world p)
       (when-let [cs (seq (keep #(fire-at world %) (cons p near)))]
         (changes/change-deltas world (vec cs))))))
-
-(defn- weathering? [st] (oxidation/ages? st))
 
 (defn- first-stage [st]
   (loop [s st] (if-let [p (oxidation/scraped s)] (recur p) s)))
@@ -64,8 +60,9 @@
 
 (defn- step [world eid at cur k]
   (let [r #(roll world eid :copper k %1 %2)
-        cands (for [i (range 10)] (shifted at (map #(r i %) [0 1 2])))]
-    (first (filter #(weathering? (state-at world cur %)) cands))))
+        cands (for [i (range 10)]
+                (shifted at (map #(r i %) [0 1 2])))]
+    (first (filter #(oxidation/ages? (state-at world cur %)) cands))))
 
 (defn- spark [q]
   (out/all (out/level-event :particles-electric-spark q -1)))
@@ -87,8 +84,8 @@
   p, a first stage for it and a few random walks that scrape."
   [world eid p]
   (let [st (changes/block-at world p)]
-    (when (or (weathering? st) (oxidation/unwaxed st))
-      (let [cur (if (weathering? st) {p (first-stage st)} {})
+    (when (or (oxidation/ages? st) (oxidation/unwaxed st))
+      (let [cur (if (oxidation/ages? st) {p (first-stage st)} {})
             walks (+ 3 (random/below (roll world eid :walks) 3))
             [cur fx] (reduce #(walked world eid p %1 %2) [cur []]
                              (range walks))]
@@ -97,7 +94,7 @@
                 fx)))))
 
 (defn- struck-cell [[x y z]]
-  (cell-of [x (- (double y) 1.0E-6) z]))
+  (v/cell [x (- (double y) 1.0E-6) z]))
 
 (defn- in-box? [[bx by bz] e]
   (let [[h ht] (or (size/box e) [0.0 0.0]) [x y z] (:pos e)
@@ -114,7 +111,9 @@
     (f eid e bid)
     (when-not (contains? unhurt (:type e))
       (let [f (inc (long (or (:fire e) 0)))
-            lit (if (zero? f) {:fire lit-ticks :ticks-frozen 0} {:fire f})]
+            lit (if (zero? f)
+                  {:fire lit-ticks :ticks-frozen 0}
+                  {:fire f})]
         [[:merge-entity eid lit]
          [:damage eid damage {:type :lightning-bolt}]]))))
 
@@ -156,6 +155,7 @@
   tick, after the turns ds of the other entities. A bolt sees the
   bodies as their turns left them."
   [world ds]
-  (when-let [bolts (seq (areas/active-of-types world [:lightning-bolt]))]
+  (when-let [bolts (seq (areas/active-of-types world
+                                               [:lightning-bolt]))]
     (let [seen (apply/entities world (deltas/as-vec ds))]
       (mapcat #(turn seen %) bolts))))
