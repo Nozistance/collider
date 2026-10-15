@@ -135,7 +135,8 @@
   "The place of each entity data type in serializer order."
   {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
    :boolean 8 :block-pos 10 :optional-block-pos 11 :direction 12
-   :block-state 14 :particle 16 :optional-unsigned-int 19 :pose 20 :cow-variant 23
+   :block-state 14 :particle 16 :particles 17
+   :optional-unsigned-int 19 :pose 20 :cow-variant 23
    :cow-sound-variant 24 :pig-variant 28 :pig-sound-variant 29
    :chicken-variant 30 :chicken-sound-variant 31
    :painting-variant 34 :armadillo-state 36 :humanoid-arm 42})
@@ -158,6 +159,8 @@
     :block-pos (write-data-pos buf v)
     :optional-block-pos (write-optional! buf v write-data-pos)
     :particle (comps/write-particle buf v)
+    :particles (do (c/write-varint buf (count v))
+                   (run! #(comps/write-particle buf %) v))
     :painting-variant (comps/write-painting-variant buf v)
     :optional-unsigned-int
     (c/write-varint buf (if v (unchecked-inc-int (int v)) 0))
@@ -196,6 +199,8 @@
     :block-pos (c/read-block-pos buf)
     :optional-block-pos (read-optional-pos buf)
     :particle (comps/read-particle buf)
+    :particles (vec (repeatedly (c/read-varint buf)
+                                #(comps/read-particle buf)))
     :painting-variant (comps/read-painting-variant buf)
     :optional-unsigned-int (let [n (unchecked-int (c/read-varint buf))]
                              (when-not (zero? n)
