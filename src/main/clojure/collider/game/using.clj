@@ -60,6 +60,6 @@
       (consume-ticks c)
       (case item
         :spyglass spyglass-ticks
-        :bow bow-ticks
+        (:bow :crossbow) bow-ticks
         :goat-horn (some-> (instrument-of stack) instrument-ticks)
         (when (bundle/bundle-item? stack) bundle-ticks)))))

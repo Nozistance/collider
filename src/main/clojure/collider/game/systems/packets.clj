@@ -4,6 +4,7 @@
   (:require [collider.game.apply :as apply]
             [collider.game.bow :as bow]
             [collider.game.camera :as camera]
+            [collider.game.crossbow :as crossbow]
             [collider.game.deltas :as deltas]
             [collider.game.input :as input]
             [collider.game.level :as level]
@@ -66,7 +67,9 @@
 
 (def ^:private handlers
   [[#{:release-use} (own bow/release-deltas)]
+   [#{:release-use} (own crossbow/release-deltas)]
    [(set (keys player-input)) played]
+   [#{:use-item :place} (own crossbow/started-deltas)]
    [#{:respawn} respawned]
    [#{:spectate} spectated]
    [#{:dig :place :use-item :sign-update} blocks/edit-deltas]

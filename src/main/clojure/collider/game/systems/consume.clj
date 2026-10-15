@@ -4,6 +4,7 @@
   (:require [collider.data :as data]
             [collider.game.bundle :as bundle]
             [collider.game.changes :as changes]
+            [collider.game.crossbow :as crossbow]
             [collider.game.effect.account :as account]
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
@@ -253,6 +254,9 @@
       (nil? (:using e)) nil
       (not= item (:item stack)) (stopped eid)
       c (eaten-deltas world eid e c left)
+      (= :crossbow item)
+      (concat (crossbow/tick-deltas world eid e left)
+              (advanced eid e left))
       :else (concat (bundle-drop-deltas world eid e hand stack left)
                     (held-deltas eid e item left)))))
 

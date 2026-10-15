@@ -95,6 +95,9 @@
    :set-clock
    {:scope :world :schema [:cat :keyword :map]
     :apply (fn [w [_ k m]] (update-in w [:clocks k] merge m))}
+   :crossbow-sounds
+   {:scope :world :schema [:cat [:set :keyword]]
+    :apply (fn [w [_ flags]] (assoc w :crossbow-sounds flags))}
    :set-rule
    {:scope :world :schema [:cat :keyword :any]
     :apply (fn [w [_ rule value]] (assoc-in w [:rules rule] value))}

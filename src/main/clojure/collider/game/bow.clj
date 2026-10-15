@@ -39,7 +39,7 @@
     (when (pos? n) (assoc stack :count n))))
 
 (defn- shot-deltas [world eid e {:keys [hand remaining]}]
-  (let [slot (player/arrow-slot e)
+  (let [slot (player/projectile-slot e :bow)
         creative? (game-mode/instabuild? e)
         pow (power (- using/bow-ticks (long remaining)))]
     (when (and (or slot creative?) (>= pow least-power))

@@ -155,6 +155,7 @@
                         :load load-long :schema :int
                         :scope :shared}
    :time-ms            {:default 0 :scope :shared}
+   :crossbow-sounds    {:default #{} :scope :shared}
    :clocks             {:default {} :store store-same
                         :load identity :schema :map
                         :scope :shared}

@@ -309,17 +309,31 @@
                (map slots/armor [:feet :legs :chest :head])
                [slots/offhand])))
 
-(defn arrow-slot
-  "Returns the slot of the arrow a bow of player e shoots, or nil. The
-  hands come first, the off one before the main."
-  [e]
-  (let [arrow? #(contains? @arrows (:item (get-in e [:inventory %])))]
-    (first (filter arrow? (concat [slots/offhand (hand-slot e :main)]
-                                  projectile-order)))))
+(defn- arrow? [stack] (contains? @arrows (:item stack)))
+
+(defn- held-projectile? [weapon stack]
+  (or (arrow? stack)
+      (and (= :crossbow weapon) (= :firework-rocket (:item stack)))))
+
+(defn- slot-where [e ok? slots]
+  (first (filter #(ok? (get-in e [:inventory %])) slots)))
+
+(defn projectile-slot
+  "Returns the slot of the projectile that weapon of player e takes,
+  or nil. The hands come first, the off one before the main, and hold
+  a rocket for a crossbow too."
+  [e weapon]
+  (or (slot-where e #(held-projectile? weapon %)
+                  [slots/offhand (hand-slot e :main)])
+      (slot-where e arrow? projectile-order)))
 
 (defn- unarmed? [e stack]
-  (and (= :bow (:item stack)) (not (game-mode/instabuild? e))
-       (nil? (arrow-slot e))))
+  (let [weapon (:item stack)]
+    (and (#{:bow :crossbow} weapon)
+         (or (and (= :crossbow weapon)
+                  (seq (stack/component stack :charged-projectiles)))
+             (and (not (game-mode/instabuild? e))
+                  (nil? (projectile-slot e weapon)))))))
 
 (defn- start-use [e hand ^long tick]
   (let [stack (hand-stack e hand)
