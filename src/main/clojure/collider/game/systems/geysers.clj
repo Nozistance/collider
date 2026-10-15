@@ -25,9 +25,10 @@
 
 (def ^:private base-speed (num/f32 0.3))
 
+(def ^:private unmoved-tag "not_affected_by_geysers")
+
 (def ^:private ^:table unmoved
-  (delay (set (data/tag-values "entity_type"
-                               "not_affected_by_geysers"))))
+  (delay (set (data/tag-values "entity_type" unmoved-tag))))
 
 (def ^:private bodies
   #{:player :item :tnt :falling-block :experience-orb})
@@ -102,12 +103,12 @@
 (defn- reached? [world q eye]
   (let [chunks (:chunks world)
         below [(v/x eye) (dec (v/y eye)) (v/z eye)]
-        from (v/centre (dir/down q))]
+        from (v/centre (dir/down q))
+        ray (mapv - below from)]
     (and (geyser/passable? (chunk/at chunks (v/cell eye)))
          (<= (v/dist-sq eye (v/centre q)) 9.0)
          (block/holds-water-source? (chunk/at chunks (v/cell below)))
-         (nil? (projectile/block-clip world from
-                                      (mapv - below from))))))
+         (nil? (projectile/block-clip world from ray)))))
 
 (defn- sickened? [world q b e]
   (and (account/living? e) (entity/alive? e)
