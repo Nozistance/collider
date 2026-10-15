@@ -16,6 +16,10 @@
   {:crit? (boolean (:crit? e)) :in-ground? (boolean (:in-ground? e))
    :burning? (boolean (:burning? e))})
 
+(defn- tipped-metadata [e]
+  (assoc (arrow-metadata e)
+         :effect-color (potion/arrow-color (:stack e))))
+
 (defn- orb-metadata [e]
   (cond-> {:value (:value e)} (:burning? e) (assoc :burning? true)))
 
@@ -53,8 +57,7 @@
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
     {:wind-charge (constantly {})
-     :arrow (fn [e] (assoc (arrow-metadata e) :effect-color
-                           (potion/arrow-color (:stack e))))
+     :arrow tipped-metadata
      :spectral-arrow arrow-metadata
      :firework-rocket
      (fn [e] (cond-> (thrown-metadata e)

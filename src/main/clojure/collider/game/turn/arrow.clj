@@ -202,12 +202,12 @@
       (potion/instances
         st (or (stack/component st :potion-duration-scale) 1.0)))))
 
+(defn- landed [acc [k i]] (account/land acc k i))
+
 (defn- effect-deltas [e oid o]
-  (when (account/living? o)
-    (when-let [fx (seq (laid e))]
-      (account/deltas (reduce (fn [acc [k i]] (account/land acc k i))
-                              (account/account oid o) fx)
-                      o))))
+  (let [fx (laid e)]
+    (when (and (seq fx) (account/living? o))
+      (account/deltas (reduce landed (account/account oid o) fx) o))))
 
 (defn- hit-deltas [world eid e oid o n src]
   (let [ds (hurt/damage-deltas world oid o n src)]

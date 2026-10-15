@@ -88,8 +88,8 @@
   (let [d (:details e)
         n (or (:duration e) (:duration d) 0)]
     (if d
-      (effect/instance n (amplifier e) (:ambient d) (:show-particles d)
-                       (:show-icon d))
+      (effect/instance n (amplifier e) (:ambient d)
+                       (:show-particles d) (:show-icon d))
       (effect/instance n (amplifier e)))))
 
 (defn instances

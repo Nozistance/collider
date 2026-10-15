@@ -20,12 +20,14 @@
         p (f (/ (f ticks) (f 20.0)))]
     (min 1.0 (f (/ (f (+ (f (* p p)) (f (* p (f 2.0))))) (f 3.0))))))
 
+(defn- arrow-type [ammo]
+  (if (= :spectral-arrow (:item ammo)) :spectral-arrow :arrow))
+
 (defn arrow
   "Returns an arrow of eid that carries one of ammo, flies as flight
   and may be picked up as pickup says."
   [eid ammo pickup crit? flight]
-  (merge {:type (if (= :spectral-arrow (:item ammo)) :spectral-arrow :arrow)
-          :owner eid :age 0 :left-owner? false
+  (merge {:type (arrow-type ammo) :owner eid :age 0 :left-owner? false
           :on-ground false :stack (assoc ammo :count 1) :pickup pickup
           :crit? crit? :life 0 :shake 0 :in-ground? false}
          flight))

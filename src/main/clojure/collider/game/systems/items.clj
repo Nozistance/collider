@@ -513,7 +513,8 @@
   (let [es (:entities world) active (areas/active-chunks world)
         [lo hi] (pickup-box pe)
         taken? (fn [[_ e]]
-                 (and (or (= :item (:type e)) (entity/arrow? e)) (ready? e)
+                 (and (or (= :item (:type e)) (entity/arrow? e))
+                      (ready? e)
                       (in-box? lo hi e)
                       (areas/active-at? active (:pos e))))
         entry (fn [eid]
