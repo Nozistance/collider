@@ -67,10 +67,12 @@
         who {:eid eid :name (sender-name world eid)}]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
-      (mapcat #(whispered world who (message-content world eid m) %) xs))))
+      (let [content (message-content world eid m)]
+        (mapcat #(whispered world who content %) xs)))))
 
 (def ^:private team-hint
-  {:hover {:action :show-text :value {:translate "chat.type.team.hover"}}
+  {:hover {:action :show-text
+           :value {:translate "chat.type.team.hover"}}
    :click {:action :suggest-command :command "/teammsg "}})
 
 (defn- teammsg-deltas [world eid [m]]
@@ -81,7 +83,8 @@
                     "content" (message-content world eid m)}
             line #(out/player-chat (decorated % params))]
         [(out/to eid (line "team_msg_command_outgoing"))
-         (out/team-except (:name t) eid (line "team_msg_command_incoming"))])
+         (out/team-except (:name t) eid
+                          (line "team_msg_command_incoming"))])
       (fail eid "commands.teammsg.failed.noteam"))))
 
 (defn- tellraw-deltas [world eid [s text]]

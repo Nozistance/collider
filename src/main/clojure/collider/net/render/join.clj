@@ -215,13 +215,17 @@
      :pos [(v/x p) (v/y p) (v/z p)] :vel [0.0 0.0 0.0]
      :yaw (double (:yaw e)) :pitch (double (:pitch e)) :relative 0}))
 
+(def ^:private team-methods
+  {:add 0 :remove 1 :change 2 :join 3 :leave 4})
+
 (defn team-packet
   "Returns the packet that tells a player of team t by method, with
-  members when method 3 or 4."
+  members when it is :join or :leave."
   ([method t] (team-packet method t nil))
   ([method t members]
-   {:packet :set-player-team :name (:name t) :method method :team t
-    :players (if (#{3 4} method) members (:players t))}))
+   {:packet :set-player-team :name (:name t) :team t
+    :method (team-methods method)
+    :players (if (#{:join :leave} method) members (:players t))}))
 
 (defn objective-packet
   "Returns the packet that tells a player of objective o by method."
@@ -251,7 +255,7 @@
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets world eid e)
-    (map #(team-packet 0 %) (:teams world))
+    (map #(team-packet :add %) (:teams world))
     (map score-packet (scoreboard/joining (:scoreboard world)))
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}

@@ -106,7 +106,8 @@
     (not= at at')))
 
 (defn- sent [st rid op uuid kind at color]
-  (update st :out conj (out/to rid (out/waypoint op uuid kind at color))))
+  (let [fx (out/to rid (out/waypoint op uuid kind at color))]
+    (update st :out conj fx)))
 
 (defn- color-of [world sid s]
   (team/waypoint-color (team/of-entity (:teams world) sid s)))
@@ -193,18 +194,19 @@
       (reduce #(linked %1 world se %2) (update st :in conj sid) ps)
       :else st)))
 
+(defn- relinked [st world [sid :as se] color [rid :as re]]
+  (let [c (get-in st [:links rid sid])]
+    (if (and c (not= color (:color c)))
+      (linked st world se re)
+      st)))
+
 (defn- recolored
   "Returns st with the links to s made afresh where the colour of its
-  team changed, as remakeConnections does."
+  team changed."
   [st world [sid s :as se] ps]
   (if (contains? (:in st) sid)
     (let [color (color-of world sid s)]
-      (reduce (fn [st [rid :as re]]
-                (let [c (get-in st [:links rid sid])]
-                  (if (and c (not= color (:color c)))
-                    (linked st world se re)
-                    st)))
-              st ps))
+      (reduce #(relinked %1 world se color %2) st ps))
     st))
 
 (defn- broke-all [st]

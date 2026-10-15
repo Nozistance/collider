@@ -324,7 +324,8 @@
     (let [[ay ax sent] (turned-to world eid e yaw pitch)
           fx (when (= :player (:type e))
                (apply out/player-rotation sent))]
-      (concat (rotated world id dim ay ax fx) (rotate-report world eid x)))
+      (concat (rotated world id dim ay ax fx)
+              (rotate-report world eid x)))
     (fail eid "argument.entity.notfound.entity")))
 
 (defn- faced [world eid [id dim e :as x] pos fx]

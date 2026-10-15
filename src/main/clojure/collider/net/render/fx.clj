@@ -191,8 +191,8 @@
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])
-   :team          (fn [_ m]
-                    [(join/team-packet (:method m) (:team m) (:members m))])
+   :team          (fn [_ {:keys [method team members]}]
+                    [(join/team-packet method team members)])
    :objective     (fn [_ {:keys [method objective]}]
                     [(join/objective-packet method objective)])
    :display-slot  (fn [_ {:keys [slot name]}]

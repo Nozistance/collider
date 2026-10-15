@@ -175,7 +175,8 @@
                     (xp-report world eid xs "set" unit amount)))))
 
 (defn- xp-query-deltas [world eid [s unit]]
-  (if-let [[_ _ e :as x] (first (targets/player-selected world eid s))]
+  (if-let [[_ _ e :as x] (first (targets/player-selected
+                                    world eid s))]
     (let [acc (targets/xp-of world e)
           n (if (= "levels" unit) (:level acc) (xp/points acc))]
       (say eid (str "commands.experience.query." unit)

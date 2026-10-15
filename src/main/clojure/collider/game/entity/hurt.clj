@@ -107,7 +107,8 @@
     (or (and rule (not (get-in world [:rules rule] true)))
         (and (entity/player? a)
              (or (not (get-in world [:rules :pvp] true))
-                 (and (entity/player? e) (team/spares? (:teams world) e a))))
+                 (and (entity/player? e)
+                      (team/spares? (:teams world) e a))))
         (and (game-mode/invulnerable? e)
              (not (contains? @bypassing t))))))
 
@@ -893,7 +894,8 @@
       (and (= "fall_variants" kind) (nil? by))
       {:translate "death.fell.accident.generic" :with [v]}
       k {:translate key :with [v (shown world bid k)]}
-      by {:translate (str key ".player") :with [v (shown world bid by)]}
+      by {:translate (str key ".player")
+          :with [v (shown world bid by)]}
       :else {:translate key :with [v]})))
 
 (defn- death-told
@@ -908,7 +910,8 @@
       :never [])))
 
 (defn- told-deltas [world eid e]
-  (let [text (death-text world eid e (or (:struck-by e) {:type :generic}))]
+  (let [src (or (:struck-by e) {:type :generic})
+        text (death-text world eid e src)]
     (if (get-in world [:rules :show-death-messages] true)
       (into [(out/to eid (out/combat-kill eid text))]
             (death-told world eid e (out/system-chat text)))
@@ -993,7 +996,7 @@
       (filter #(= :fx (first %))
               (scoreboard/reset-all (:scoreboard world) nm))
       (when-let [t (team/of-member (:teams world) nm)]
-        [(out/all (out/team 4 t [nm]))]))))
+        [(out/all (out/team :leave t [nm]))]))))
 
 (defn timer-deltas
   "Returns the deltas of the death countdown of entity eid of world.

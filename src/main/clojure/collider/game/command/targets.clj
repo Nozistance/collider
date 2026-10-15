@@ -113,7 +113,8 @@
       :type (f (= a (:type e)))
       :type-tag (f (type-tagged? a (:type e)))
       :tag (f (tagged? a e))
-      :nbt (f (snbt/compare-nbt a (save-data/saved e (:tick world)) true))
+      :nbt (f (snbt/compare-nbt a (save-data/saved e (:tick world))
+                                true))
       false)))
 
 (defn xp-of

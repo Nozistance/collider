@@ -235,13 +235,14 @@
    :push-other-teams 2 :push-own-team 3})
 
 (def ^:private team-colors
-  (zipmap [:black :dark-blue :dark-green :dark-aqua :dark-red :dark-purple
-           :gold :gray :dark-gray :blue :green :aqua :red :light-purple
-           :yellow :white]
+  (zipmap [:black :dark-blue :dark-green :dark-aqua :dark-red
+           :dark-purple :gold :gray :dark-gray :blue :green :aqua :red
+           :light-purple :yellow :white]
           (range)))
 
 (defn- write-team-params! [^Buf buf t]
-  (run! #(text/write-component buf (get t %)) [:display :prefix :suffix])
+  (run! #(text/write-component buf (get t %))
+        [:display :prefix :suffix])
   (c/write-varint buf (team-rules (:nametag t)))
   (c/write-varint buf (team-rules (:collision t)))
   (buf/write-boolean! buf (some? (:color t)))

@@ -54,10 +54,11 @@
 
 (defn- admin-report [world eid m]
   (when-let [e (get-in world [:entities eid])]
-    (out/except eid (out/system-chat
-                      {:translate "chat.type.admin"
-                       :with [(reply/entity-name world [eid nil e]) (:text m)]
-                       :color "gray" :italic true}))))
+    (let [who (reply/entity-name world [eid nil e])]
+      (out/except eid (out/system-chat
+                        {:translate "chat.type.admin"
+                         :with [who (:text m)]
+                         :color "gray" :italic true})))))
 
 (defn- report-deltas [world eid on? d]
   (let [m (when (= :fx (nth d 0)) (nth d 1))]
@@ -95,9 +96,9 @@
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]
-    [(out/all (out/player-chat
-                {:translate "chat.type.text"
-                 :with [(reply/entity-name world [eid nil e]) text]}))]))
+    (let [who (reply/entity-name world [eid nil e])]
+      [(out/all (out/player-chat
+                  {:translate "chat.type.text" :with [who text]}))])))
 
 (def ^:private chat-off
   (assoc (out/system-chat {:translate "chat.disabled.options" :color "red"})

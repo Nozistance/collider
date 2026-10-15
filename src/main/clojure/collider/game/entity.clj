@@ -340,11 +340,12 @@
   {:translate key :with [shown] :color "yellow"})
 
 (defn joined-text
-  "Returns the line chat shows when a player shown so joins."
+  "Returns the line chat shows when a player joins, its name shown."
   [shown]
   (yellow-line "multiplayer.player.joined" shown))
 
 (defn left-text
-  "Returns the line chat shows when a player shown so leaves."
+  "Returns the line chat shows when a player leaves, its name
+  shown."
   [shown]
   (yellow-line "multiplayer.player.left" shown))
