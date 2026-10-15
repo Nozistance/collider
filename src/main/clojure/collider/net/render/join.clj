@@ -44,17 +44,10 @@
 (defn- own-abilities [e]
   (abilities-packet (game-mode/abilities e)))
 
-(def ^:private ^:table command-tree (delay (commands/tree)))
-
-(def ^:private ^:table open-command-tree (delay (commands/tree 0)))
-
-(def ^:private plugin-tree (memoize commands/tree))
+(def ^:private tree-of (memoize commands/tree))
 
 (defn- command-nodes [lv ^long level]
-  (let [extra (forms/extra-of lv)]
-    (cond (seq extra) (plugin-tree level extra)
-          (< level (long forms/gamemaster)) @open-command-tree
-          :else @command-tree)))
+  (tree-of level (not-empty (forms/extra-of lv))))
 
 (def ^:private op-level-event 24)
 
