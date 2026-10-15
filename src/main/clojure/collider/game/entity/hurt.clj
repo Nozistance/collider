@@ -803,7 +803,8 @@
 (defn- keeps? [world] (get-in world [:rules :keep-inventory] false))
 
 (defn- mob-reward [world eid e]
-  (when (and (killed-by-player? world e) (mobs/drops-loot? world e))
+  (when (and (killed-by-player? world e) (mobs/drops-loot? world e)
+             (not (mobs/flag? e :no-xp?)))
     (let [r (random/of-key (:tick world) eid :xp-reward)]
       (inc (long (* 3.0 r))))))
 
@@ -821,11 +822,11 @@
       [[:xp-award (vec (:pos e)) (long n) [:death eid]]])))
 
 (defn- hushed
-  "Returns the tick from which a mob hurt at tick t counts towards its
+  "Returns the tick from which mob e hurt at tick t counts towards its
   next ambient sound. A late hurt, after the base tick of the mob,
   counts from one tick later."
-  ^long [^long t late?]
-  (+ t mobs/ambient-interval (if late? 1 0)))
+  ^long [e ^long t late?]
+  (+ t (mobs/ambient-interval e) (if late? 1 0)))
 
 (defn- hurt-marks [world e health src late?]
   (cond-> {:health-sent health}
@@ -834,10 +835,11 @@
     (:shell-sounds e) (assoc :shell-sounds nil)
     (not (entity/player? e)) (merge (panicked world e))
     (and src (pos? health) (mobs/mob-type? (:type e)))
-    (assoc :say-tick (hushed (:tick world) late?))))
+    (assoc :say-tick (hushed e (:tick world) late?))))
 
 (defn- voice [world eid e snd]
-  (let [m (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))]
+  (let [p (mobs/voice-pitch e (sound-pitch world eid e))
+        m (out/sound snd (:pos e) (mobs/volume e) p)]
     (if (entity/player? e) (out/except eid m) (out/all m))))
 
 (defn- struck-deltas

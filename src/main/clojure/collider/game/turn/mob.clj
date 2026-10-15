@@ -71,22 +71,28 @@
   (< (long (* 1000.0 (random/of-longs t eid (hash :say))))
      (- t since)))
 
-(defn- said [eid e t]
-  (let [e (assoc e :say-tick (+ (long t) mobs/ambient-interval 1))]
-    (if-let [say (mobs/sound-of e :say)]
-      (let [p (sound-pitch e t eid)]
-        [e [(out/all (out/sound say (:pos e) 1.0 p))]])
+(defn- hushed? [e t eid]
+  (when-let [f (:hushed? (spec/of (:type e)))] (f e t eid)))
+
+(defn- said [eid e t before]
+  (let [quiet (mobs/ambient-interval e)
+        e (assoc e :say-tick (+ (long t) quiet 1))]
+    (if-let [say (when-not (hushed? before t eid)
+                   (mobs/sound-of e :say))]
+      (let [p (mobs/voice-pitch e (sound-pitch e t eid))]
+        [e [(out/all (out/sound say (:pos e) (mobs/volume e) p))]])
       [e nil])))
 
 (defn- ambient
   "Returns mob e and its ambient sound at tick t. The chance to speak
   grows by a thousandth each tick since the mob was last heard or
-  hurt."
-  [eid e t]
-  (let [st (:say-tick e)]
-    (cond (says? t eid (long (or st t))) (said eid e t)
-          (nil? st) [(assoc e :say-tick t) nil]
-          :else [e nil])))
+  hurt. Whether it keeps quiet goes by the mob before its step."
+  ([eid e t] (ambient eid e t e))
+  ([eid e t before]
+   (let [st (:say-tick e)]
+     (cond (says? t eid (long (or st t))) (said eid e t before)
+           (nil? st) [(assoc e :say-tick t) nil]
+           :else [e nil]))))
 
 (defn- step-state ^long [world e]
   (let [ch (:chunks world) p (:pos e)
@@ -128,8 +134,9 @@
   (let [acc (if (and (:wet? e) (not was-wet?))
               (conj acc (splash-delta e t eid))
               acc)]
-    (if (> (long (Math/floor (double new-walked)))
-           (long (Math/floor (double old-walked))))
+    (if (and (> (long (Math/floor (double new-walked)))
+                (long (Math/floor (double old-walked))))
+             (not (mobs/flag? e :no-steps?)))
       (if-let [d (step-sound-delta world e t eid)] (conj acc d) acc)
       acc)))
 
@@ -145,7 +152,7 @@
 (defn- goal-step [world eid e t tempters dead?]
   (let [[e1 deltas] (if dead? [e nil] (think world eid e t tempters))
         e1 (age-up e1 t)
-        [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))]
+        [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t e))]
     [e1 deltas say-deltas]))
 
 (defn- steered [world eid e speed half]

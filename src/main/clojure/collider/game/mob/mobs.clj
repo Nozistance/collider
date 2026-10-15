@@ -83,7 +83,15 @@
                :walker      goat-walker
                :spawned     goat/spawned
                :born        goat/born
-               :spawns-on   "goats_spawnable_on"}})
+               :spawns-on   "goats_spawnable_on"}
+   :bat       {:sounds      :bat
+               :volume      0.1
+               :pitch       0.95
+               :ambient-interval 80
+               :aloof?      true
+               :no-fall?    true
+               :no-steps?   true
+               :no-xp?      true}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -160,6 +168,23 @@
     (when (and k (:sounds m))
       (keyword (name (sound-set m e k)) (name k)))))
 
+(defn volume
+  "Returns how loud mob e makes its voice sounds."
+  ^double [e]
+  (double (get-in types [(:type e) :volume] 1.0)))
+
+(defn voice-pitch
+  "Returns pitch p of a voice sound as mob e makes it."
+  ^double [e ^double p]
+  (if-let [k (get-in types [(:type e) :pitch])]
+    (num/fmul (num/f32 p) (num/f32 (double k)))
+    p))
+
+(defn flag?
+  "Returns true when the kind of mob e has flag k."
+  [e k]
+  (boolean (get-in types [(:type e) k])))
+
 (defn eating-sound
   "Returns the sound mob e eats with, or nil for a breed that eats
   in silence."
@@ -186,7 +211,8 @@
         {ck (coat-of e) vk (voice-of (types type) e)})
       (:mooshroom :rabbit) {:variant (variant e)}
       :armadillo {:armadillo-state (shell/state-id e)}
-      :goat (goat/metadata e))))
+      :goat (goat/metadata e)
+      :bat {:resting? (boolean (:resting? e))})))
 
 (defn metadata
   "Returns what clients see of mob e besides its movement."
@@ -219,7 +245,8 @@
            :health      (max-health type)
            :health-sent (max-health type)
            :arrived     [(inc (* 2 (long tick))) nil]}
-    (= :rabbit type) (assoc :hop {})))
+    (= :rabbit type) (assoc :hop {})
+    (= :bat type) (assoc :resting? true)))
 
 (def ^:private ^:const follow-spread 0.11485000000000001)
 
@@ -267,9 +294,10 @@
             :yaw (double yaw) :head-yaw 0.0)
     baby? (assoc :baby-until (+ (long tick) baby-start))))
 
-(def ^:const ambient-interval
-  "The ticks a mob keeps quiet after it was heard or hurt."
-  120)
+(defn ambient-interval
+  "Returns the ticks mob e keeps quiet after it was heard or hurt."
+  ^long [e]
+  (long (get-in types [(:type e) :ambient-interval] 120)))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 

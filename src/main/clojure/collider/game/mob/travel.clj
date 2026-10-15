@@ -541,8 +541,10 @@
          :threshold (mobs/fluid-jump-threshold e)))
 
 (defn- own-vel [world index eid e half height f]
-  (let [shoves (when (push/pushable? (:chunks world) e)
-                 (push/before index eid e half height))]
+  (let [es (:entities world)
+        shoves (when (push/pushable? (:chunks world) e)
+                 (remove #(mobs/flag? (get es (nth % 0)) :aloof?)
+                         (push/before index eid e half height)))]
     (pushed (reduce taken (:vel e) shoves) (:push f))))
 
 (defn- walked-to ^double [e pos]
@@ -555,14 +557,19 @@
       w
       (:walked e))))
 
+(defn- driven-by [e vel]
+  (when-let [f (:drive (spec/of (:type e)))] (f e vel)))
+
 (defn- travel-of
   "Returns the travel of mob e this tick, a rest or a full move."
   [world index eid e h ht]
   (let [f (fluid-at world e h ht)
         moving? (not (zero? (double (:zza (:move e) 0.0))))
         vel (own-vel world index eid e h ht f)
+        [vel yaw] (or (driven-by e vel) [vel nil])
         rest? (at-rest? world e h moving? (in-fluid? f) vel)]
-    (if rest? (rest-move e f) (physics-move world e vel h ht f))))
+    (cond-> (if rest? (rest-move e f) (physics-move world e vel h ht f))
+      yaw (assoc :yaw yaw))))
 
 (defn- settled
   [e {og :on-ground cd :jump-cd sup :support nb? :no-blocks?} pos fall
@@ -589,8 +596,10 @@
   at pos and takes their push back, the shoves, and whether cram
   hurt it first. The fn live? tells the bodies that are alive now."
   [world index eid e [half height pos vel] cram live?]
-  (let [hurt (when cram (cram e pos))
-        shoves (push/shoves-at index eid pos half height)
+  (let [aloof? (mobs/flag? e :aloof?)
+        hurt (when (and cram (not aloof?)) (cram e pos))
+        shoves (when-not aloof?
+                 (push/shoves-at index eid pos half height))
         v (shoved world (or hurt (assoc e :pos pos)) vel shoves
                   live?)]
     [v shoves (some? hurt)]))
@@ -667,7 +676,10 @@
   [world index eid e half height more]
   (let [h (num/f32 half) ht (num/f32 height)
         tr (travel-of world index eid e h ht)
-        f0 (fall-before world e tr) f1 (fall-after tr f0)
+        e (if-let [y (:yaw tr)] (assoc e :yaw y) e)
+        falls? (not (mobs/flag? e :no-fall?))
+        f0 (if falls? (fall-before world e tr) 0.0)
+        f1 (if falls? (fall-after tr f0) 0.0)
         ls (when (lands? tr f0 f1)
              (landing/landed world eid e (:pos tr) (:support tr) f0 f1))
         pos (if ls (nth ls 0) (:pos tr))

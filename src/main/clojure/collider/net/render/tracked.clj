@@ -11,7 +11,8 @@
 
 (def ^:private kinds
   (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit
-          :armadillo :goat :item :experience-orb :tnt :falling-block
+          :armadillo :goat :bat :item :experience-orb :tnt
+          :falling-block
           :area-effect-cloud :lightning-bolt
           :painting :item-frame :glow-item-frame}
         entity/thrown-types))
@@ -166,6 +167,11 @@
         (keep (fn [[k f]] (when (contains? meta k) [f (meta k)])))
         goat-keys))
 
+(defn- bat-fields [meta]
+  (cond-> (common-fields meta)
+    (contains? meta :resting?)
+    (assoc :bat-flags (if (:resting? meta) 1 0))))
+
 (def ^:private animal-own
   {:sheep sheep-fields :mooshroom variant-fields
    :rabbit variant-fields :armadillo armadillo-fields
@@ -210,6 +216,7 @@
     (merge (coat-fields kind meta) (living-fields meta))
     (:sheep :mooshroom :rabbit :armadillo :goat)
     (merge ((animal-own kind) meta) (living-fields meta))
+    :bat (merge (bat-fields meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
     :firework-rocket
     (cond-> (stack-fields meta)

@@ -44,9 +44,11 @@
 
 (defn pushable?
   "Returns true when body e takes shoves among chunks. A body that
-  climbs takes none but still shoves the others."
+  climbs takes none but still shoves the others, and an aloof kind
+  takes none."
   [chunks e]
-  (and (alive? e) (not (climb/climbing? chunks e))))
+  (and (alive? e) (not (mobs/flag? e :aloof?))
+       (not (climb/climbing? chunks e))))
 
 (defn- came ^long [e]
   (if-let [a (:arrived e)] (long (nth a 0)) Long/MIN_VALUE))

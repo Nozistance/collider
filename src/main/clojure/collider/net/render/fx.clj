@@ -252,6 +252,7 @@
   {:sound-extinguish-fire            1009
    :sound-play-jukebox-song          1010
    :sound-stop-jukebox-song          1011
+   :sound-bat-liftoff                1025
    :sound-anvil-broken               1029
    :sound-anvil-used                 1030
    :sound-anvil-land                 1031

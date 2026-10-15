@@ -3,6 +3,7 @@
   (:require [collider.game.mob.animal :as animal]
             [collider.game.mob.armadillo :as armadillo]
             [collider.game.mob.armadillo-ai :as armadillo-ai]
+            [collider.game.mob.bat :as bat]
             [collider.game.mob.chicken :as chicken]
             [collider.game.mob.cow :as cow]
             [collider.game.mob.goat-ai :as goat-ai]
@@ -46,14 +47,17 @@
              :ai-step chicken/ai-step :results [animal/feed-result]}
    :rabbit rabbit-kind
    :armadillo armadillo-kind
-   :goat goat-kind})
+   :goat goat-kind
+   :bat {:custom-step bat/custom-step :ai-step bat/ai-step
+         :drive bat/drive :hushed? bat/hushed?}})
 
 (defn of
   "Returns the parts of the turn of a mob of type, or nil for a type
   without them. A mob thinks with goals by :think and :goals, or
   with the compiled brain :brain. Its own server step :custom-step
   comes after either. :thunder-hit takes the place of what lightning
-  does to any other body."
+  does to any other body. :drive turns the speed of a mob before it
+  travels, and :hushed? keeps its ambient sound in."
   [type]
   (kinds type))
 

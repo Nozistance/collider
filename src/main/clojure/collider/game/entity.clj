@@ -165,7 +165,8 @@
   {:mob [:health :death-time :color :variant :sheared?
          :sound-variant :effects :absorption :fall :stew
          :forced-age :age-locked? :last-hurt-by-player
-         :armadillo-state :screaming? :left-horn? :right-horn?]
+         :armadillo-state :screaming? :left-horn? :right-horn?
+         :resting?]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]

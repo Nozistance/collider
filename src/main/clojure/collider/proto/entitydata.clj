@@ -58,6 +58,8 @@
    {:parent :animal
     :fields [[:variant :chicken-variant :temperate]
              [:sound-variant :chicken-sound-variant :classic]]}
+   :ambient-creature {:parent :mob :fields []}
+   :bat {:parent :ambient-creature :fields [[:bat-flags :byte 0]]}
    :avatar
    {:parent :living
     :fields [[:main-hand :humanoid-arm 1]

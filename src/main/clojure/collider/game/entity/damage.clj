@@ -218,7 +218,8 @@
        (contains? #{:item :experience-orb} (:type e))
        (hurt-item e health amount)
        :else
-       (hurt-living e health amount (or src generic) tick eid)))))
+       (hurt-living (cond-> e (:resting? e) (assoc :resting? false))
+                    health amount (or src generic) tick eid)))))
 
 (defn taken?
   "Returns true when h, entity e after a hurt, shows a hit."
