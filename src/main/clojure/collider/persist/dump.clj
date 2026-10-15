@@ -1,6 +1,7 @@
 (ns collider.persist.dump
   "The last ticks a debug dump holds and the file it writes."
   (:require [clojure.java.io :as io]
+            [clojure.pprint :as pprint]
             [clojure.walk :as walk]
             [collider.game.deltas :as deltas]
             [collider.log :as log]
@@ -8,7 +9,8 @@
   (:import (clojure.lang IPersistentMap PersistentArrayMap
                          PersistentHashMap PersistentQueue)
            (collider V3)
-           (collider.game.deltas.record Deltas)))
+           (collider.game.deltas.record Deltas)
+           (java.io StringWriter Writer)))
 
 (set! *warn-on-reflection* true)
 
@@ -50,18 +52,24 @@
            :entities (deltas/entities-of deltas)
            :out (mapv unsaved (deltas/out-of deltas)))))
 
-(defn edn-of
-  "Returns the ticks of ring as EDN text, plain data only."
-  [ring]
+(defn- pprinted [ring ^Writer w]
   (binding [*print-length* nil *print-level* nil *print-meta* false]
-    (pr-str (walk/prewalk plain (mapv entry ring)))))
+    (pprint/pprint (walk/prewalk plain (mapv entry ring)) w)))
+
+(defn edn-of
+  "Returns the ticks of ring as EDN text laid out to read, plain data
+  only."
+  [ring]
+  (let [w (StringWriter.)]
+    (pprinted ring w)
+    (str w)))
 
 (defn dump!
   "Writes the ticks of ring to file away from the caller."
   [ring file]
   (Thread/startVirtualThread
     #(try (io/make-parents file)
-          (spit file (edn-of ring))
+          (with-open [w (io/writer file)] (pprinted ring w))
           (log/info "dumped" (count ring) "ticks to" file)
           (catch Throwable t
             (log/warn "could not dump to" file (ex-message t))))))
