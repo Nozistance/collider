@@ -5,6 +5,7 @@
             [collider.data :as data]
             [collider.data.particles :as particles]
             [collider.game.command.args :as args]
+            [collider.game.command.components :as comps]
             [collider.game.command.decode :as dfu]
             [collider.game.command.reader :as r]
             [collider.game.command.snbt :as snbt]
@@ -103,28 +104,6 @@
 (defn- block-state [tag]
   (or-else (full-state tag) named-state tag))
 
-(def ^:private air-free
-  (dfu/checked (dfu/by-name "item") #(not= :air %)
-               (fn [_] "Item must not be minecraft:air")))
-
-(def ^:private item-count
-  (dfu/checked dfu/int-of #(<= 1 % 99)
-               #(str "Value must be within range [1;99]: " %)))
-
-(def ^:private item-map
-  (dfu/mapped (dfu/record [:id :item air-free :req]
-                          [:count :count item-count :opt 1])
-              #(assoc % :patch nil)))
-
-(def ^:private item-name
-  (dfu/mapped air-free (fn [k] {:item k :count 1 :patch nil})))
-
-(defn- item [tag]
-  (let [x (item-map tag)]
-    (if (and (map? tag) (not (ok? x)) (ok? (air-free (:id tag))))
-      x
-      (or-else x item-name tag))))
-
 (def ^:private source-type (dfu/by-name "position_source_type"))
 
 (def ^:private block-source
@@ -165,7 +144,7 @@
    :transition (options-of (req :from_color rgb) (req :to_color rgb)
                            (req :scale scale))
    :roll (options-of (req :roll dfu/float-of))
-   :item (options-of (req :item item))
+   :item (options-of (req :item comps/template))
    :vibration (options-of (req :destination source)
                           (req :arrival_in_ticks dfu/int-of))
    :delay (options-of (req :delay dfu/int-of))

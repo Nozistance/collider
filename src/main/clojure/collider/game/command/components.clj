@@ -411,7 +411,10 @@
                  :opt 1]
                 [:components :patch patch-of :opt])))
 
-(defn- template [tag]
+(defn template
+  "Decodes tag, an item name or a compound with id, count and
+  components, to a stack of items with its patch."
+  [tag]
   (dfu/settled tag (dfu/either (template-record tag)
                                ((dfu/mapped item-id #(hash-map :item %
                                                                :count 1
