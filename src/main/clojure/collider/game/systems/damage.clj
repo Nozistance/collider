@@ -71,7 +71,7 @@
 (defn- stirred? [world e]
   (if (entity/player? e)
     (loaded-near? world e)
-    (pos? (hurt/probe world e))))
+    (or (pos? (hurt/probe world e)) (hurt/pricked? world e))))
 
 (defn- live? [world [_ e]]
   (and (some? (:health e))

@@ -633,29 +633,43 @@
   (cons [:remove-entity eid] (spill-deltas world eid e)))
 
 (defn- item-burn-deltas [world eid e ^long flags]
-  (let [ds (cond->> (item-fire-deltas world eid e flags)
-             (= :item (:type e)) (heard e))
-        health (double (:health e))]
-    (concat ds
-            (when (pos? (bit-and flags lava-bit))
-              (burn-sound-deltas world eid e health))
-            (when (>= (damage-sum ds) health)
-              (gone-deltas world eid e)))))
+  (concat (item-fire-deltas world eid e flags)
+          (when (pos? (bit-and flags lava-bit))
+            (burn-sound-deltas world eid e (double (:health e))))))
 
 (defn- unlit? [e ^long flags]
   (and (zero? flags) (not (pos? (long (or (:fire e) 0))))
        (not (:burning? e))))
 
-(defn item-deltas
-  "Returns the deltas of the fire and lava item or orb eid lies in."
-  [world eid e]
+(defn- burnt [world eid e]
   (if (fire-proof-item? e)
     (when (pos? (long (or (:fire e) 0)))
       [[:merge-entity eid {:fire 0}]])
     (let [flags (probe world e)]
-      (if (unlit? e flags)
-        (when (>= 0.0 (double (:health e))) (gone-deltas world eid e))
+      (when-not (unlit? e flags)
         (item-burn-deltas world eid e flags)))))
+
+(def ^:private ^:table cactus-cells
+  (delay (block/state-table :boolean #(= :cactus (block/type-of %)))))
+
+(defn pricked?
+  "Returns true when entity e stands in a cactus."
+  [world e]
+  (boolean (some-inside? (:chunks world) e @cactus-cells)))
+
+(defn- pricked [world eid e]
+  (when (pricked? world e)
+    [[:damage eid 1.0 {:type :cactus}]]))
+
+(defn item-deltas
+  "Returns the deltas of the fire, lava and cactus item or orb eid lies
+  in. It goes once its hurts of the tick take all its health."
+  [world eid e]
+  (let [ds (cond->> (concat (burnt world eid e) (pricked world eid e))
+             (= :item (:type e)) (heard e))]
+    (concat ds
+            (when (>= (damage-sum ds) (double (:health e)))
+              (gone-deltas world eid e)))))
 
 (def ^:private ^:const safe-fall 3.0)
 
