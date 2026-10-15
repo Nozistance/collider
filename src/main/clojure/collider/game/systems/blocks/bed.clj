@@ -4,6 +4,7 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.game.sleep :as sleeping]
             [collider.game.systems.sleep :as sleep]
             [collider.vec :as v]
@@ -118,10 +119,13 @@
             (delta/authored (concat ds more blast) by))))
 
 (defn sleep-deltas
+  "Returns the deltas of player eid using the bed at pos. A whole bed
+  swings the arm of the player whatever comes of it."
   [world eid pos]
   (when-let [head (bed/head-pos (:chunks world) pos)]
     (let [st (changes/block-at world head)
           rule (sleep/bed-rule world)]
-      (if (:explodes rule)
-        (explode-deltas world eid head st rule)
-        (rest-deltas world eid head st rule)))))
+      (concat (if (:explodes rule)
+                (explode-deltas world eid head st rule)
+                (rest-deltas world eid head st rule))
+              (player/server-swing-deltas world eid)))))

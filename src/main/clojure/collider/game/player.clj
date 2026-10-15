@@ -280,6 +280,13 @@
                (out/all fx)]
         self? (conj (out/to eid fx))))))
 
+(defn server-swing-deltas
+  "Returns the deltas of player eid of world swinging the hand it uses,
+  a swing the server starts for a use the client does not foresee."
+  [world eid]
+  (let [e (get-in world [:entities eid])]
+    (swing-deltas eid e (:use-hand e :main) (:tick world) true)))
+
 (defn consumable
   "Returns the consumable component of the stack, or nil."
   [stack]

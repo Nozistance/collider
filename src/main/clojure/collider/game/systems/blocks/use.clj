@@ -247,7 +247,8 @@
     (when-let [e' (and item (campfire/place-food e item))]
       (concat (changes/be-changed pos e')
               [[:award eid :custom/interact-with-campfire 1]]
-              (consumed world eid)))))
+              (consumed world eid)
+              (player/server-swing-deltas world eid)))))
 
 (defn- sign-busy? [world eid e]
   (and (:editor e) (not= eid (:editor e))
@@ -264,10 +265,11 @@
 
 (defn- sign-hand-deltas [world eid pos e front? opens?]
   (when (main-hand? world eid)
-    (cond
-      (:waxed? e) [(heard :sign/waxed pos 1.0)]
-      opens? [[:set-block-entity pos (assoc e :editor eid)]
-              (out/to eid (out/sign-editor pos front?))])))
+    (some-> (cond
+              (:waxed? e) [(heard :sign/waxed pos 1.0)]
+              opens? [[:set-block-entity pos (assoc e :editor eid)]
+                      (out/to eid (out/sign-editor pos front?))])
+            (concat (player/server-swing-deltas world eid)))))
 
 (defn- chains?
   "Returns true when a hanging sign item places a new sign.

@@ -151,13 +151,15 @@
 
 (defn bonemeal-deltas
   "Returns the deltas of bone meal used on the block at pos.
-  On a floor under water it sprouts seagrass and coral."
+  On a floor under water it sprouts seagrass and coral. Only a block
+  that grows swings the arm from the server."
   [world [eid pos face _ _]]
-  (let [e (get-in world [:entities eid])]
-    (when-let [ds (or (crop-deltas world pos)
-                      (seabed-deltas world pos face))]
+  (let [e (get-in world [:entities eid])
+        crop (crop-deltas world pos)]
+    (when-let [ds (or crop (seabed-deltas world pos face))]
       (concat ds (inventory/consume-deltas eid e (:use-hand e) 1)
-              [[:award eid :used/bone-meal 1]]))))
+              [[:award eid :used/bone-meal 1]]
+              (when crop (player/server-swing-deltas world eid))))))
 
 (def ^:private plant-heads
   #{:kelp :weeping-vines :twisting-vines :cave-vines})
