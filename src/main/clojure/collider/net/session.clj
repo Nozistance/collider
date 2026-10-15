@@ -294,7 +294,7 @@
   (server/put! conn :settings (events/client-settings m)))
 
 (defn- dispatch!
-  [conn {:keys [^Queue queue settings] :as io} m]
+  [conn {:keys [settings] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention] (intention! conn io m)
     [:status :status-request] (server/send! conn (status-response io))

@@ -185,7 +185,7 @@
   (if (seq held) (assoc d :out (into held (deltas/out-of d))) d))
 
 (defn- closed!
-  "Ends the tick of st: the last events, then the level tick."
+  "Ends the tick of st with its last events and the level tick."
   [st world-atom opts evs]
   (let [[acc] (early-run st world-atom opts evs)]
     (par/in-pool #(tick/late acc (phases-of opts)))))
@@ -194,7 +194,7 @@
   (reset! open nil) (reset! heard []) (reset! held [])
   (reset! early-off false))
 
-(defn- run-tick! [{:keys [carried open heard held] :as st} world-atom
+(defn- run-tick! [{:keys [carried heard held] :as st} world-atom
                   queue deliver! perf opts]
   (reset! (:perf st) perf)
   (let [fresh (drain! queue)
