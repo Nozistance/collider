@@ -19,8 +19,6 @@
   ^long [t eid k ^long n]
   (random/below (random/rnd t eid k) n))
 
-(defn- cell [p] (mapv #(num/floor (double %)) p))
-
 (defn- conductor? [world [x y z]]
   (block/conductor? (sense/block-at world x (inc (long y)) z)))
 
@@ -50,7 +48,7 @@
     (woken eid e at)))
 
 (defn- gone? [world [x y z]]
-  (or (not (block/air? (sense/block-at world x y z)))
+  (or (not (block/air-type? (sense/block-at world x y z)))
       (<= (long y) (chunk/level-min-y world))))
 
 (defn- near? [g p]
@@ -60,9 +58,9 @@
   (- (+ (double c) (roll t eid a 7)) (roll t eid b 7)))
 
 (defn- drawn [t eid [x y z]]
-  (cell [(spread x t eid :x1 :x2)
-         (- (+ (double y) (roll t eid :y 6)) 2.0)
-         (spread z t eid :z1 :z2)]))
+  (sense/feet-cell [(spread x t eid :x1 :x2)
+                   (- (+ (double y) (roll t eid :y 6)) 2.0)
+                   (spread z t eid :z1 :z2)]))
 
 (defn- target-of [world eid e t]
   (let [g (:bat-target e)
@@ -87,7 +85,7 @@
   deltas. A hanging bat wakes without a block to hang from or with a
   player near. A flying one picks where to flutter and may hang."
   [world eid e t]
-  (let [at (cell (:pos e))]
+  (let [at (sense/feet-cell (:pos e))]
     (if (:resting? e)
       (hung world eid e t at)
       (flown world eid e t at))))
