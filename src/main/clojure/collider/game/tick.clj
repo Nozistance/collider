@@ -70,6 +70,7 @@
    [#'waypoints/waypoints]
    [#'tracker/late-tracking]
    [#'chunks/chunk-streaming]
+   [#'players/tab-updates]
    [#'detector/observe]])
 
 (def dims

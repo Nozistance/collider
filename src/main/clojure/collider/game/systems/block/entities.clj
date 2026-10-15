@@ -6,6 +6,7 @@
   (:require [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.lid :as lid]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.systems.brewing :as brewing]
@@ -40,10 +41,11 @@
       acc)))
 
 (defn block-entities
-  {:wake {:keys [[:tickers :turns]] :types #{:player}}}
+  {:wake {:keys [[:tickers :turns] :shulker-anim] :types #{:player}}}
   [world _d]
   (let [active (areas/active-chunks world)
         acc (apply/then [world deltas/empty-deltas]
-                        (geysers/unsynced world))
+                        (concat (geysers/unsynced world)
+                                (lid/animate-deltas world)))
         tick #(ticked active %1 %2)]
     (second (reduce tick acc (:turns (:tickers world))))))

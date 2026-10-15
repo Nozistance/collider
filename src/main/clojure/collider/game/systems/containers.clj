@@ -392,12 +392,7 @@
     :bundle-select (bundle-select-deltas world ev)
     nil))
 
-(defn- containers-deltas [world]
-  (concat
-    (lid/animate-deltas world)
-    (quit-deltas world)))
-
 (defn containers
-  {:wake {:keys [:shulker-anim [:input :quits]]}}
+  {:wake {:keys [[:input :quits]]}}
   [world _]
-  (deltas/of-vec (containers-deltas world)))
+  (deltas/of-vec (quit-deltas world)))

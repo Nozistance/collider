@@ -12,7 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def latency-interval 600)
+(def ^:private ^:const latency-interval 601)
 
 (def ^:private duplicate-login-reason
   "You logged in from another location")
@@ -83,9 +83,13 @@
 (defn- uuids-of [ps]
   (into {} (map (fn [[eid e]] [eid (:uuid e)])) ps))
 
-(defn- latency-deltas [world all]
-  (when (zero? (rem (long (:tick world)) latency-interval))
-    [(out/all (out/tab-latency (all)))]))
+(defn- latency-due? [world]
+  (let [n (- (long (:tick world)) (long (:started world 0)))]
+    (and (pos? n) (zero? (rem n latency-interval)))))
+
+(defn- latency-deltas [world ps]
+  (when (latency-due? world)
+    [(out/all (out/tab-latency (mapv (comp add-entry val) ps)))]))
 
 (defn- listed-all? [listed ps]
   (and (= (count listed) (count ps))
@@ -106,8 +110,7 @@
 
 (defn- list-deltas [world ps]
   (let [listed (:listed world)]
-    (if (listed-all? listed ps)
-      (latency-deltas world #(mapv (comp add-entry val) ps))
+    (when-not (listed-all? listed ps)
       (list-changes world ps))))
 
 (def ^:private tab-header-interval 20)
@@ -134,15 +137,19 @@
                        "\np99 " (fmt "%.2f" p99-ms) " ms"
                        "\n\u0394/t " (per-tick deltas-per-tick))))
 
-(defn- tab-header-deltas [world events]
+(defn- tab-header [world]
   (when-let [perf (:perf world)]
-    (let [commit (get-in world [:config :commit])
-          msg (tab-header-msg commit perf)]
-      (concat
-        (when (zero? (rem (long (:tick world)) tab-header-interval))
-          [(out/all msg)])
-        (for [[tag eid] events :when (= :player-join tag)]
-          (out/to eid msg))))))
+    (tab-header-msg (get-in world [:config :commit]) perf)))
+
+(defn- tab-header-deltas [world events]
+  (when-let [msg (tab-header world)]
+    (for [[tag eid] events :when (= :player-join tag)]
+      (out/to eid msg))))
+
+(defn- header-deltas [world]
+  (when-let [msg (tab-header world)]
+    (when (zero? (rem (long (:tick world)) tab-header-interval))
+      [(out/all msg)])))
 
 (defn swing-deltas
   "Returns the deltas of one swing a client plays itself.
@@ -165,3 +172,13 @@
                     (duplicate-login-deltas world joins)
                     (list-deltas world ps)
                     (tab-header-deltas world joins)]))))
+
+(defn tab-updates
+  "Returns the deltas of the tab list a tick sends once, after the
+  levels. The latency of every player goes every 601 ticks since the
+  server started, the header every 20."
+  {:wake :always :once true}
+  [world _]
+  (let [ps (level/player-entries world)]
+    (deltas/of-vec
+      (into [] cat [(latency-deltas world ps) (header-deltas world)]))))

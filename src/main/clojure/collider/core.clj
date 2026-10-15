@@ -136,7 +136,8 @@
   (let [store (open-store opts cfg)
         saved (when store (store/load-world store))
         init (merge schema/initial-world saved)
-        world (atom (assoc init :config (world-config cfg store)))
+        world (atom (assoc init :config (world-config cfg store)
+                                :started (:tick init 0)))
         saver (when store (saver/start))
         save! (when saver #(saver/want-save! saver))]
     {:settings (atom cfg) :opts opts :store store :saved saved
