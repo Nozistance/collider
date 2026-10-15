@@ -15,7 +15,8 @@
             [collider.world.block :as block]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.space.sight :as sight]))
 
 (set! *warn-on-reflection* true)
 
@@ -103,12 +104,11 @@
 (defn- reached? [world q eye]
   (let [chunks (:chunks world)
         below [(v/x eye) (dec (v/y eye)) (v/z eye)]
-        from (v/centre (dir/down q))
-        ray (mapv - below from)]
+        from (v/centre (dir/down q))]
     (and (geyser/passable? (chunk/at chunks (v/cell eye)))
          (<= (v/dist-sq eye (v/centre q)) 9.0)
          (block/holds-water-source? (chunk/at chunks (v/cell below)))
-         (nil? (projectile/block-clip world from ray)))))
+         (sight/clear? chunks from below))))
 
 (defn- sickened? [world q b e]
   (and (account/living? e) (entity/alive? e)
