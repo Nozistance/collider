@@ -150,6 +150,9 @@
   running server takes a restart for it. Comments in the file stay.
   Throws, writing nothing, when the settings would be bad."
   [path k v]
+  (when-not (some #{k} settable)
+    (throw (ex-info (str k " is not a setting a command writes")
+                    {:why [(str k " is not a setting a command writes")]})))
   (let [f (io/file (str path))
         text (if (.exists f) (slurp f) "{}")
         m' (checked path (assoc (edn/read-string text) k v))
