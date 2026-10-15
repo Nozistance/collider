@@ -164,7 +164,7 @@
    :falling-block [:block :time :fall :hurt :hurt-max]
    :thrown [:owner :left-owner? :stack :life :lifetime :attached]
    :arrow [:owner :left-owner? :stack :life :in-ground? :shake
-           :last-state :pickup :crit?]
+           :last-state :pickup :crit? :fire]
    :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults

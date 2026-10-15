@@ -328,7 +328,9 @@
       (filterv #(= :powder-snow (block/type-of (cell-state chunks %)))
                (inside-cells e)))))
 
-(defn- rained-on? [world e]
+(defn rained-on?
+  "Returns true when rain falls on the feet or the head of e."
+  [world e]
   (let [p (:pos e)
         [_ height] (box-of e)
         x (long (Math/floor (v/x p)))
@@ -402,6 +404,20 @@
       (partition-by #(nth % 4)
                     (inside/met (:chunks world) moves half height
                                 @burners)))))
+
+(defn met-fire
+  "Returns the fire of body e, r0, after the fire, lava and water it
+  met on moves this tick, step by step, and the rain on it. A body
+  that does not burn and was not lit keeps no fire."
+  ^long [world e r0 moves]
+  (let [[half height] (box-of e)
+        steps (partition-by #(nth % 4)
+                            (inside/met (:chunks world) moves half height
+                                        @burners))
+        r (long (first (reduce (stepped-fire fire-lit identity false)
+                               [r0 []] steps)))
+        r (if (rained-on? world e) (min 0 r) r)]
+    (if (and (<= r 0) (<= r (long r0))) 0 r)))
 
 (defn- player-moves
   "Returns the moves the packets of player eid, e, made this tick, or

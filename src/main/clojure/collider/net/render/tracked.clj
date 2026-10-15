@@ -207,7 +207,7 @@
     (cond-> (stack-fields meta)
       (:attached meta) (assoc :attached (:attached meta)))
     :tnt (tnt-fields meta)
-    :arrow (cond-> {}
+    :arrow (cond-> (common-fields meta)
              (contains? meta :crit?)
              (assoc :arrow-flags (if (:crit? meta) 1 0))
              (contains? meta :in-ground?)

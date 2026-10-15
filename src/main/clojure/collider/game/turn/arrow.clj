@@ -50,15 +50,25 @@
 (defn- shaken ^long [e]
   (max 0 (dec (long (:shake e 0)))))
 
+(defn- fire-met [world e from to]
+  (hurt/met-fire world e (long (:fire e 0)) [[from to nil]]))
+
+(defn- put-out [world eid e f]
+  (when (and (pos? (long (:fire e 0))) (<= (long f) 0))
+    [(hurt/put-out-sound world eid e)]))
+
 (defn- lying-deltas [world eid e st]
-  (let [m {:in-ground? true :vel still :shake (shaken e)
-           :age (inc (long (:age e 0))) :needs-sync? false}
+  (let [f (fire-met world e (:pos e) (:pos e))
+        out (put-out world eid e f)
+        m {:in-ground? true :vel still :shake (shaken e)
+           :age (inc (long (:age e 0))) :needs-sync? false
+           :fire f :burning? (pos? f)}
         life (inc (long (:life e 0)))]
     (cond
       (and (not= (:last-state e) st) (falls? world e))
-      [[:merge-entity eid (assoc m :in-ground? false :life 0)]]
+      (into [[:merge-entity eid (assoc m :in-ground? false :life 0)]] out)
       (>= life lifetime) [[:remove-entity eid]]
-      :else [[:merge-entity eid (assoc m :life life)]])))
+      :else (into [[:merge-entity eid (assoc m :life life)]] out))))
 
 (defn- hit-sound [world eid at]
   (let [r (num/f32 (random/of-key (:tick world) eid :arrow-hit))
@@ -158,12 +168,16 @@
                (not= (long oid) (long (:owner e))))
       [(out/to (:owner e) (out/arrow-hit-player))])))
 
+(def ^:private ^:const ignite-ticks 100)
+
 (defn- hit-deltas [world eid e oid o n src]
   (let [ds (hurt/damage-deltas world oid o n src)]
     (-> (vec ds)
         (into (hurt/report-deltas world oid (hurt/hurt-now world oid o ds)))
         (conj [:merge-entity oid
-               {:arrow-count (inc (long (:arrow-count o 0)))}])
+               (cond-> {:arrow-count (inc (long (:arrow-count o 0)))}
+                 (pos? (long (:fire e 0)))
+                 (assoc :fire (max (long (:fire o 0)) ignite-ticks)))])
         (into (told-owner world e oid o))
         (conj (hit-sound world eid (:pos e)) [:remove-entity eid]))))
 
@@ -197,27 +211,41 @@
 
 (def ^:private flown-keys
   [:pos :vel :yaw :pitch :left-owner? :shake :age :in-ground?
-   :in-water? :last-state :crit? :needs-sync?])
+   :in-water? :last-state :crit? :needs-sync? :fire :burning?])
+
+(defn- burnt-down [e]
+  (let [f (long (:fire e 0))
+        f (if (pos? f) (dec f) f)]
+    (assoc e :fire f :burning? (pos? f))))
 
 (defn- ended [world eid e ds]
   (if (< (v/y (:pos e)) (chunk/void-y world))
     [[:remove-entity eid]]
-    (into [[:merge-entity eid (select-keys (settled world e) flown-keys)]]
+    (into [[:merge-entity eid
+            (select-keys (burnt-down (settled world e)) flown-keys)]]
           ds)))
 
 (defn- body-flight [world eid e met]
-  (let [e (assoc e :pos (nth (first met) 2) :needs-sync? true)
+  (let [to (nth (first met) 2)
+        f (fire-met world e (:pos e) to)
+        out (put-out world eid e f)
+        e (assoc e :pos to :needs-sync? true :fire f)
         {:keys [e ds gone?]} (reduce #(struck world eid %1 %2)
-                                     {:e e :ds []} met)]
+                                     {:e e :ds (vec out)} met)]
     (if gone? ds (ended world eid e ds))))
 
-(defn- block-flight [world eid e at b]
+(defn- block-landed [world eid e at b]
   (if b
     (let [cell (nth b 2) e (stuck world e at (:vel e) cell)]
       (ended world eid e
              (into [(hit-sound world eid (:pos e))]
                    (projectile/block-hit-deltas world e cell))))
     (ended world eid (assoc e :pos at :needs-sync? false) nil)))
+
+(defn- block-flight [world eid e at b]
+  (let [f (fire-met world e (:pos e) at)
+        out (put-out world eid e f)]
+    (into (vec (block-landed world eid (assoc e :fire f) at b)) out)))
 
 (defn- flight-deltas [world eid e]
   (let [move (:vel e)
@@ -235,10 +263,16 @@
       (body-flight world eid e met)
       (block-flight world eid e at b))))
 
+(defn- doused [world e]
+  (if (or (:in-water? e) (hurt/rained-on? world e))
+    (update e :fire #(min 0 (long (or % 0))))
+    e))
+
 (defn step-deltas
   "Returns the deltas of the turn of arrow e of eid."
   [world eid e]
-  (let [p (:pos e) cell (v/cell p)
+  (let [e (doused world e)
+        p (:pos e) cell (v/cell p)
         st (if (chunk/in-range? (nth cell 1))
              (chunk/at (:chunks world) cell)
              0)]

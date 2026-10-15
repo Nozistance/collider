@@ -3,9 +3,11 @@
   owner left behind and its turn towards its motion."
   (:require [collider.data :as data]
             [collider.game.changes :as changes]
+            [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
+            [collider.game.out :as out]
             [collider.game.reach :as reach]
             [collider.num :as num]
             [collider.parallel :as par]
@@ -264,11 +266,43 @@
   (and (contains? @impact (:type e))
        (get-in world [:rules :projectiles-can-break-blocks] true)))
 
+(defn- burning? [e] (pos? (long (:fire e 0))))
+
+(defn- lit? [st] (= :true (:lit (block/props-of st))))
+
+(defn- soaked? [st] (= :true (:waterlogged (block/props-of st))))
+
+(defn- lights? [world e st]
+  (and (burning? e) (not (lit? st)) (not (soaked? st))
+       (case (block/type-of st)
+         :campfire (may-interact? world e)
+         (:candle :candle-cake) true
+         false)))
+
+(defn- primer [world e]
+  (let [o (get-in world [:entities (:owner e)])]
+    (when (or (= :player (:type o)) (mobs/mob-type? (:type o)))
+      (:owner e))))
+
+(defn- primed-deltas [world e cell]
+  (let [t (cond-> (tnt/primed cell [(:tick world) cell])
+            (primer world e) (assoc :owner (primer world e)))]
+    (into (changes/change-deltas world [[cell 0]])
+          [[:spawn-entity t]
+           (out/all (out/sound :tnt/primed (:pos t) 1.0 1.0))])))
+
 (defn block-hit-deltas
   "Returns the deltas of projectile e hitting the block at cell. A
-  chorus flower breaks with its drops."
+  chorus flower breaks with its drops. A burning one primes tnt and
+  lights a campfire or a candle."
   [world e cell]
   (let [st (changes/block-at world cell)]
-    (when (and (= :chorus-flower (block/type-of st))
-               (may-interact? world e) (may-break? world e))
-      (changes/change-deltas world [[cell 0 [[:break st] [:drop st]]]]))))
+    (cond
+      (and (= :chorus-flower (block/type-of st))
+           (may-interact? world e) (may-break? world e))
+      (changes/change-deltas world [[cell 0 [[:break st] [:drop st]]]])
+      (and (block/tnt? st) (burning? e) (may-interact? world e)
+           (get-in world [:rules :tnt-explodes] true))
+      (primed-deltas world e cell)
+      (lights? world e st)
+      (changes/change-deltas world [[cell (block/with st :lit :true)]]))))

@@ -49,7 +49,8 @@
     (zipmap entity/thrown-types (repeat thrown-metadata))
     {:wind-charge (constantly {})
      :arrow (fn [e] {:crit? (boolean (:crit? e))
-                     :in-ground? (boolean (:in-ground? e))})
+                     :in-ground? (boolean (:in-ground? e))
+                     :burning? (boolean (:burning? e))})
      :firework-rocket
      (fn [e] (cond-> (thrown-metadata e)
                (:attached e) (assoc :attached (:attached e))))}))
