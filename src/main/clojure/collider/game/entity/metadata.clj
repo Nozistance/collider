@@ -5,11 +5,16 @@
             [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
+            [collider.game.potion :as potion]
             [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
 (defn- thrown-metadata [e] {:stack (:stack e)})
+
+(defn- arrow-metadata [e]
+  {:crit? (boolean (:crit? e)) :in-ground? (boolean (:in-ground? e))
+   :burning? (boolean (:burning? e))})
 
 (defn- orb-metadata [e]
   (cond-> {:value (:value e)} (:burning? e) (assoc :burning? true)))
@@ -48,9 +53,9 @@
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
     {:wind-charge (constantly {})
-     :arrow (fn [e] {:crit? (boolean (:crit? e))
-                     :in-ground? (boolean (:in-ground? e))
-                     :burning? (boolean (:burning? e))})
+     :arrow (fn [e] (assoc (arrow-metadata e) :effect-color
+                           (potion/arrow-color (:stack e))))
+     :spectral-arrow arrow-metadata
      :firework-rocket
      (fn [e] (cond-> (thrown-metadata e)
                (:attached e) (assoc :attached (:attached e))

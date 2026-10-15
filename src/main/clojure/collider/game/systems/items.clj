@@ -494,12 +494,12 @@
       acc)))
 
 (defn- pickup-one [peid pe acc [ieid ie]]
-  (if (identical? :arrow (:type ie))
+  (if (entity/arrow? ie)
     (arrow-taken peid pe acc ieid ie)
     (item-taken peid pe acc ieid ie)))
 
 (defn- ready? [ie]
-  (if (identical? :arrow (:type ie))
+  (if (entity/arrow? ie)
     (and (:in-ground? ie) (<= (long (:shake ie 0)) 0))
     (zero? (long (or (:pickup-delay ie) 0)))))
 
@@ -513,7 +513,7 @@
   (let [es (:entities world) active (areas/active-chunks world)
         [lo hi] (pickup-box pe)
         taken? (fn [[_ e]]
-                 (and (#{:item :arrow} (:type e)) (ready? e)
+                 (and (or (= :item (:type e)) (entity/arrow? e)) (ready? e)
                       (in-box? lo hi e)
                       (areas/active-at? active (:pos e))))
         entry (fn [eid]

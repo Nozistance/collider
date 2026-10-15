@@ -75,7 +75,7 @@
    :love 18 :peek 64 :teleport 46 :reduced-debug 22 :full-debug 23
    :honey-jump 54 :drown-bubbles 67 :lower-head 58 :raise-head 59
    :break-head 49 :break-chest 50 :break-legs 51 :break-feet 52
-   :poof 60 :fireworks 17})
+   :poof 60 :fireworks 17 :potion-puff 0})
 
 (defn- status-packet [m]
   (when-let [ev (entity-events (:kind m))]

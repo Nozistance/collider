@@ -1,11 +1,15 @@
 (ns collider.game.turn.arrow
   "The turn of an arrow in flight, in the ground and falling out of
   it."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.effect :as effect]
+            [collider.game.effect.account :as account]
+            [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.potion :as potion]
             [collider.game.projectile :as projectile]
+            [collider.game.stack :as stack]
             [collider.game.team :as team]
             [collider.num :as num]
             [collider.parallel :as par]
@@ -57,6 +61,20 @@
   (when (and (pos? (long (:fire e 0))) (<= (long f) 0))
     [(hurt/put-out-sound world eid e)]))
 
+(def ^:private ^:const potion-ticks 600)
+
+(defn- worn-off? [e ^long t]
+  (and (>= t potion-ticks) (= :arrow (:type e))
+       (potion/tipped? (:stack e))))
+
+(defn- lain [eid e m]
+  (let [t (inc (long (:ground-time e 0)))
+        m (assoc m :ground-time t)]
+    (if (worn-off? e t)
+      [[:merge-entity eid (assoc m :stack {:item :arrow :count 1})]
+       (out/all (out/status eid :potion-puff))]
+      [[:merge-entity eid m]])))
+
 (defn- lying-deltas [world eid e st]
   (let [f (fire-met world e (:pos e) (:pos e))
         out (put-out world eid e f)
@@ -66,10 +84,10 @@
         life (inc (long (:life e 0)))]
     (cond
       (and (not= (:last-state e) st) (falls? world e))
-      (let [m (assoc m :in-ground? false :life 0)]
+      (let [m (assoc m :in-ground? false :life 0 :ground-time 0)]
         (into [[:merge-entity eid m]] out))
       (>= life lifetime) [[:remove-entity eid]]
-      :else (into [[:merge-entity eid (assoc m :life life)]] out))))
+      :else (into (lain eid e (assoc m :life life)) out))))
 
 (defn- hit-sound [world eid e]
   (let [r (num/f32 (random/of-key (:tick world) eid :arrow-hit))
@@ -175,6 +193,22 @@
 
 (def ^:private ^:const ignite-ticks 100)
 
+(def ^:private glowing [[:glowing (effect/instance 200 0)]])
+
+(defn- laid [e]
+  (if (= :spectral-arrow (:type e))
+    glowing
+    (let [st (:stack e)]
+      (potion/instances
+        st (or (stack/component st :potion-duration-scale) 1.0)))))
+
+(defn- effect-deltas [e oid o]
+  (when (account/living? o)
+    (when-let [fx (seq (laid e))]
+      (account/deltas (reduce (fn [acc [k i]] (account/land acc k i))
+                              (account/account oid o) fx)
+                      o))))
+
 (defn- hit-deltas [world eid e oid o n src]
   (let [ds (hurt/damage-deltas world oid o n src)]
     (-> (vec ds)
@@ -185,6 +219,7 @@
                  (pos? (long (:fire e 0)))
                  (assoc :fire (max (long (:fire o 0))
                                    ignite-ticks)))])
+        (into (effect-deltas e oid o))
         (into (told-owner world e oid o))
         (conj (hit-sound world eid e) [:remove-entity eid]))))
 

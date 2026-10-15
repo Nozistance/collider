@@ -69,6 +69,13 @@
 (defn- map-duration [^long d f]
   (if (or (= infinite d) (zero? d)) d (f d)))
 
+(defn scaled
+  "Returns instance i lasting scale of its time, at least a tick."
+  [i scale]
+  (let [k (num/f32 scale)
+        f #(max 1 (long (Math/floor (num/f32 (* (num/f32 %) k)))))]
+    (update i :duration map-duration f)))
+
 (defn- ticked-down [i]
   (cond-> (update i :duration map-duration dec)
     (:hidden i) (update :hidden ticked-down)))

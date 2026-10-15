@@ -24,7 +24,8 @@
   "Returns an arrow of eid that carries one of ammo, flies as flight
   and may be picked up as pickup says."
   [eid ammo pickup crit? flight]
-  (merge {:type :arrow :owner eid :age 0 :left-owner? false
+  (merge {:type (if (= :spectral-arrow (:item ammo)) :spectral-arrow :arrow)
+          :owner eid :age 0 :left-owner? false
           :on-ground false :stack (assoc ammo :count 1) :pickup pickup
           :crit? crit? :life 0 :shake 0 :in-ground? false}
          flight))

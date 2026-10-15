@@ -129,8 +129,16 @@
 (defn- class-of [kind]
   (cond (= :wind-charge kind) :projectile
         (#{:firework-rocket :arrow} kind) kind
+        (= :spectral-arrow kind) :abstract-arrow
         (entity/thrown-types kind) :throwable-item-projectile
         (kinds kind) (get renamed-classes kind kind)))
+
+(defn- arrow-fields [meta]
+  (cond-> (common-fields meta)
+    (contains? meta :crit?)
+    (assoc :arrow-flags (if (:crit? meta) 1 0))
+    (contains? meta :in-ground?)
+    (assoc :in-ground (boolean (:in-ground? meta)))))
 
 (defn- sheep-fields [meta]
   (cond-> (animal-fields meta)
@@ -208,11 +216,10 @@
       (:attached meta) (assoc :attached (:attached meta))
       (:shot-at-angle? meta) (assoc :shot-at-angle true))
     :tnt (tnt-fields meta)
-    :arrow (cond-> (common-fields meta)
-             (contains? meta :crit?)
-             (assoc :arrow-flags (if (:crit? meta) 1 0))
-             (contains? meta :in-ground?)
-             (assoc :in-ground (boolean (:in-ground? meta))))
+    :arrow (cond-> (arrow-fields meta)
+             (contains? meta :effect-color)
+             (assoc :effect-color (:effect-color meta)))
+    :spectral-arrow (arrow-fields meta)
     :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)
     :experience-orb (orb-fields meta)

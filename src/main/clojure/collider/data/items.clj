@@ -75,6 +75,7 @@
    "minecraft:enchantments"         [:enchantments levels]
    "minecraft:stored_enchantments"  [:stored-enchantments levels]
    "minecraft:potion_contents"      [:potion-contents potion-default]
+   "minecraft:potion_duration_scale" [:potion-duration-scale identity]
    "minecraft:banner_patterns"      [:banner-patterns no-patterns]
    "minecraft:pot_decorations"      [:pot-decorations pot-default]
    "minecraft:fireworks"            [:fireworks fireworks-default]

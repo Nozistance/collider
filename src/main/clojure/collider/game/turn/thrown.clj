@@ -15,6 +15,7 @@
             [collider.game.out :as out]
             [collider.game.areas :as areas]
             [collider.game.player :as player]
+            [collider.game.potion :as potion]
             [collider.game.projectile :as projectile]
             [collider.game.stack :as stack]
             [collider.game.blast :as blast]
@@ -47,8 +48,6 @@
 
 (def ^:private ^:const bottle-xp-color -13083194)
 
-(def ^:private ^:const base-potion-color -13083194)
-
 (def ^:private ^:const splash-range-sq 16.0)
 
 (def ^:private ^:const pearl-damage 5.0)
@@ -80,69 +79,8 @@
    :experience-bottle {:power 0.7 :offset -20.0
                        :sound :experience-bottle/throw}})
 
-(defn- contents [stack]
-  (get-in stack [:components :potion-contents]))
-
-(defn- water-potion? [stack]
-  (let [c (contents stack)]
-    (and (= :water (:potion c)) (empty? (:custom-effects c)))))
-
-(defn- brewed [c]
-  (get (data/potions) (:potion c)))
-
-(defn- all-effects [c]
-  (concat (brewed c) (:custom-effects c)))
-
-(defn- visible? [e]
-  (get-in e [:details :show-particles] true))
-
-(defn- amplifier ^long [e]
-  (long (or (:amplifier e) (get-in e [:details :amplifier]) 0)))
-
-(defn- effect-color ^long [e]
-  (long (:color (get (data/mob-effects) (:effect e)) 0)))
-
-(defn- color-byte ^long [e ^long shift]
-  (bit-and (bit-shift-right (effect-color e) shift) 0xFF))
-
-(defn- channel ^long [rows ^long shift ^long weight]
-  (let [add (fn ^long [^long a e]
-              (+ a (* (inc (amplifier e)) (color-byte e shift))))]
-    (quot (reduce add 0 rows) weight)))
-
-(defn- blend [effects]
-  (let [rows (filterv visible? effects)
-        w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
-    (when (pos? w)
-      (bit-or -16777216 (bit-shift-left (channel rows 16 w) 16)
-              (bit-shift-left (channel rows 8 w) 8)
-              (channel rows 0 w)))))
-
-(defn potion-color
-  "Returns the colour the client paints the splash and cloud with."
-  ^long [stack]
-  (let [c (contents stack)]
-    (long (or (:custom-color c) (blend (all-effects c))
-              base-potion-color))))
-
-(defn has-effects?
-  "Returns true when the potion in stack carries any effect, its own
-  or a custom one."
-  [stack]
-  (let [c (contents stack)]
-    (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
-
-(defn- instant? [e]
-  (:instant? (get (data/mob-effects) (:effect e))))
-
-(defn has-instant-effects?
-  "Returns true when the potion itself acts at once.
-  Custom effects do not count."
-  [stack]
-  (boolean (some instant? (brewed (contents stack)))))
-
 (defn- break-event [stack]
-  (if (has-instant-effects? stack)
+  (if (potion/has-instant-effects? stack)
     :particles-instant-potion-splash
     :particles-spell-potion-splash))
 
@@ -330,7 +268,7 @@
   (let [stack (:stack e)]
     {:type     :area-effect-cloud :pos at :vel [0.0 0.0 0.0]
      :yaw      0.0 :pitch 0.0 :on-ground false :owner (:owner e)
-     :radius   3.0 :stack stack :color (potion-color stack)
+     :radius   3.0 :stack stack :color (potion/color stack)
      :waiting? false :age 0 :duration 600 :wait-time 10
      :radius-per-tick (/ -3.0 600.0) :radius-on-use -0.5
      :victims {}}))
@@ -338,17 +276,17 @@
 (defn- floored [at] (mapv #(long (Math/floor (double %))) at))
 
 (defn- potion-deltas [world e at hit]
-  (let [stack (:stack e) water? (water-potion? stack)]
+  (let [stack (:stack e) water? (potion/water? stack)]
     (concat (when (and water? (= :block (:kind hit)))
               (dowse-deltas world hit))
             (when water? (doused-deltas world e at))
-            (when (and (not water?) (has-effects? stack)
+            (when (and (not water?) (potion/has-effects? stack)
                        (= :lingering-potion (:type e)))
               [[:spawn-entity (cloud-spec e at)]])
             [(out/all (out/level-event
                         (break-event stack)
                         (floored at)
-                        (potion-color stack)))])))
+                        (potion/color stack)))])))
 
 (defn- bottle-deltas [world eid d at hit]
   (let [roll #(random/of-key (:tick world) eid [:xp %])
@@ -477,7 +415,7 @@
 
 (defn- step-deltas [world eid e]
   (cond (= :firework-rocket (:type e)) (rocket/step-deltas world eid e)
-        (= :arrow (:type e)) (arrow/step-deltas world eid e)
+        (entity/arrow? e) (arrow/step-deltas world eid e)
         (wind? e) (or (wind-gone world eid e) (moving-deltas world eid e))
         :else (moving-deltas world eid e)))
 
@@ -499,7 +437,7 @@
 (defn- cloud-contact [world e ^long age ^double r]
   (cond
     (pos? (rem age cloud-period)) [r (:victims e)]
-    (not (has-effects? (:stack e))) [r {}]
+    (not (potion/has-effects? (:stack e))) [r {}]
     :else
     (let [left (kept-victims e age)
           taken (touched world (assoc e :victims left) r age)]
@@ -562,7 +500,7 @@
   "Returns the box [x0 z0 x1 z1] that thrown e sweeps in its move
   this tick."
   [world e]
-  (if (= :arrow (:type e))
+  (if (entity/arrow? e)
     (arrow/reach e)
     (let [p (:pos e) q (v/add p (drift world e))]
       [(min (v/x p) (v/x q)) (min (v/z p) (v/z q))

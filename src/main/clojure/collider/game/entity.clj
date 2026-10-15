@@ -18,7 +18,15 @@
 
 (def thrown-types
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
-    :experience-bottle :wind-charge :firework-rocket :arrow})
+    :experience-bottle :wind-charge :firework-rocket :arrow
+    :spectral-arrow})
+
+(def ^:private arrow-types #{:arrow :spectral-arrow})
+
+(defn arrow?
+  "Returns true when e is an arrow of any kind."
+  [e]
+  (contains? arrow-types (:type e)))
 
 (defn player?
   [e]
@@ -81,7 +89,7 @@
     :area-effect-cloud (types/map->Cloud m)
     (:painting :item-frame :glow-item-frame) (types/map->Hanging m)
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
-     :experience-bottle :firework-rocket :arrow)
+     :experience-bottle :firework-rocket :arrow :spectral-arrow)
     (types/map->Projectile m)
     (compact (types/map->Mob m))))
 
@@ -146,7 +154,7 @@
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
 (defn- kind [type]
-  (cond (= :arrow type) :arrow
+  (cond (arrow-types type) :arrow
         (contains? thrown-types type) :thrown
         (contains? hanging/types type) :hanging
         (#{:item :tnt :falling-block :area-effect-cloud
