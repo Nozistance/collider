@@ -264,6 +264,7 @@
    :sound-pointed-dripstone-land     1045
    :sound-drip-lava-into-cauldron    1046
    :sound-drip-water-into-cauldron   1047
+   :sound-sulfur-spike-land          1052
    :composter-fill                   1500
    :lava-fizz                        1501
    :dripstone-drip                   1504

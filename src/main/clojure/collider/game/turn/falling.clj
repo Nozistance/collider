@@ -46,8 +46,9 @@
           stack {:item (block/block-of (:block e)) :count 1}]
       [[:spawn-entity (entity/item (:pos e) vel stack)]])))
 
-(defn- speleothem? [^long st]
-  (= :pointed-dripstone (block/type-of st)))
+(def ^:private spike-landings
+  {:pointed-dripstone :sound-pointed-dripstone-land
+   :sulfur-spike :sound-sulfur-spike-land})
 
 (defn- anvil? [^long st] (= :anvil (block/type-of st)))
 
@@ -66,8 +67,8 @@
 
 (defn- broken-deltas [world eid e cell]
   (concat [[:remove-entity eid]]
-          (when (speleothem? (:block e))
-            [(land-event :sound-pointed-dripstone-land cell)])
+          (when-let [k (spike-landings (block/type-of (:block e)))]
+            [(land-event k cell)])
           (when (anvil? (:block e))
             [(land-event :sound-anvil-broken cell)])
           (item-deltas world eid e)))

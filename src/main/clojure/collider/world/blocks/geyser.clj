@@ -16,7 +16,9 @@
   [^long st]
   (:potent-sulfur-state (block/props-of st)))
 
-(defn- passable? [^long st]
+(defn passable?
+  "Returns true when the gas and the plume of a geyser pass st."
+  [^long st]
   (or (= :water (block/block-of st))
       (= :scaffolding (block/type-of st))
       (empty? (block/collision-boxes st))))

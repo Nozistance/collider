@@ -7,7 +7,8 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private grows-on {:pointed-dripstone :dripstone-block})
+(def ^:private grows-on
+  {:pointed-dripstone :dripstone-block :sulfur-spike :sulfur})
 
 (def ^:private max-growth-length
   {:pointed-dripstone 7 :sulfur-spike 2})
@@ -283,13 +284,15 @@
           (grown chunks q :up self)
           (grows-up? chunks q self)
           (grown chunks (dir/down q) :up self)
-          (not (drips-through? n)) nil
+          (and (= :pointed-dripstone self) (not (drips-through? n)))
+          nil
           :else (recur (inc i) (dir/down q)))))))
 
 (defn- can-grow? [chunks p self]
   (let [above (chunk/at-void chunks (dir/up p))]
     (and (= (grows-on self) (block/block-of above))
-         (water-source-at? chunks (dir/up (dir/up p))))))
+         (or (not= :pointed-dripstone self)
+             (water-source-at? chunks (dir/up (dir/up p)))))))
 
 (defn- grow-tip [chunks tip self roll]
   (let [tst (chunk/at-void chunks tip)]
@@ -306,10 +309,10 @@
         (grow-tip chunks tip self roll)))))
 
 (defn random-changes
-  "Returns the growth a random tick makes on the dripstone st at p,
+  "Returns the growth a random tick makes on the spike st at p,
   or nil when it does not grow."
   [chunks p ^long st roll]
-  (when (and (= :pointed-dripstone (block/type-of st))
+  (when (and (contains? grows-on (block/type-of st))
              (< (double (roll :grow)) growth-chance)
              (start-pos? chunks p st))
     (grow-changes chunks p st roll)))
