@@ -200,7 +200,8 @@
       (let [room (- (slot-max layout slot stack) have)
             put (max 0 (min (long n) (count-of stack) room))
             inv (cond-> inv
-                  (pos? put) (assoc slot (sized stack (+ have put))))]
+                  (pos? put) (assoc slot (sized (or here stack)
+                                               (+ have put))))]
         [inv (sized stack (- (count-of stack) put))]))))
 
 (defn- locked? [m slot]
