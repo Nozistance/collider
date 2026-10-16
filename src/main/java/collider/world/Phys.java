@@ -10,14 +10,6 @@ import java.util.Arrays;
 /// bottom and flags are the body as Collision.shape takes it.
 public final class Phys {
 
-    /// The mark of a fire cell in the table of burns.
-    public static final long FIRE = 1;
-
-    /// The mark of a lava cell in the table of burns.
-    public static final long LAVA = 2;
-
-    private static final long ALL_BURNS = FIRE | LAVA;
-
     private static final double EPS = 1.0E-7;
 
     private static final double EQUAL_SLACK = 1.0E-5F;
@@ -390,25 +382,6 @@ public final class Phys {
         return wet ? s : null;
     }
 
-    private static boolean near(ChunkIndex chunks, byte[] bits, long[] span) {
-        for (long sx = span[0] >> 4; sx <= (span[1] - 1) >> 4; sx++) {
-            for (long sy = span[2] >> 4; sy <= (span[3] - 1) >> 4; sy++) {
-                for (long sz = span[4] >> 4; sz <= (span[5] - 1) >> 4; sz++) {
-                    Section s = Chunk.sectionAt(
-                            chunks,
-                            (int) sx << 4,
-                            (int) sy << 4,
-                            (int) sz << 4
-                    );
-                    if (s != null && s.holds(bits)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
     /// Returns true when some cell from x0, y0, z0 up to x1, y1, z1,
     /// the high ends left out, holds a state that marks is true for.
     public static boolean someCell(
@@ -432,24 +405,6 @@ public final class Phys {
             }
         }
         return false;
-    }
-
-    /// Returns the marks in bits of the cells of the span, x0 x1 y0 y1
-    /// z0 z1 with the high ends left out.
-    public static long burns(ChunkIndex chunks, byte[] bits, long[] span) {
-        if (!near(chunks, bits, span)) {
-            return 0;
-        }
-        long acc = 0;
-        for (long x = span[0]; x < span[1] && acc != ALL_BURNS; x++) {
-            for (long y = span[2]; y < span[3] && acc != ALL_BURNS; y++) {
-                for (long z = span[4]; z < span[5] && acc != ALL_BURNS; z++) {
-                    int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
-                    acc |= st >= 0 && st < bits.length ? bits[st] : 0;
-                }
-            }
-        }
-        return acc;
     }
 
     /// Returns true when the box of a body with half width half and

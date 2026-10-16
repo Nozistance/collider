@@ -221,8 +221,10 @@
     (when (pos? st) (liquid-class st))))
 
 (defn- wet-cell [chunks y acc cls [_ cy :as c]]
-  (let [h (- (+ (double cy) (height-in chunks c)) (double y))]
-    (if (< h fluid-margin) acc (with-cell acc cls h c chunks))))
+  (let [top (+ (double cy) (height-in chunks c))]
+    (if (< top (+ (double y) fluid-margin))
+      acc
+      (with-cell acc cls (- top (double y)) c chunks))))
 
 (defn- scan-cells [chunks y x0 x1 y0 y1 z0 z1]
   (let [x1 (long x1) y0 (long y0) y1 (long y1)

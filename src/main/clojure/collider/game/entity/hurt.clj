@@ -44,8 +44,6 @@
 
 (def ^:private ^:const adult-voice-pitch 1.0)
 
-(def ^:private ^:const fluid-margin 0.001)
-
 (def ^:private ^:const fire-damage-period 20)
 
 (def ^:private ^:const ticks-per-second 20)
@@ -172,43 +170,17 @@
 
 (defn- box-of [e] (entity/box e))
 
-(defn- any-bit? [^long flags ^long mask]
-  (not (zero? (bit-and flags mask))))
+(defn- burns? [st]
+  (or (block/lava? st) (block/fire? st) (= :soul-fire (block/type-of st))))
 
-(defn- floor-lo ^long [^double a]
-  (long (Math/floor (+ a fluid-margin))))
-
-(defn- floor-hi ^long [^double a]
-  (long (Math/ceil (- a fluid-margin))))
-
-(defn- span
-  ^longs [p ^double half ^double height]
-  (let [px (v/x p) py (v/y p) pz (v/z p)]
-    (doto (long-array 6)
-      (aset 0 (floor-lo (- px half))) (aset 1 (floor-hi (+ px half)))
-      (aset 2 (max chunk/min-y (floor-lo py)))
-      (aset 3 (min (inc chunk/max-y) (floor-hi (+ py height))))
-      (aset 4 (floor-lo (- pz half))) (aset 5 (floor-hi (+ pz half))))))
-
-(defn- burn-bit ^long [st]
-  (cond (block/lava? st) phys/lava-mark
-        (or (block/fire? st) (= :soul-fire (block/type-of st)))
-        phys/fire-mark
-        :else 0))
-
-(def ^:private ^:table burn-bits
-  (delay
-    (let [a (byte-array (data/block-state-count))]
-      (dotimes [st (alength a)] (aset a st (byte (burn-bit st))))
-      a)))
-
-(defn- probe
-  "Returns the flags of the burning blocks entity e touches.
-  Zero means it touches none."
-  (^long [world e] (probe world e (box-of e)))
-  (^long [world e [half height]]
-   (phys/burns (:chunks world) @burn-bits
-               (span (:pos e) (double half) (double height)))))
+(defn- in-lava?
+  "Returns true when entity e is in lava. It never is in its first
+  tick."
+  [world e]
+  (and (not= 1 (entity/tick-count world e))
+       (let [[half height] (box-of e)]
+         (pos? (liquid/fluid-height
+                 (:chunks world) (:pos e) half height :lava)))))
 
 (defn- burning-flag [eid e ^long fire]
   (let [lit? (pos? fire)]
@@ -223,10 +195,10 @@
 
 (def ^:private out-of-world {:type :out-of-world})
 
-(defn- burn-tick-deltas [eid fire wet? in-lava?]
-  (when (and (pos? fire) (not wet?))
+(defn- burn-tick-deltas [world eid e fire]
+  (when (pos? fire)
     (let [due? (and (zero? (rem fire fire-damage-period))
-                    (not in-lava?))]
+                    (not (in-lava? world e)))]
       (cond-> [[:merge-entity eid {:fire (dec fire)}]]
               due? (conj [:damage eid 1.0 on-fire])))))
 
@@ -602,7 +574,7 @@
 (def ^:private ^:table loose-harm
   (delay (block/state-table
            :boolean
-           #(or (pos? (burn-bit %)) (= :cactus (block/type-of %))))))
+           #(or (burns? %) (= :cactus (block/type-of %))))))
 
 (defn stirred?
   "Returns true when item or orb e lies in fire, lava or a cactus."
@@ -626,9 +598,9 @@
   takes them."
   [world e wet? met]
   (let [fire (long (or (:fire e) 0))
-        lava? (any-bit? (probe world e) phys/lava-mark)
-        due? (and (pos? fire) (not wet?) (not lava?)
-                  (zero? (rem fire fire-damage-period)))
+        due? (and (pos? fire) (not wet?)
+                  (zero? (rem fire fire-damage-period))
+                  (not (in-lava? world e)))
         [r hurts] ((stepped-fire fire-lit identity true)
                    [(burnt-down fire wet?) []] met)]
     [r (concat (when due? [[1.0 on-fire]]) (pricks world e) hurts)]))
@@ -1053,7 +1025,7 @@
   Outside lava it takes one hurt every second."
   [world eid e ^long fire]
   (when (and (zero? (rem fire fire-damage-period))
-             (not (any-bit? (probe world e) phys/lava-mark)))
+             (not (in-lava? world e)))
     (damage-deltas world eid e 1.0 on-fire)))
 
 (defn- burn-deltas [world eid e]
@@ -1061,8 +1033,7 @@
     (when (pos? fire)
       (if (entity/player? e)
         (player-burn-deltas world eid e fire)
-        (let [lava? (any-bit? (probe world e) phys/lava-mark)]
-          (burn-tick-deltas eid fire false lava?))))))
+        (burn-tick-deltas world eid e fire)))))
 
 (defn burnt-deltas
   "Returns the deltas of the fire living entity eid burns in,

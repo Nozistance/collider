@@ -158,20 +158,6 @@
   (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
             half height))
 
-(def ^:const fire-mark
-  "The mark of a fire cell in the bits burns takes."
-  Phys/FIRE)
-
-(def ^:const lava-mark
-  "The mark of a lava cell in the bits burns takes."
-  Phys/LAVA)
-
-(defn burns
-  "Returns the marks in bits of the cells of span, x0 x1 y0 y1 z0 z1
-  with the high ends left out."
-  ^long [chunks ^bytes bits ^longs span]
-  (Phys/burns chunks bits span))
-
 (defn- some-cell-form [chunks marks x0 y0 z0 x1 y1 z1]
   `(Phys/someCell ~chunks ~marks (long ~x0) (long ~y0) (long ~z0)
                   (long ~x1) (long ~y1) (long ~z1)))

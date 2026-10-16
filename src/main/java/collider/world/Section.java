@@ -527,20 +527,6 @@ public final class Section {
         return false;
     }
 
-    /// Returns true when the section may hold a state not zero in
-    /// pred. A section without a palette always may.
-    public boolean holds(byte[] pred) {
-        if (pal == null) {
-            return true;
-        }
-        for (int id : pal) {
-            if (id < pred.length && pred[id] != 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /// Sets each zero entry of the 256 columns of out to the height
     /// above base of the top block in that column that pred marks.
     /// A column without one stays zero.
