@@ -1,28 +1,19 @@
 package collider.world.space;
 
 /// A goal cell of one path search, with the node that came closest
-/// to it so far.
+/// to it so far, null while none did.
 public final class PathTarget {
 
     public final long x;
-
     public final long y;
-
     public final long z;
-
     private double best = Float.MAX_VALUE;
-    private PathNode node;
+    PathNode node;
 
-    /// Makes the goal cell `x`, `y`, `z` that no node came near yet.
     public PathTarget(long x, long y, long z) {
         this.x = x;
         this.y = y;
         this.z = z;
-    }
-
-    /// Returns the node that came closest, null when none did.
-    public PathNode node() {
-        return node;
     }
 
     void offer(double h, PathNode n) {

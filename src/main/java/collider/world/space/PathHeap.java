@@ -4,12 +4,12 @@ import java.util.Arrays;
 
 /// The open set of a path search with the node of the lowest total
 /// score on top.
-public final class PathHeap {
+final class PathHeap {
 
     private PathNode[] a = new PathNode[128];
     private int n;
 
-    public boolean isEmpty() {
+    boolean isEmpty() {
         return n == 0;
     }
 
@@ -32,8 +32,12 @@ public final class PathHeap {
 
     private int lowerChild(int i) {
         int l = 2 * i + 1, r = l + 1;
-        if (l >= n) return -1;
-        if (r >= n) return l;
+        if (l >= n) {
+            return -1;
+        }
+        if (r >= n) {
+            return l;
+        }
         return a[l].f < a[r].f ? l : r;
     }
 
@@ -48,9 +52,11 @@ public final class PathHeap {
         put(i, node);
     }
 
-    /// Adds `node`, whose total score is set.
-    public void insert(PathNode node) {
-        if (n == a.length) a = Arrays.copyOf(a, 2 * n);
+    /// Adds node, whose total score is set.
+    void insert(PathNode node) {
+        if (n == a.length) {
+            a = Arrays.copyOf(a, 2 * n);
+        }
         put(n, node);
         n++;
         up(n - 1);
@@ -58,13 +64,15 @@ public final class PathHeap {
 
     /// Removes and returns the node of the lowest total score. The
     /// open set must not be empty.
-    public PathNode pop() {
+    PathNode pop() {
         PathNode top = a[0];
         int last = n - 1;
         put(0, a[last]);
         a[last] = null;
         n = last;
-        if (last > 0) down(0);
+        if (last > 0) {
+            down(0);
+        }
         top.heapIdx = -1;
         return top;
     }

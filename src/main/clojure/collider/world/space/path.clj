@@ -189,6 +189,12 @@
                         (chunk/level-min-y lv) (long x) (long y)
                         (long z))))
 
+(defn shape-top
+  "Returns the top of the collision shape of block state st, in
+  blocks, 0.0 when it has none."
+  ^double [^long st]
+  (Path/shapeTop (block/collision-arr) st))
+
 (defn- malus-arr ^doubles [mob]
   (double-array (map #(path-type-malus mob %) path-types)))
 
@@ -303,10 +309,10 @@
   {:x (.-x n) :y (.-y n) :z (.-z n)
    :type (nth path-types (.kind n))})
 
-(defn- reconstruct [t reached?]
+(defn- reconstruct [^PathTarget t reached?]
   (let [c (Path/route t)]
     {:nodes          (mapv node-map c)
-     :target         (vec (Path/goal t))
+     :target         [(.-x t) (.-y t) (.-z t)]
      :reached?       reached?
      :dist-to-target (Path/gap t)}))
 

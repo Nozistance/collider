@@ -56,11 +56,11 @@ public final class Path {
     private final Scratch<PathNode> nodes = new Scratch<>(256);
     private final Scratch<Integer> typed = new Scratch<>(256);
 
-    /// Makes one search for `mob` over `chunks` from `minY` up.
-    /// `types`, `forced` and `water` hold the path type, the type
-    /// forced upon neighbours (-1 for none) and whether it is water,
-    /// for each block state. `malus` holds the malus of the mob and
-    /// `baseMalus` the default malus, for each path type.
+    /// Makes one search for mob over chunks from minY up. For each
+    /// block state, the arrays types, forced and water hold its path
+    /// type, the type it forces upon neighbours (-1 for none) and
+    /// whether it is water. For each path type, the array malus holds
+    /// the malus of the mob and baseMalus the default one.
     public Path(
             ChunkIndex chunks,
             long minY,
@@ -109,14 +109,14 @@ public final class Path {
                 | (z < 0 ? 32768 : 0));
     }
 
-    /// Returns the node of the cell `x`, `y`, `z` of search `p` and
-    /// adds it when absent. Cells that share a key share a node.
-    public static PathNode node(Path p, long x, long y, long z) {
+    /// Returns the node of the cell x, y, z and adds it when absent.
+    /// Cells that share a key share a node.
+    private PathNode node(long x, long y, long z) {
         long k = key(x, y, z);
-        PathNode n = p.nodes.get(k);
+        PathNode n = nodes.get(k);
         if (n == null) {
             n = new PathNode(x, y, z);
-            p.nodes.put(k, n);
+            nodes.put(k, n);
         }
         return n;
     }
@@ -149,8 +149,8 @@ public final class Path {
         };
     }
 
-    /// Returns the path type of the cell `x`, `y`, `z` for a mob one
-    /// cell tall, in a level from `lo` up.
+    /// Returns the path type of the cell x, y, z for a mob one cell
+    /// tall, in a level from lo up.
     public static int staticType(
             ChunkIndex chunks,
             int[] types,
@@ -173,7 +173,9 @@ public final class Path {
         if (t == DOOR_WOOD_CLOSED && openDoors && passDoors) {
             return WALKABLE_DOOR;
         }
-        if (t == DOOR_OPEN && !passDoors) return BLOCKED;
+        if (t == DOOR_OPEN && !passDoors) {
+            return BLOCKED;
+        }
         if (t == RAIL
                 && staticAt(mx, my, mz) != RAIL
                 && staticAt(mx, my - 1, mz) != RAIL) {
@@ -191,14 +193,20 @@ public final class Path {
         if (Integer.bitCount(set) == 1) {
             return Integer.numberOfTrailingZeros(set);
         }
-        if ((set & (1 << FENCE)) != 0) return FENCE;
-        if ((set & (1 << UNPASSABLE_RAIL)) != 0) return UNPASSABLE_RAIL;
+        if ((set & (1 << FENCE)) != 0) {
+            return FENCE;
+        }
+        if ((set & (1 << UNPASSABLE_RAIL)) != 0) {
+            return UNPASSABLE_RAIL;
+        }
         int bt = BLOCKED;
         double bm = malus[BLOCKED];
         for (int s = set; s != 0; s &= s - 1) {
             int t = Integer.numberOfTrailingZeros(s);
             double m = malus[t];
-            if (m < 0.0) return t;
+            if (m < 0.0) {
+                return t;
+            }
             if (m >= bm) {
                 bt = t;
                 bm = m;
@@ -212,12 +220,14 @@ public final class Path {
         return cur == OPEN && bt != OPEN && bm == 0.0 ? OPEN : bt;
     }
 
-    /// Returns the path type of the cell `x`, `y`, `z` for the mob of
-    /// search `p`. One search types each cell once.
+    /// Returns the path type of the cell x, y, z for the mob of search
+    /// p. One search types each cell once.
     public static int typeOf(Path p, long x, long y, long z) {
         long k = Scratch.cell(x, y, z);
         Integer t = p.typed.get(k);
-        if (t != null) return t;
+        if (t != null) {
+            return t;
+        }
         int v = p.typedForMob(x, y, z);
         p.typed.put(k, v);
         return v;
@@ -226,29 +236,31 @@ public final class Path {
     private double floorLevel(long x, long y, long z) {
         if (floats) {
             int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
-            if (st < water.length && water[st]) return y + 0.5;
+            if (st < water.length && water[st]) {
+                return y + 0.5;
+            }
         }
         int below = Chunk.blockAt(chunks, (int) x, (int) (y - 1), (int) z);
         return (y - 1) + shapeTop(shapes, below);
     }
 
     private PathNode withCost(long x, long y, long z, int t, double m) {
-        PathNode n = node(this, x, y, z);
+        PathNode n = node(x, y, z);
         n.kind = t;
         n.setMalus(Math.max(n.malus(), m));
         return n;
     }
 
     private PathNode blocked(long x, long y, long z) {
-        PathNode n = node(this, x, y, z);
+        PathNode n = node(x, y, z);
         n.kind = BLOCKED;
         n.setMalus(-1.0);
         return n;
     }
 
     private PathNode closedAt(long x, long y, long z, int t) {
-        PathNode n = node(this, x, y, z);
-        n.close();
+        PathNode n = node(x, y, z);
+        n.closed = true;
         n.kind = t;
         n.setMalus(baseMalus[t]);
         return n;
@@ -260,11 +272,17 @@ public final class Path {
 
     private PathNode groundBelow(long x, long y, long z) {
         for (long cy = y - 1; ; cy--) {
-            if (cy < minY) return blocked(x, y, z);
-            if (y - cy > maxFall) return blocked(x, cy, z);
+            if (cy < minY) {
+                return blocked(x, y, z);
+            }
+            if (y - cy > maxFall) {
+                return blocked(x, cy, z);
+            }
             int t = typeOf(this, x, cy, z);
+            if (t == OPEN) {
+                continue;
+            }
             double m = malus[t];
-            if (t == OPEN) continue;
             return m >= 0.0 ? withCost(x, cy, z, t, m) : blocked(x, cy, z);
         }
     }
@@ -272,7 +290,9 @@ public final class Path {
     private PathNode nonWaterBelow(long x, long y, long z, PathNode best) {
         for (long cy = y - 1; cy > minY; cy--) {
             int t = typeOf(this, x, cy, z);
-            if (t != WATER) return best;
+            if (t != WATER) {
+                return best;
+            }
             best = withCost(x, cy, z, t, malus[t]);
         }
         return best;
@@ -288,9 +308,12 @@ public final class Path {
             int cur
     ) {
         PathNode above = accepted(x, y + 1, z, jump - 1, nh, dir, cur);
-        if (above == null) return null;
-        if (width >= 1.0) return above;
-        if (above.kind != OPEN && above.kind != WALKABLE) return above;
+        if (above == null || width >= 1.0) {
+            return above;
+        }
+        if (above.kind != OPEN && above.kind != WALKABLE) {
+            return above;
+        }
         long cx = x - DIRS[dir][0], cz = z - DIRS[dir][1];
         double hw = width / 2.0;
         double[] b = {
@@ -322,7 +345,9 @@ public final class Path {
         if (partial(cur) && best != null && best.malus() >= 0.0 && !canReach(best)) {
             best = null;
         }
-        if (t == WALKABLE) return best;
+        if (t == WALKABLE) {
+            return best;
+        }
         if ((best == null || best.malus() < 0.0)
                 && jump > 0
                 && (t != FENCE || overFences)
@@ -331,9 +356,15 @@ public final class Path {
                 && t != POWDER_SNOW) {
             return jumpOn(x, y, z, jump, nh, dir, cur);
         }
-        if (t == WATER && !floats) return nonWaterBelow(x, y, z, best);
-        if (t == OPEN) return groundBelow(x, y, z);
-        if (partial(t) && best == null) return closedAt(x, y, z, t);
+        if (t == WATER && !floats) {
+            return nonWaterBelow(x, y, z, best);
+        }
+        if (t == OPEN) {
+            return groundBelow(x, y, z);
+        }
+        if (partial(t) && best == null) {
+            return closedAt(x, y, z, t);
+        }
         return best;
     }
 
@@ -372,57 +403,58 @@ public final class Path {
         int k = 0;
         for (int d : HORIZONTAL) {
             PathNode n = side[d];
-            if (n != null && !n.closed() && (n.malus() >= 0.0 || pos.malus() < 0.0)) {
+            if (n != null && !n.closed && (n.malus() >= 0.0 || pos.malus() < 0.0)) {
                 out[k++] = n;
             }
         }
         for (int d : HORIZONTAL) {
             int cw = CLOCKWISE[d];
-            if (!diagonalOk(width, pos, side[d], side[cw])) continue;
+            if (!diagonalOk(width, pos, side[d], side[cw])) {
+                continue;
+            }
             long x = pos.x + DIRS[d][0] + DIRS[cw][0];
             long z = pos.z + DIRS[d][1] + DIRS[cw][1];
             PathNode n = accepted(x, pos.y, z, js, ph, d, cur);
-            if (n != null && !n.closed() && n.kind != WALKABLE_DOOR && n.malus() >= 0.0) {
+            if (n != null && !n.closed && n.kind != WALKABLE_DOOR && n.malus() >= 0.0) {
                 out[k++] = n;
             }
         }
         return k;
     }
 
-    /// Returns the node search `p` starts from, at the cell `x`, `y`,
-    /// `z`, typed for its mob.
+    /// Returns the node search p starts from, at the cell x, y, z,
+    /// typed for its mob.
     public static PathNode startAt(Path p, long x, long y, long z) {
-        PathNode n = node(p, x, y, z);
+        PathNode n = p.node(x, y, z);
         n.kind = typeOf(p, x, y, z);
         n.setMalus(p.malus[n.kind]);
         return n;
     }
 
-    /// Returns the nodes of the path to the node closest to `t`,
-    /// first to last.
+    /// Returns the nodes of the path to the node closest to t, first
+    /// to last.
     public static PathNode[] route(PathTarget t) {
         int k = 0;
-        for (PathNode n = t.node(); n != null; n = n.came) k++;
+        for (PathNode n = t.node; n != null; n = n.came) {
+            k++;
+        }
         PathNode[] r = new PathNode[k];
-        for (PathNode n = t.node(); n != null; n = n.came) r[--k] = n;
+        for (PathNode n = t.node; n != null; n = n.came) {
+            r[--k] = n;
+        }
         return r;
     }
 
-    public static long[] goal(PathTarget t) {
-        return new long[] {t.x, t.y, t.z};
-    }
-
-    /// Returns how far the node closest to `t` stays from it, the
+    /// Returns how far the node closest to t stays from it, the
     /// largest float when no node came near.
     public static double gap(PathTarget t) {
-        PathNode n = t.node();
+        PathNode n = t.node;
         return n == null ? Float.MAX_VALUE : n.manhattan(t.x, t.y, t.z);
     }
 
-    /// Runs search `p` from `from` towards `targets` and returns the
-    /// targets it reached within `reach`, null when it reached none.
-    /// It visits fewer than `maxv` nodes and walks no further than
-    /// `maxlen` from `from`.
+    /// Runs search p from the node from and returns the targets it
+    /// reached within reach, null when it reached none. It visits
+    /// fewer than maxv nodes and walks no further than maxlen.
     public static PathTarget[] run(
             Path p,
             PathNode from,
@@ -436,16 +468,20 @@ public final class Path {
         PathNode[] out = new PathNode[8];
         for (long c = 0; !heap.isEmpty() && c + 1 < maxv; c++) {
             PathNode cur = heap.pop();
-            cur.close();
+            cur.closed = true;
             int hits = 0;
             for (PathTarget t : targets) {
-                if (cur.manhattan(t.x, t.y, t.z) <= reach) hits++;
+                if (cur.manhattan(t.x, t.y, t.z) <= reach) {
+                    hits++;
+                }
             }
             if (hits > 0) {
                 PathTarget[] r = new PathTarget[hits];
                 int i = 0;
                 for (PathTarget t : targets) {
-                    if (cur.manhattan(t.x, t.y, t.z) <= reach) r[i++] = t;
+                    if (cur.manhattan(t.x, t.y, t.z) <= reach) {
+                        r[i++] = t;
+                    }
                 }
                 return r;
             }
@@ -459,34 +495,39 @@ public final class Path {
         return null;
     }
 
-    /// Returns what the first cell around `x`, `y`, `z` forces upon
-    /// it through `forced`, the forced type of each block state, in
-    /// the order the game scans them, or -1 when none does.
-    public static int forced(ChunkIndex chunks, int[] forced, long x, long y, long z) {
+    private static int forced(ChunkIndex chunks, int[] forced, long x, long y, long z) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dz == 0) continue;
+                    if (dx == 0 && dz == 0) {
+                        continue;
+                    }
                     int st = Chunk.blockAt(
                             chunks,
                             (int) (x + dx),
                             (int) (y + dy),
                             (int) (z + dz)
                     );
-                    if (st < 0 || st >= forced.length) continue;
+                    if (st < 0 || st >= forced.length) {
+                        continue;
+                    }
                     int f = forced[st];
-                    if (f >= 0) return f;
+                    if (f >= 0) {
+                        return f;
+                    }
                 }
             }
         }
         return -1;
     }
 
-    /// Returns the top of the collision shape of the block state
-    /// `st`, in blocks, 0 when it has no shape.
+    /// Returns the top of the collision shape of block state st, in
+    /// blocks, 0 when it has no shape.
     public static double shapeTop(Object[] shapes, int st) {
         double[] s = (double[]) shapes[st];
-        if (s.length == 0) return 0.0;
+        if (s.length == 0) {
+            return 0.0;
+        }
         double top = s[4];
         for (int k = 10; k < s.length; k += 6) {
             top = Math.max(top, s[k]);
@@ -495,7 +536,9 @@ public final class Path {
     }
 
     private static boolean cellHits(double[] s, double[] b, long x, long y, long z) {
-        if (s == null) return false;
+        if (s == null) {
+            return false;
+        }
         for (int k = 0; k < s.length; k += 6) {
             if (x + s[k + 3] > b[0]
                     && x + s[k] < b[3]
@@ -509,8 +552,8 @@ public final class Path {
         return false;
     }
 
-    /// Returns true when the box `b` meets a collision shape of a
-    /// block as the mob meets it. `b` holds the min and max x, y, z.
+    /// Returns true when box b meets a collision shape of a block as
+    /// the mob meets it. The box lists its low corner first.
     private boolean collides(double[] b) {
         long x1 = (long) Math.floor(b[3] + EPS);
         long y1 = (long) Math.floor(b[4] + EPS);
@@ -529,7 +572,9 @@ public final class Path {
                             py,
                             ctx
                     );
-                    if (cellHits(s, b, x, y, z)) return true;
+                    if (cellHits(s, b, x, y, z)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -537,7 +582,7 @@ public final class Path {
     }
 
     /// Returns true when the mob box slides from where it stands to
-    /// the node `n` without meeting a collision shape.
+    /// node n without meeting a collision shape.
     private boolean canReach(PathNode n) {
         double dx = (n.x - px) + width / 2.0;
         double dy = (n.y - py) + height / 2.0;
@@ -556,14 +601,15 @@ public final class Path {
             b[3] += sx;
             b[4] += sy;
             b[5] += sz;
-            if (collides(b)) return false;
+            if (collides(b)) {
+                return false;
+            }
         }
         return true;
     }
 
-    /// Returns the smallest straight distance from `n` to the
-    /// `targets`, and lets each target keep `n` when `n` is the
-    /// closest node to it so far.
+    /// Returns the smallest straight distance from n to the targets.
+    /// Each target keeps n when n is the closest node to it so far.
     private static double nearestOffered(PathTarget[] targets, PathNode n) {
         double best = Float.MAX_VALUE;
         for (PathTarget t : targets) {
@@ -574,7 +620,6 @@ public final class Path {
         return best;
     }
 
-    /// Starts a search from the node `from` into `heap`.
     private static void start(PathHeap heap, PathTarget[] targets, PathNode from) {
         from.g = 0.0;
         from.h = PathNode.fl(nearestOffered(targets, from));
@@ -582,9 +627,6 @@ public final class Path {
         heap.insert(from);
     }
 
-    /// Lets the search step from `cur` onto its neighbour `n`. The
-    /// step counts when the walked length stays under `maxlen` and
-    /// it is the cheapest way to `n` so far.
     private static void relax(
             PathHeap heap,
             PathTarget[] targets,

@@ -163,9 +163,8 @@
         resist ^floats (if wind? @wind-resist-table @resist-table)
         power (double power) h (long (hash seed))]
     (fn [[from to]]
-      (Rays/hit
-        (Rays/cast e (summoner rg) resist ox oy oz cx cy cz power h
-                   (int from) (int to))))))
+      (Rays/cast e (summoner rg) resist ox oy oz cx cy cz power h
+                 (int from) (int to)))))
 
 (defn rays
   "Returns the cells of the cube at the centre that the rays of a

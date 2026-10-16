@@ -16,7 +16,7 @@ import clojure.lang.Atom;
 /// @param ncz The size of the grid along z, in chunks.
 /// @param nsy The size of the grid along y, in sections.
 /// @param readAbsent The function that reads an absent chunk, or nil.
-/// @param loaded The chunks that `readAbsent` gave, by id.
+/// @param loaded The chunks that readAbsent gave, by id.
 public record SectionGrid(
         Object[] grid,
         Object[] cols,

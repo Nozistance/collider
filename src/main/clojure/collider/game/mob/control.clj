@@ -7,8 +7,8 @@
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
-  (:import (collider.world.space Path)))
+            [collider.world.chunk :as chunk]
+            [collider.world.space.path :as path]))
 
 (set! *warn-on-reflection* true)
 
@@ -29,8 +29,7 @@
 (defn shape-top
   "Returns how high the collision shape of the cell x y z reaches."
   ^double [chunks ^long x ^long y ^long z]
-  (Path/shapeTop (block/collision-arr)
-                 (chunk/block-state chunks x y z)))
+  (path/shape-top (chunk/block-state chunks x y z)))
 
 (defn floor-level
   "Returns the height the floor under the cell x y z stands at."

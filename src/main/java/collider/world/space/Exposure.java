@@ -10,7 +10,7 @@ import collider.world.Section;
 public final class Exposure {
 
     /// The width of the cube of cells that an exposure keeps.
-    public static final int W = 24;
+    private static final int W = 24;
 
     private static final int S = W + 1;
 
@@ -25,10 +25,10 @@ public final class Exposure {
     private char[] sums;
     private byte columnsRead;
 
-    /// Makes the exposure of a blast at `cx`, `cy`, `cz` through the
-    /// sections of `rg`, with nothing read yet. `shapes` holds the
-    /// collision boxes of each block state at the origin and `kinds`
-    /// the collision kind of each block state.
+    /// Makes the exposure of a blast at cx, cy, cz through the sections
+    /// of rg, with nothing read yet. For each block state, the array
+    /// shapes holds its collision boxes at the origin and the array
+    /// kinds its collision kind.
     public Exposure(
             SectionGrid rg,
             Object[] shapes,
@@ -53,66 +53,64 @@ public final class Exposure {
         if (states != null && inCube(ix, iy, iz)) {
             return states[(ix * W + iy) * W + iz];
         }
-        return read(x, y, z);
+        return Rays.readBlock(rg, x, y, z);
     }
 
     private static boolean inCube(int ix, int iy, int iz) {
         return ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W;
     }
 
-    private int read(int x, int y, int z) {
-        return Rays.readBlock(rg, x, y, z);
-    }
-
     private boolean allColumnsRead() {
-        if (columnsRead == 0) columnsRead = (byte) (present() ? 1 : -1);
+        if (columnsRead == 0) {
+            columnsRead = (byte) (present() ? 1 : -1);
+        }
         return columnsRead > 0;
     }
 
     private boolean present() {
-        if (rg.readAbsent() == null) return true;
+        if (rg.readAbsent() == null) {
+            return true;
+        }
         int x0 = Math.max((ox >> 4) - rg.cx0(), 0);
         int x1 = Math.min(((ox + W - 1) >> 4) - rg.cx0(), rg.ncx() - 1);
         int z0 = Math.max((oz >> 4) - rg.cz0(), 0);
         int z1 = Math.min(((oz + W - 1) >> 4) - rg.cz0(), rg.ncz() - 1);
         for (int ix = x0; ix <= x1; ix++) {
             for (int iz = z0; iz <= z1; iz++) {
-                if (rg.cols()[ix * rg.ncz() + iz] == null) return false;
+                if (rg.cols()[ix * rg.ncz() + iz] == null) {
+                    return false;
+                }
             }
         }
         return true;
     }
 
-    /// Returns true when every column of the grid of `e` is present.
-    /// No read changes a frozen `e`, so its reads may run at once.
+    /// Returns true when every column of the grid of e is present. No
+    /// read changes a frozen e, so its reads may run at once.
     public static boolean frozen(Exposure e) {
         if (e.rg.readAbsent() != null) {
             for (Object col : e.rg.cols()) {
-                if (col == null) return false;
+                if (col == null) {
+                    return false;
+                }
             }
         }
         e.allColumnsRead();
-        if (e.sums == null) e.build();
+        if (e.sums == null) {
+            e.build();
+        }
         return true;
     }
 
-    /// Returns the block state at `x`, `y`, `z` in the region of `e`,
-    /// inside the cube of cells of `e` or outside it.
-    public static int block(Exposure e, IFn summon, int x, int y, int z) {
+    static int block(Exposure e, IFn summon, int x, int y, int z) {
         int ix = x - e.ox, iy = y - e.oy, iz = z - e.oz;
         if (inCube(ix, iy, iz) && e.allColumnsRead()) {
-            if (e.sums == null) e.build();
+            if (e.sums == null) {
+                e.build();
+            }
             return e.states[(ix * W + iy) * W + iz];
         }
         return Rays.block(e.rg, summon, x, y, z);
-    }
-
-    private boolean mayCollide(int st) {
-        return Collision.mayCollide(shapes, kinds, st);
-    }
-
-    private double[] shape(int st, int x, int y, int z, double bottom, int flags) {
-        return Collision.shape(shapes, kinds, st, x, y, z, bottom, flags);
     }
 
     private static int sumIndex(int ix, int iy, int iz) {
@@ -124,7 +122,9 @@ public final class Exposure {
         for (int iy = 0; iy < W; iy++) {
             int y = oy + iy;
             int sy = (y >> 4) - rg.sy0();
-            if (sy < 0 || sy >= rg.nsy()) continue;
+            if (sy < 0 || sy >= rg.nsy()) {
+                continue;
+            }
             for (int iz = 0; iz < W; iz++) {
                 rowAlongX(st, y, sy, iz);
             }
@@ -164,7 +164,7 @@ public final class Exposure {
                     int b = st[from + iz];
                     if (b != last) {
                         last = b;
-                        hit = mayCollide(b) ? 1 : 0;
+                        hit = Collision.mayCollide(shapes, kinds, b) ? 1 : 0;
                     }
                     sm[to + iz] = (char) (sm[to + iz - 1] + hit);
                 }
@@ -176,7 +176,9 @@ public final class Exposure {
     }
 
     private static void addRow(char[] sm, int from, int to, int n) {
-        for (int k = 0; k < n; k++) sm[to + k] += sm[from + k];
+        for (int k = 0; k < n; k++) {
+            sm[to + k] += sm[from + k];
+        }
     }
 
     private int collidingIn(int x0, int y0, int z0, int x1, int y1, int z1) {
@@ -249,7 +251,9 @@ public final class Exposure {
                 && minB - EPS < pb
                 && pb < maxB + EPS
                 && minC - EPS < pc
-                && pc < maxC + EPS) return s;
+                && pc < maxC + EPS) {
+            return s;
+        }
         return -1.0;
     }
 
@@ -318,13 +322,20 @@ public final class Exposure {
             double bottom,
             int flags
     ) {
-        double[] b = shape(state(px, py, pz), px, py, pz, bottom, flags);
-        if (b == null) return false;
+        int st = state(px, py, pz);
+        double[] b = Collision.shape(shapes, kinds, st, px, py, pz, bottom, flags);
+        if (b == null) {
+            return false;
+        }
         double dx = tx - fx, dy = ty - fy, dz = tz - fz;
-        if (dx * dx + dy * dy + dz * dz < EPS) return false;
+        if (dx * dx + dy * dy + dz * dz < EPS) {
+            return false;
+        }
         double qx = fx + dx * 0.001, qy = fy + dy * 0.001;
         double qz = fz + dz * 0.001;
-        if (inside(b, qx - px, qy - py, qz - pz)) return true;
+        if (inside(b, qx - px, qy - py, qz - pz)) {
+            return true;
+        }
         return clipBoxes(b, px, py, pz, fx, fy, fz, dx, dy, dz);
     }
 
@@ -332,7 +343,9 @@ public final class Exposure {
         double tx = cx, ty = cy, tz = cz;
         if (Double.compare(fx, tx) == 0
                 && Double.compare(fy, ty) == 0
-                && Double.compare(fz, tz) == 0) return false;
+                && Double.compare(fz, tz) == 0) {
+            return false;
+        }
         double toX = lerp(-EPS, tx, fx), toY = lerp(-EPS, ty, fy);
         double toZ = lerp(-EPS, tz, fz);
         double frX = lerp(-EPS, fx, tx), frY = lerp(-EPS, fy, ty);
@@ -345,7 +358,9 @@ public final class Exposure {
                         Math.max(bx, floor(toX)) + 1,
                         Math.max(by, floor(toY)) + 1,
                         Math.max(bz, floor(toZ)) + 1)
-                == 0) return false;
+                == 0) {
+            return false;
+        }
         if (shapeHit(bx, by, bz, fx, fy, fz, tx, ty, tz, bottom, flags)) {
             return true;
         }
@@ -381,9 +396,9 @@ public final class Exposure {
     }
 
     /// Returns the share from 0.0 to 1.0 of the sample points of a body
-    /// box at `px`, `py`, `pz` with half width `half` and height
-    /// `height` that see the blast. `flags` tell how the body meets
-    /// the blocks whose shape depends on it.
+    /// box at px, py, pz with half width half and height height that
+    /// see the blast. The flags tell how the body meets the blocks
+    /// whose shape depends on it.
     public double density(
             double px,
             double py,
@@ -392,7 +407,9 @@ public final class Exposure {
             double height,
             int flags
     ) {
-        if (sums == null) build();
+        if (sums == null) {
+            build();
+        }
         double w = (float) half, h = (float) height;
         double x0 = px - w, z0 = pz - w;
         double x1 = px + w, y1 = py + h, z1 = pz + w;
@@ -416,7 +433,9 @@ public final class Exposure {
                     double x = lerp(xx, x0, x1) + xo;
                     double y = lerp(yy, py, y1);
                     double z = lerp(zz, z0, z1) + zo;
-                    if (clear || !clip(x, y, z, py, flags)) hits++;
+                    if (clear || !clip(x, y, z, py, flags)) {
+                        hits++;
+                    }
                     count++;
                 }
             }
