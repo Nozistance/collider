@@ -101,11 +101,7 @@ public final class Buf {
 
     /// Writes what deflater gives into the free room, which does not grow.
     public void deflate(Deflater deflater) {
-        writeIndex += deflater.deflate(
-                bytes,
-                writeIndex,
-                bytes.length - writeIndex
-        );
+        writeIndex += deflater.deflate(bytes, writeIndex, bytes.length - writeIndex);
     }
 
     public void writeByte(int v) {

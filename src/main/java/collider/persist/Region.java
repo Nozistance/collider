@@ -126,12 +126,10 @@ public final class Region {
 
     /// Returns a new empty region of generation gen in dir. An old one
     /// of the same key and generation is lost.
-    public static Region create(Path dir, long key, long gen)
-            throws IOException {
+    public static Region create(Path dir, long key, long gen) throws IOException {
         Files.createDirectories(dir);
         Path p = file(dir, key, gen);
-        FileChannel ch =
-                FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
+        FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
         return empty(new Log(p, ch), key, gen);
     }
 
@@ -228,8 +226,7 @@ public final class Region {
         return crc(data) == h.getInt(12) ? data : null;
     }
 
-    private byte[] older(long before, long id)
-            throws IOException, DataFormatException {
+    private byte[] older(long before, long id) throws IOException, DataFormatException {
         long[] offs = new long[8];
         int n = 0;
         long off = 0;
@@ -358,8 +355,7 @@ public final class Region {
         return rs;
     }
 
-    private static void keep(Set<Path> kept, Path dir, long gen)
-            throws IOException {
+    private static void keep(Set<Path> kept, Path dir, long gen) throws IOException {
         Path p = manifestPath(dir, gen);
         if (gen <= 0 || !Files.isRegularFile(p)) {
             return;
