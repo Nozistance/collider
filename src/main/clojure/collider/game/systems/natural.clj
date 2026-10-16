@@ -118,7 +118,7 @@
 (defn- biome-of [w] (biome/at (:dim w :overworld) nil))
 
 (defn- creatable? [w cat]
-  (some #(mobs/mob-type? (:type %))
+  (some #(get-in mobs/types [(:type %) :spawns-on])
         (get-in (biome-of w) [:spawners cat])))
 
 (defn- enemies? [w]
