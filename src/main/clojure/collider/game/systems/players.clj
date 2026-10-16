@@ -104,7 +104,6 @@
     (concat
       (join-list-deltas joined all)
       (leave-list-deltas world (into #{} (map val) cur) left)
-      (latency-deltas world (constantly all))
       (when (or (seq joined) (seq left))
         [[:listed (uuids-of joined) left]]))))
 
