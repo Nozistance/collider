@@ -108,12 +108,12 @@
   "Returns target pulled back toward base by no more than max degrees.
   Each step rounds to a float."
   ^double [^double base ^double target ^double max]
-  (let [d (flt (v/wrap-deg (flt (- target base))))]
+  (let [d (num/wrap-degrees (- target base))]
     (flt (- target (Math/clamp d (- max) max)))))
 
 (defn- rotate-towards
   ^double [^double from ^double to ^double max]
-  (let [d (flt (v/wrap-deg (flt (- to from))))]
+  (let [d (num/wrap-degrees (- to from))]
     (flt (+ from (Math/clamp d (- max) max)))))
 
 (defn- faced-forward

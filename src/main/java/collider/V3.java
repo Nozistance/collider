@@ -71,7 +71,9 @@ public record V3(double x, double y, double z)
             }
 
             public Object next() {
-                if (i >= 3) throw new NoSuchElementException();
+                if (i >= 3) {
+                    throw new NoSuchElementException();
+                }
                 return at(i++);
             }
         };
@@ -101,8 +103,9 @@ public record V3(double x, double y, double z)
         return false;
     }
 
-    /// Returns true when a and b are one object, two numbers of one
-    /// type and the same bits, or two points with the same bits.
+    /// Returns true when a and b are identical, two numbers of one
+    /// class with the same bits, or two points with the same bits.
+    /// Unlike equals on points, 0.0 and -0.0 differ and NaN is NaN.
     public static boolean same(Object a, Object b) {
         if (a == b) {
             return true;
@@ -121,6 +124,8 @@ public record V3(double x, double y, double z)
         return Murmur3.hashOrdered(this);
     }
 
+    /// The hash of a list of three doubles, so that a point and an
+    /// equal vector hash alike.
     @Override
     public int hashCode() {
         int h = 1;

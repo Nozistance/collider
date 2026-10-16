@@ -211,7 +211,7 @@
         yaw (double (float (:yaw e)))
         r (double (float (* yaw num/deg->rad)))]
     [(* (/ up d) hop-push) (* (/ 1.0 d) hop-push)
-     (double (float (v/sin r))) (double (float (v/cos r)))]))
+     (double (float (num/sin r))) (double (float (num/cos r)))]))
 
 (defn- flat-sq ^double [vel]
   (+ (* (v/x vel) (v/x vel)) (* (v/z vel) (v/z vel))))

@@ -2,7 +2,6 @@
   "The trunk placers of trees, with the logs they set and the places
   where foliage grows."
   (:require [collider.num :as num]
-            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.feature.level :as lv :refer [off]]))
@@ -83,7 +82,7 @@
 (defn- jungle-branch [[l atts] cfg o ^long y]
   (let [turn (float (* 2 Math/PI))
         angle (double (float (* (lv/next-float l) turn)))
-        c (v/cos angle) s (v/sin angle)
+        c (num/cos angle) s (num/sin angle)
         at #(off o (spoke c %) (+ (- y 3) (quot (long %) 2))
                  (spoke s %))
         tip (off o (spoke c 4) y (spoke s 4))

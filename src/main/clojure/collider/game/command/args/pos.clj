@@ -3,8 +3,7 @@
   point for a command source."
   (:require [clojure.string :as str]
             [collider.game.command.reader :as r]
-            [collider.num :as num]
-            [collider.vec :as v]))
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
@@ -127,9 +126,9 @@
   (let [ya (f* (f+ yaw 90.0) num/deg->rad)
         xa (f* (- (double pitch)) num/deg->rad)
         ua (f* (f+ (- (double pitch)) 90.0) num/deg->rad)
-        yc (v/cos ya) ys (v/sin ya)
-        xc (v/cos xa) xs (v/sin xa)
-        uc (v/cos ua) us (v/sin ua)
+        yc (num/cos ya) ys (num/sin ya)
+        xc (num/cos xa) xs (num/sin xa)
+        uc (num/cos ua) us (num/sin ua)
         fw [(f* yc xc) xs (f* ys xc)]
         up [(f* yc uc) us (f* ys uc)]]
     [fw up (mapv #(* (double %) -1.0) (cross fw up))]))

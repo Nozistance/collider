@@ -2,7 +2,6 @@
   "The turns of thrown snowballs, eggs, pearls, potions and bottles
   o' enchanting, and of lingering clouds."
   (:require [collider.data.long-map :as lm]
-            [collider.data :as data]
             [collider.game.apply :as apply]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
@@ -100,8 +99,8 @@
 (defn- aim [^double yaw ^double pitch ^double off]
   (let [y (rad yaw) p (rad pitch)
         up (rad (f32 (+ (f32 pitch) off)))]
-    [(f* (- (v/sin y)) (v/cos p)) (- (v/sin up))
-     (f* (v/cos y) (v/cos p))]))
+    [(f* (- (num/sin y)) (num/cos p)) (- (num/sin up))
+     (f* (num/cos y) (num/cos p))]))
 
 (defn- normalized [[x y z]]
   (let [x (double x) y (double y) z (double z)

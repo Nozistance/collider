@@ -44,6 +44,7 @@
       (let [v [(v/x vel) (Math/max p (double (v/y vel))) (v/z vel)]]
         (if (:sprinting? e)
           (let [a (num/f32 (* (num/f32 (double (:yaw e 0.0))) num/deg->rad))]
-            [(+ (double (v/x v)) (* (- (v/sin a)) sprint-push)) (v/y v)
-             (+ (double (v/z v)) (* (v/cos a) sprint-push))])
+            [(+ (double (v/x v)) (* (- (num/sin a)) sprint-push))
+             (v/y v)
+             (+ (double (v/z v)) (* (num/cos a) sprint-push))])
           v)))))

@@ -101,7 +101,7 @@
   "Returns the sine and the negated cosine of the yaw of player a."
   [a]
   (let [r (num/f32 (* (num/f32 (:yaw a)) num/deg->rad))]
-    [(v/sin r) (- (v/cos r))]))
+    [(num/sin r) (- (num/cos r))]))
 
 (defn- hurt-of
   [world eid e d src]

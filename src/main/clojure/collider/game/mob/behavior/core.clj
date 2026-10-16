@@ -162,8 +162,10 @@
   (let [r num/deg->rad pi (num/f32 Math/PI)
         ya (num/fsub (num/fmul (- yaw) r) pi)
         xa (num/fmul (- pitch) r)
-        xc (- (v/cos xa))]
-    [(num/fmul (v/sin ya) xc) (v/sin xa) (num/fmul (v/cos ya) xc)]))
+        xc (- (num/cos xa))]
+    [(num/fmul (num/sin ya) xc)
+     (num/sin xa)
+     (num/fmul (num/cos ya) xc)]))
 
 (defn- glanced [e ^double r1 ^double r2 [lo hi yaw]]
   (let [pitch (Math/max -90.0 (Math/min 90.0

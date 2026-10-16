@@ -7,20 +7,25 @@
 (defn v3? [v] (instance? V3 v))
 
 (defn same?
-  "Returns true when a and b are one value bit for bit. One object,
-  two numbers of one type and two equal points all count."
-  {:inline (fn [a b] `(V3/same ~a ~b))}
+  "Returns true when a and b are identical, two numbers of one class
+  with the same bits, or two points with the same bits. Unlike =, it
+  tells 0.0 from -0.0 and finds NaN the same as NaN. Other values are
+  the same only when identical."
   [a b]
   (V3/same a b))
 
 (defn v3
+  "Returns v as a point, v itself when it is one. With x, y and z,
+  the point of them."
   (^V3 [v]
    (if (v3? v)
      v
      (let [[a b c] v] (V3. (double a) (double b) (double c)))))
   (^V3 [^double x ^double y ^double z] (V3. x y z)))
 
-(defn x ^double [v] (if (v3? v) (.x ^V3 v) (double (nth v 0))))
+(defn x
+  "Returns the x of v, a point or a plain [x y z] vector."
+  ^double [v] (if (v3? v) (.x ^V3 v) (double (nth v 0))))
 
 (defn y ^double [v] (if (v3? v) (.y ^V3 v) (double (nth v 1))))
 
@@ -86,32 +91,3 @@
   is its low corner followed by its high corner."
   [a b]
   (and (axis-meets? a b 0) (axis-meets? a b 1) (axis-meets? a b 2)))
-
-(defn wrap-deg ^double [^double a]
-  (let [a (rem a 360.0)]
-    (cond (< a -180.0) (+ a 360.0)
-          (>= a 180.0) (- a 360.0)
-          :else a)))
-
-(def ^:private ^:const sin-scale 10430.378350470453)
-
-(def ^:private sin-table
-  (let [a (float-array 65536)]
-    (dotimes [i 65536]
-      (aset a i (float (Math/sin (/ (double i) sin-scale)))))
-    a))
-
-(defn- sin-at ^double [^double i]
-  (aget ^floats sin-table
-        (unchecked-int (bit-and (unchecked-long i) 65535))))
-
-(defn sin
-  "Returns the sine of a in radians at the precision of the game,
-  65536 steps a turn rounded to a float."
-  ^double [^double a] (sin-at (* a sin-scale)))
-
-(defn cos
-  "Returns the cosine of a in radians at the precision of the game,
-  65536 steps a turn rounded to a float."
-  ^double [^double a]
-  (sin-at (+ (* a sin-scale) 16384.0)))

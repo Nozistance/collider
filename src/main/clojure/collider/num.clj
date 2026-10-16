@@ -31,8 +31,7 @@
 (defn wrap-degrees
   "Returns angle a in degrees as a float from -180 up to 180. An
   infinite angle gives NaN."
-  {:inline (fn [a] `(Mth/wrapDegrees (unchecked-float ~a)))}
-  [a]
+  ^double [^double a]
   (Mth/wrapDegrees (unchecked-float a)))
 
 (defn fdiv
@@ -54,6 +53,28 @@
 (defn atan2
   "Returns the angle of y, x in radians as the game finds it, close to
   the exact arctangent but not equal."
-  {:inline (fn [y x] `(Mth/atan2 (double ~y) (double ~x)))}
   ^double [^double y ^double x]
   (Mth/atan2 y x))
+
+(def ^:private ^:const sin-scale 10430.378350470453)
+
+(def ^:private sin-table
+  (let [a (float-array 65536)]
+    (dotimes [i 65536]
+      (aset a i (float (Math/sin (/ (double i) sin-scale)))))
+    a))
+
+(defn- sin-at ^double [^double i]
+  (aget ^floats sin-table
+        (unchecked-int (bit-and (unchecked-long i) 65535))))
+
+(defn sin
+  "Returns the sine of a in radians at the precision of the game,
+  65536 steps a turn rounded to a float."
+  ^double [^double a] (sin-at (* a sin-scale)))
+
+(defn cos
+  "Returns the cosine of a in radians at the precision of the game,
+  65536 steps a turn rounded to a float."
+  ^double [^double a]
+  (sin-at (+ (* a sin-scale) 16384.0)))

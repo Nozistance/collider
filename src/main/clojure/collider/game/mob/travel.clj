@@ -135,9 +135,9 @@
       vel
       (let [f (* (if (> l 1.0) (Math/signum zza) zza) speed)
             r (yaw-radians (double (:yaw e)))]
-        (v/v3 (- (v/x vel) (* f (v/sin r)))
+        (v/v3 (- (v/x vel) (* f (num/sin r)))
               (v/y vel)
-              (+ (v/z vel) (* f (v/cos r))))))))
+              (+ (v/z vel) (* f (num/cos r))))))))
 
 (defn- cubed ^double [^double f]
   (num/fmul (num/fmul f f) f))
@@ -354,7 +354,7 @@
   flat speed for height."
   [[x y z :as v] lx lz n lean speed]
   (if (and (< lean 0.0) (> n 0.0))
-    (let [k (* (* speed (- (v/sin (double lean)))) 0.04)]
+    (let [k (* (* speed (- (num/sin (double lean)))) 0.04)]
       [(- x (/ (* lx k) n)) (+ y (* k 3.2)) (- z (/ (* lz k) n))])
     v))
 

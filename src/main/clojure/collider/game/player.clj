@@ -19,6 +19,7 @@
             [collider.game.team :as team]
             [collider.game.using :as using]
             [collider.random :as random]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.space.column :as column])
@@ -222,8 +223,8 @@
 
 (defn- snapped [e rot]
   (if (and rot (held-item-of e))
-    (assoc e :yaw (v/wrap-deg (double (:yaw rot)))
-             :pitch (v/wrap-deg (double (:pitch rot))))
+    (assoc e :yaw (num/wrap-degrees (double (:yaw rot)))
+             :pitch (num/wrap-degrees (double (:pitch rot))))
     e))
 
 (defn hand-slot

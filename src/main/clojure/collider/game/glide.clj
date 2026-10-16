@@ -13,9 +13,9 @@
   [^double pitch ^double yaw]
   (let [xr (num/fmul (num/f32 pitch) num/deg->rad)
         yr (num/fmul (- (num/f32 yaw)) num/deg->rad)
-        xc (v/cos xr)]
-    [(num/fmul (v/sin yr) xc) (- (v/sin xr))
-     (num/fmul (v/cos yr) xc)]))
+        xc (num/cos xr)]
+    [(num/fmul (num/sin yr) xc) (- (num/sin xr))
+     (num/fmul (num/cos yr) xc)]))
 
 (defn- boosted-axis ^double [^double m ^double l]
   (+ m (+ (* l 0.1) (* (- (* l 1.5) m) 0.5))))

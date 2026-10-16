@@ -3,19 +3,16 @@
   it walks to, the speed modifier it was given and the speed and
   forward input it drives with."
   (:require [collider.num :as num]
-            [collider.vec :as v])
-  (:import (collider Mth)))
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private degrees (num/f32 (/ 180.0 (num/f32 Math/PI))))
 
 (defn rotlerp
   "Returns a turned toward b by at most max degrees, brought back into
   one turn, in floats."
   ^double [^double a ^double b ^double max]
   (let [a (num/f32 a) m (num/f32 max)
-        d (double (Mth/wrapDegrees (unchecked-float (- (num/f32 b) a))))
+        d (num/wrap-degrees (- (num/f32 b) a))
         d (if (> d m) m d)
         d (if (< d (- m)) (- m) d)
         r (num/f32 (+ a d))]
@@ -27,7 +24,8 @@
   "Returns yaw turned toward the offset xd zd by at most max degrees,
   in floats."
   ^double [^double yaw ^double xd ^double zd ^double max]
-  (let [to (num/f32 (- (num/f32 (* (Mth/atan2 zd xd) degrees)) 90.0))]
+  (let [d (num/f32 (num/degrees (num/atan2 zd xd)))
+        to (num/f32 (- d 90.0))]
     (rotlerp yaw to max)))
 
 (def ^:private idle
