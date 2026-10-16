@@ -16,10 +16,7 @@ public final class Phys {
     /// The mark of a lava cell in the table of burns.
     public static final long LAVA = 2;
 
-    /// The mark burns adds for lava inside the inner span.
-    public static final long LAVA_INSIDE = 4;
-
-    private static final long ALL_BURNS = FIRE | LAVA | LAVA_INSIDE;
+    private static final long ALL_BURNS = FIRE | LAVA;
 
     private static final double EPS = 1.0E-7;
 
@@ -437,32 +434,19 @@ public final class Phys {
         return false;
     }
 
-    /// Returns the marks in bits of the cells of the span outer, plus
-    /// LAVA_INSIDE when a cell of the span inner holds lava. A span is
-    /// x0 x1 y0 y1 z0 z1 with the high ends left out. The scan ends
-    /// once FIRE, LAVA and LAVA_INSIDE are all set, so a higher mark
-    /// may go unseen.
-    public static long burns(
-            ChunkIndex chunks,
-            byte[] bits,
-            long[] outer,
-            long[] inner
-    ) {
-        if (!near(chunks, bits, outer)) {
+    /// Returns the marks in bits of the cells of the span, x0 x1 y0 y1
+    /// z0 z1 with the high ends left out. The scan ends once FIRE and
+    /// LAVA are both set, so a higher mark may go unseen.
+    public static long burns(ChunkIndex chunks, byte[] bits, long[] span) {
+        if (!near(chunks, bits, span)) {
             return 0;
         }
         long acc = 0;
-        for (long x = outer[0]; x < outer[1] && acc != ALL_BURNS; x++) {
-            boolean xin = x >= inner[0] && x < inner[1];
-            for (long y = outer[2]; y < outer[3] && acc != ALL_BURNS; y++) {
-                boolean yin = xin && y >= inner[2] && y < inner[3];
-                for (long z = outer[4]; z < outer[5] && acc != ALL_BURNS; z++) {
+        for (long x = span[0]; x < span[1] && acc != ALL_BURNS; x++) {
+            for (long y = span[2]; y < span[3] && acc != ALL_BURNS; y++) {
+                for (long z = span[4]; z < span[5] && acc != ALL_BURNS; z++) {
                     int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
-                    long b = st >= 0 && st < bits.length ? bits[st] : 0;
-                    acc |= b;
-                    if ((b & LAVA) != 0 && yin && z >= inner[4] && z < inner[5]) {
-                        acc |= LAVA_INSIDE;
-                    }
+                    acc |= st >= 0 && st < bits.length ? bits[st] : 0;
                 }
             }
         }

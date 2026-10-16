@@ -172,16 +172,6 @@
 
 (defn- box-of [e] (entity/box e))
 
-(def ^:private ^:const sunk-shrink-xz 0.1)
-
-(def ^:private ^:const sunk-shrink-y 0.4)
-
-(def ^:private ^:const fire-bit 1)
-
-(def ^:private ^:const lava-bit 2)
-
-(def ^:private ^:const soul-bit 8)
-
 (defn- any-bit? [^long flags ^long mask]
   (not (zero? (bit-and flags mask))))
 
@@ -192,24 +182,21 @@
   (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
 (defn- span
-  ^longs [p ^double half ^double height [sxz sy]]
+  ^longs [p ^double half ^double height]
   (let [px (v/x p) py (v/y p) pz (v/z p)
-        sy (double sy)
-        h (- half (double sxz))]
+        h (- half fluid-margin)]
     (doto (long-array 6)
       (aset 0 (floor-lo (- px h))) (aset 1 (floor-hi (+ px h)))
-      (aset 2 (max chunk/min-y (floor-lo (+ py sy))))
-      (aset 3 (min (inc chunk/max-y) (floor-hi (- (+ py height) sy))))
+      (aset 2 (max chunk/min-y (floor-lo (+ py fluid-margin))))
+      (aset 3 (min (inc chunk/max-y)
+                   (floor-hi (- (+ py height) fluid-margin))))
       (aset 4 (floor-lo (- pz h))) (aset 5 (floor-hi (+ pz h))))))
 
 (defn- burn-bit ^long [st]
-  (cond (block/lava? st) lava-bit
-        (block/fire? st) fire-bit
-        (= :soul-fire (block/type-of st)) (bit-or fire-bit soul-bit)
+  (cond (block/lava? st) phys/lava-mark
+        (or (block/fire? st) (= :soul-fire (block/type-of st)))
+        phys/fire-mark
         :else 0))
-
-(defn- fire-damage ^double [^long flags]
-  (if (any-bit? flags soul-bit) 2.0 1.0))
 
 (def ^:private ^:table burn-bits
   (delay
@@ -222,12 +209,8 @@
   Zero means it touches none."
   (^long [world e] (probe world e (box-of e)))
   (^long [world e [half height]]
-   (let [p (:pos e)
-         outer (span p (double half) (double height)
-                     [fluid-margin fluid-margin])
-         inner (span p (double half) (double height)
-                     [sunk-shrink-xz sunk-shrink-y])]
-     (phys/burns (:chunks world) @burn-bits outer inner))))
+   (phys/burns (:chunks world) @burn-bits
+               (span (:pos e) (double half) (double height)))))
 
 (defn- burning-flag [eid e ^long fire]
   (let [lit? (pos? fire)]
@@ -252,8 +235,8 @@
 (defn- fire-ticks ^long [fire seconds]
   (max (long fire) (* ticks-per-second (long seconds))))
 
-(defn- ignite-deltas [eid fire wet? damage seconds src]
-  (cond-> [[:damage eid (double damage) src]]
+(defn- ignite-deltas [eid fire wet? damages seconds src]
+  (cond-> (mapv (fn [d] [:damage eid (double d) src]) damages)
           (not wet?)
           (conj [:merge-entity eid
                  {:fire (fire-ticks fire seconds)}])))
@@ -574,17 +557,29 @@
         wet? 0
         :else (dec fire)))
 
+(defn- item-cells
+  "Returns the hurts of the fire cells item e lies in, one a cell,
+  and those of its lava cells."
+  [world e]
+  (let [[half height] (box-of e)
+        p (:pos e)
+        met (inside/met (:chunks world) [[p p nil]] half height
+                        @burners)]
+    [(keep #(fire-cell-damage (nth % 3)) met)
+     (keep #(when (= :lava (nth % 5)) lava-damage) met)]))
+
 (defn- item-fire-deltas [world eid e ^long flags]
   (let [fire (long (or (:fire e) 0))
         touched? (or (pos? fire) (pos? flags))
         wet? (boolean (and touched? (item-wet? world e)))
-        lava? (pos? (bit-and flags lava-bit))
-        ignite (fn [d s] (ignite-deltas eid fire wet? d s nil))]
+        lava? (any-bit? flags phys/lava-mark)
+        [fires lavas] (when (pos? flags) (item-cells world e))
+        ignite (fn [ds s] (when (seq ds)
+                            (ignite-deltas eid fire wet? ds s nil)))]
     (concat (burning-flag eid e (burnt-down fire wet?))
             (burn-tick-deltas eid fire wet? lava?)
-            (when (pos? (bit-and flags fire-bit))
-              (ignite (fire-damage flags) fire-seconds))
-            (when lava? (ignite lava-damage lava-seconds))
+            (ignite fires fire-seconds)
+            (ignite lavas lava-seconds)
             (douse-deltas eid e fire wet?))))
 
 (defn- damage-sum ^double [deltas]
@@ -634,7 +629,7 @@
 
 (defn- item-burn-deltas [world eid e ^long flags]
   (concat (item-fire-deltas world eid e flags)
-          (when (pos? (bit-and flags lava-bit))
+          (when (any-bit? flags phys/lava-mark)
             (burn-sound-deltas world eid e (double (:health e))))))
 
 (defn- unlit? [e ^long flags]
@@ -1062,7 +1057,7 @@
   Outside lava it takes one hurt every second."
   [world eid e ^long fire]
   (when (and (zero? (rem fire fire-damage-period))
-             (not (any-bit? (probe world e) lava-bit)))
+             (not (any-bit? (probe world e) phys/lava-mark)))
     (damage-deltas world eid e 1.0 on-fire)))
 
 (defn- burn-deltas [world eid e]
@@ -1070,7 +1065,7 @@
     (when (pos? fire)
       (if (entity/player? e)
         (player-burn-deltas world eid e fire)
-        (let [lava? (any-bit? (probe world e) lava-bit)]
+        (let [lava? (any-bit? (probe world e) phys/lava-mark)]
           (burn-tick-deltas eid fire false lava?))))))
 
 (defn burnt-deltas
