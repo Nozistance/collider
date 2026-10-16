@@ -59,7 +59,9 @@
   ^double [^double fall ^double dy]
   (if (< dy 0.0) (- fall (double (float dy))) fall))
 
-(defn on-ground? [^Move m] (.onGround m))
+(defn on-ground?
+  "Returns true when a block stopped move m going down."
+  [^Move m] (.onGround m))
 
 (defn- hanging? [^long st]
   (let [ps (block/props-of st)]
@@ -152,9 +154,9 @@
 (defn dry?
   "Returns true when no water or lava touches a body of that size
   at pos."
-  [chunks pos half height]
+  [chunks pos ^double half ^double height]
   (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
-            (double half) (double height)))
+            half height))
 
 (defn burns
   "Returns the marks in bits of the cells of span outer, plus 4 when
@@ -174,12 +176,6 @@
   {:inline (fn [& args] (apply some-cell-form args))}
   [chunks marks x0 y0 z0 x1 y1 z1]
   (inlined some-cell-form chunks marks x0 y0 z0 x1 y1 z1))
-
-(defn cool?
-  "Returns true when no block of bits lies within a block of a body
-  of that size at pos."
-  [chunks ^bytes bits p half height]
-  (Phys/cool chunks bits (v/x p) (v/y p) (v/z p) half height))
 
 (defn free?
   "Returns true when a body of that size meets no block after a
@@ -203,28 +199,22 @@
 (defn box-free?
   "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block. The
   body of the box has its foot at bottom and its context in ctx."
-  ([chunks box bottom] (box-free? chunks box bottom 0))
-  ([chunks box bottom ctx]
+  ([chunks box ^double bottom] (box-free? chunks box bottom 0))
+  ([chunks box ^double bottom ^long ctx]
    (Phys/freeBox chunks (kinds) (block/cube-arr)
                  (block/collision-arr) (double-array box)
-                 (double bottom) (int ctx))))
-
-(defn- support-form [chunks pos half ctx]
-  (let [c (gensym "cell")
-        call (at-form `Phys/support chunks pos
-                      [`(double ~half) `(int ~ctx)])]
-    `(when-let [~c ~call]
-       [(aget ~c 0) (aget ~c 1) (aget ~c 2)])))
+                 bottom (int ctx))))
 
 (defn supporting-block
   "Returns the block a box of that half width standing at pos rests
   on, nil when it rests on nothing. The nearest block centre wins,
   so an edge of the box carries the whole body."
-  {:inline (fn [c p h & [x]] (support-form c p h (or x 0)))
-   :inline-arities #{3 4}}
-  ([chunks pos half] (supporting-block chunks pos half 0))
-  ([chunks pos half ctx]
-   (inlined support-form chunks pos half ctx)))
+  ([chunks pos ^double half] (supporting-block chunks pos half 0))
+  ([chunks pos ^double half ^long ctx]
+   (when-let [c (Phys/support
+                 chunks (kinds) (block/cube-arr) (block/collision-arr)
+                 (v/x pos) (v/y pos) (v/z pos) half (int ctx))]
+     [(aget c 0) (aget c 1) (aget c 2)])))
 
 (defn- move-form [chunks pos vel half height step ground? ctx]
   (let [v (gensym "vel")]

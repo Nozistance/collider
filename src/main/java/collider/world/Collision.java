@@ -163,8 +163,8 @@ public final class Collision {
                 && box[5] > a[o + 2];
     }
 
-    /// Returns the y coordinates in ys of shape, which shape or
-    /// boxes returned for st.
+    /// Returns the y coordinates in ys of the boxes that the methods
+    /// shape or boxes returned for st.
     public static double[] ys(YCoords ys, int st, double[] shape) {
         if (shape == UNSTABLE_BOTTOM) {
             return ys.scaffoldingBottom();

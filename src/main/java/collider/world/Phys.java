@@ -240,8 +240,8 @@ public final class Phys {
 
     /// Puts into BUF the boxes of the blocks in chunks that the box
     /// ebox meets on its way by vx, vy, vz, one block lower included,
-    /// and returns how many. They stay valid until the next sweep on
-    /// the thread.
+    /// and returns how many. They stay valid until the next call of
+    /// swept or colliders on the thread.
     private static int swept(
             ChunkIndex chunks,
             byte[] kinds,
@@ -394,22 +394,9 @@ public final class Phys {
     }
 
     private static boolean near(ChunkIndex chunks, byte[] bits, long[] span) {
-        return near(chunks, bits, span[0], span[1], span[2], span[3], span[4], span[5]);
-    }
-
-    private static boolean near(
-            ChunkIndex chunks,
-            byte[] bits,
-            long x0,
-            long x1,
-            long y0,
-            long y1,
-            long z0,
-            long z1
-    ) {
-        for (long sx = x0 >> 4; sx <= (x1 - 1) >> 4; sx++) {
-            for (long sy = y0 >> 4; sy <= (y1 - 1) >> 4; sy++) {
-                for (long sz = z0 >> 4; sz <= (z1 - 1) >> 4; sz++) {
+        for (long sx = span[0] >> 4; sx <= (span[1] - 1) >> 4; sx++) {
+            for (long sy = span[2] >> 4; sy <= (span[3] - 1) >> 4; sy++) {
+                for (long sz = span[4] >> 4; sz <= (span[5] - 1) >> 4; sz++) {
                     Section s = Chunk.sectionAt(
                             chunks,
                             (int) sx << 4,
@@ -423,31 +410,6 @@ public final class Phys {
             }
         }
         return false;
-    }
-
-    /// Returns true when no section within a block of the box of half
-    /// width half and that height at x, y, z holds a state of bits.
-    public static boolean cool(
-            ChunkIndex chunks,
-            byte[] bits,
-            double x,
-            double y,
-            double z,
-            double half,
-            double height
-    ) {
-        long y0 = Math.max(Chunk.MIN_Y, (long) Math.floor(y) - 1);
-        long y1 = Math.min(Chunk.MAX_Y + 1, (long) Math.floor(y + height) + 2);
-        return !near(
-                chunks,
-                bits,
-                (long) Math.floor(x - half) - 1,
-                (long) Math.floor(x + half) + 2,
-                y0,
-                y1,
-                (long) Math.floor(z - half) - 1,
-                (long) Math.floor(z + half) + 2
-        );
     }
 
     /// Returns true when some cell from x0, y0, z0 up to x1, y1, z1,
@@ -478,7 +440,8 @@ public final class Phys {
     /// Returns the marks in bits of the cells of the span outer, plus
     /// LAVA_INSIDE when a cell of the span inner holds lava. A span is
     /// x0 x1 y0 y1 z0 z1 with the high ends left out. The scan ends
-    /// once FIRE, LAVA and LAVA_INSIDE are all set.
+    /// once FIRE, LAVA and LAVA_INSIDE are all set, so a higher mark
+    /// may go unseen.
     public static long burns(
             ChunkIndex chunks,
             byte[] bits,
