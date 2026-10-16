@@ -297,8 +297,8 @@
                  (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))))
 
 (defn- step-item
-  "Returns [d fx] of item eid, e, after its step: the delta that
-  moves or removes it and the effects of the blocks it met."
+  "Returns [d fx] of item eid, e, after its step, with d the delta
+  that moves or removes it and fx the effects of the blocks it met."
   [world eid e]
   (let [age (inc (long (or (:age e) 0)))
         chunks (:chunks world)
