@@ -162,11 +162,13 @@
   (assoc (select-keys cfg config/world-keys)
          :unload-chunks? (some? store) :commit (build-commit)))
 
+(defn- initial-world [cfg saved]
+  (merge schema/initial-world {:seed (config/level-seed cfg)} saved))
+
 (defn- open-world [opts cfg l]
   (let [store (open-store opts cfg)
         saved (when store (store/load-world store))
-        init (merge schema/initial-world
-                    {:seed (config/level-seed cfg)} saved)
+        init (initial-world cfg saved)
         world (atom (assoc init :config (world-config cfg store)
                                 :started (:tick init 0)))
         saver (when store (saver/start))

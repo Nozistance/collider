@@ -25,7 +25,7 @@
 (defn- little-endian ^ByteBuffer [^bytes b]
   (.order (ByteBuffer/wrap b) ByteOrder/LITTLE_ENDIAN))
 
-(defn hashed-seed
+(defn obfuscate-seed
   "Returns the seed the client gets for the world seed, the first
   eight bytes of its SHA-256."
   ^long [^long seed]
@@ -38,7 +38,7 @@
   (let [dim (:dim lv :overworld)]
     {:dimension-type (data/datapack-id "dimension_type" dim)
      :dimension dim :sea-level (biome/sea-level-of dim)
-     :seed (hashed-seed (:seed lv 0))
+     :seed (obfuscate-seed (:seed lv 0))
      :gamemode (game-mode/id (:game-mode e))
      :last-gamemode (game-mode/id (:previous-game-mode e))
      :death (:last-death e)}))

@@ -224,7 +224,7 @@
   (cons (out/to eid (out/reload))
         (say eid "commands.reload.success")))
 
-(defn- copied [^String s]
+(defn- copy-on-click-text [^String s]
   {:translate "chat.square_brackets"
    :with [{:text s :color "green" :insertion s
            :click {:action :copy-to-clipboard :value s}
@@ -233,7 +233,7 @@
 
 (defn- seed-deltas [world eid _args]
   (answer (say eid "commands.seed.success"
-               (copied (str (long (:seed world 0)))))))
+               (copy-on-click-text (str (:seed world))))))
 
 (def handlers
   (into {:gamerule gamerule-deltas
