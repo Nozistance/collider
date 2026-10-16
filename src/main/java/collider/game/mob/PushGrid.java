@@ -4,21 +4,16 @@ import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 import collider.world.LongIntMap;
-import java.util.AbstractMap;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
 
 /// The bodies of one island by the block column they stand in, for
 /// the shoves between overlapping bodies. It changes in place as the
 /// bodies move, so one island steps with one grid. Many readers may
-/// share it while no body moves. A body meets the others in the
-/// order of the pushable entities of the level. Bodies go by entity
-/// section in the order of the section storage, and in each section
-/// in the order they came into it. Shoves from the bodies that stepped
-/// before come in the order they stepped, by id.
-public final class PushGrid extends AbstractMap<Long, PushCell> {
+/// share it while no body moves. A body meets the others by entity
+/// section, and in each section in the order they came into it.
+/// Shoves from the bodies that stepped before come in the order they
+/// stepped, by id.
+public final class PushGrid {
 
     private static final double STRENGTH = 0.05F;
 
@@ -37,9 +32,9 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private byte[] rules;
     private int[] teams;
 
-    /// Returns the grid of bodies `eids`, ascending. Every other array
-    /// holds the body of `eids` at the same index.
-    public PushGrid(
+    /// The ids `eids` ascend. Every other array holds the body of
+    /// `eids` at the same index.
+    PushGrid(
             long[] eids,
             double[] halfs,
             double[] heights,
@@ -68,16 +63,17 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         }
     }
 
-    private static long key(long cx, long cz) {
+    static long key(long cx, long cz) {
         return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
+    }
+
+    /// Returns the push cell of four columns that holds coordinate `c`.
+    static long cell(double c) {
+        return Math.floorDiv((long) Math.floor(c), 4);
     }
 
     private static long column(double x, double z) {
         return key((long) Math.floor(x), (long) Math.floor(z));
-    }
-
-    private int head(long k) {
-        return heads.get(k);
     }
 
     private void link(int s) {
@@ -91,8 +87,17 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             heads.put(k, next[s]);
             return;
         }
-        while (next[p] != s) p = next[p];
+        while (next[p] != s) {
+            p = next[p];
+        }
         next[p] = next[s];
+    }
+
+    /// Returns the index of body `eid` in `g`, or -1 for a body that
+    /// is not in it.
+    public static long slot(PushGrid g, long eid) {
+        int s = Arrays.binarySearch(g.eids, eid);
+        return s < 0 ? -1 : s;
     }
 
     /// Moves body `eid` of `g` and returns `g`. The tick `c` and the
@@ -108,32 +113,25 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             long c,
             long r
     ) {
-        return g.move(eid, half, height, x, y, z, c, r);
-    }
-
-    private PushGrid move(
-            long eid,
-            double half,
-            double height,
-            double x,
-            double y,
-            double z,
-            long c,
-            long r
-    ) {
-        int s = Arrays.binarySearch(eids, eid);
-        came[s] = c;
-        ranks[s] = r;
-        boolean same = slack > 0.0 || column(x, z) == column(xs[s], zs[s]);
-        if (!same) unlink(s);
-        halfs[s] = half;
-        heights[s] = height;
-        xs[s] = x;
-        ys[s] = y;
-        zs[s] = z;
-        if (slack == 0.0) widest = Math.max(widest, half);
-        if (!same) link(s);
-        return this;
+        int s = Arrays.binarySearch(g.eids, eid);
+        g.came[s] = c;
+        g.ranks[s] = r;
+        boolean same = g.slack > 0.0 || column(x, z) == column(g.xs[s], g.zs[s]);
+        if (!same) {
+            g.unlink(s);
+        }
+        g.halfs[s] = half;
+        g.heights[s] = height;
+        g.xs[s] = x;
+        g.ys[s] = y;
+        g.zs[s] = z;
+        if (g.slack == 0.0) {
+            g.widest = Math.max(g.widest, half);
+        }
+        if (!same) {
+            g.link(s);
+        }
+        return g;
     }
 
     /// Keeps each body of grid `g` in the column it stands in now,
@@ -159,14 +157,14 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private boolean meets(int a, int b) {
         byte ra = rules[a], rb = rules[b];
-        if (ra == NEVER || rb == NEVER) return false;
+        if (ra == NEVER || rb == NEVER) {
+            return false;
+        }
         boolean same = teams[a] >= 0 && teams[a] == teams[b];
-        if ((ra == PUSH_OWN_TEAM || rb == PUSH_OWN_TEAM) && same) return false;
+        if ((ra == PUSH_OWN_TEAM || rb == PUSH_OWN_TEAM) && same) {
+            return false;
+        }
         return ra != PUSH_OTHER_TEAMS && rb != PUSH_OTHER_TEAMS || same;
-    }
-
-    private static long cellCoord(double c) {
-        return Math.floorDiv((long) Math.floor(c), 4);
     }
 
     private int[] overlapping(
@@ -181,30 +179,42 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         double r = half + widest, w = r + slack;
         long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
-        long cx = cellCoord(x), cz = cellCoord(z);
+        long cx = cell(x), cz = cell(z);
         boolean pinned = slack > 0.0;
         int s = rules == null ? -1 : Arrays.binarySearch(eids, eid);
         int[] hits = new int[16];
         int n = 0;
         for (long bx = x0; bx <= x1; bx++) {
             long dx = Math.floorDiv(bx, 4) - cx;
-            if (!pinned && (dx < -1 || dx > 1)) continue;
+            if (!pinned && (dx < -1 || dx > 1)) {
+                continue;
+            }
             for (long bz = z0; bz <= z1; bz++) {
                 long dz = Math.floorDiv(bz, 4) - cz;
-                if (!pinned && (dz < -1 || dz > 1)) continue;
-                for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
+                if (!pinned && (dz < -1 || dz > 1)) {
+                    continue;
+                }
+                for (int j = heads.get(key(bx, bz)); j >= 0; j = next[j]) {
                     long o = eids[j];
-                    if (o == eid || o >= hi) continue;
-                    if (hi != Long.MAX_VALUE && !steps[j]) continue;
-                    if (s >= 0 && !meets(s, j)) continue;
+                    if (o == eid || o >= hi) {
+                        continue;
+                    }
+                    if (hi != Long.MAX_VALUE && !steps[j]) {
+                        continue;
+                    }
+                    if (s >= 0 && !meets(s, j)) {
+                        continue;
+                    }
                     double rj = half + halfs[j];
                     double oy = ys[j];
                     if (Math.abs(xs[j] - x) < rj
                             && Math.abs(zs[j] - z) < rj
                             && oy < y + height
                             && oy + heights[j] > y) {
-                        long ox = cellCoord(xs[j]) - cx, oz = cellCoord(zs[j]) - cz;
-                        if (ox < -1 || ox > 1 || oz < -1 || oz > 1) continue;
+                        long ox = cell(xs[j]) - cx, oz = cell(zs[j]) - cz;
+                        if (ox < -1 || ox > 1 || oz < -1 || oz > 1) {
+                            continue;
+                        }
                         if (n == hits.length) {
                             hits = Arrays.copyOf(hits, n * 2);
                         }
@@ -227,11 +237,17 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private int compareListed(int a, int b) {
         int c = Long.compare(section(xs[a]), section(xs[b]));
-        if (c != 0) return c;
+        if (c != 0) {
+            return c;
+        }
         c = Long.compare(section(zs[a]) & 0x3FFFFFL, section(zs[b]) & 0x3FFFFFL);
-        if (c != 0) return c;
+        if (c != 0) {
+            return c;
+        }
         c = Long.compare(section(ys[a]) & 0xFFFFFL, section(ys[b]) & 0xFFFFFL);
-        if (c != 0) return c;
+        if (c != 0) {
+            return c;
+        }
         c = Long.compare(came[a], came[b]);
         return c != 0 ? c : Long.compare(ranks[a], ranks[b]);
     }
@@ -264,30 +280,24 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             long eid,
             long hi
     ) {
-        return g.shoved(x, y, z, half, height, eid, hi);
-    }
-
-    private Object shoved(
-            double x,
-            double y,
-            double z,
-            double half,
-            double height,
-            long eid,
-            long hi
-    ) {
-        int[] hits = overlapping(x, y, z, half, height, eid, hi);
+        int[] hits = g.overlapping(x, y, z, half, height, eid, hi);
         int n = hits.length;
-        if (n == 0) return PersistentVector.EMPTY;
+        if (n == 0) {
+            return PersistentVector.EMPTY;
+        }
         Object[] acc = new Object[n];
         int k = 0;
         for (int j : hits) {
-            double dx = x - xs[j], dz = z - zs[j];
+            double dx = x - g.xs[j], dz = z - g.zs[j];
             double m = Math.max(Math.abs(dx), Math.abs(dz));
             if (m >= THRESHOLD) {
                 double s = Math.sqrt(m);
                 double p = Math.min(1.0, 1.0 / s);
-                acc[k++] = RT.vector(eids[j], dx / s * p * STRENGTH, dz / s * p * STRENGTH);
+                acc[k++] = RT.vector(
+                        g.eids[j],
+                        dx / s * p * STRENGTH,
+                        dz / s * p * STRENGTH
+                );
             }
         }
         return vector(acc, k);
@@ -305,27 +315,22 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             double height,
             long eid
     ) {
-        return g.touched(x, y, z, half, height, eid);
-    }
-
-    private Object touched(
-            double x,
-            double y,
-            double z,
-            double half,
-            double height,
-            long eid
-    ) {
-        int[] hits = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
+        int[] hits = g.overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
         int n = hits.length;
         Object[] acc = new Object[n];
-        for (int i = 0; i < n; i++) acc[i] = eids[hits[i]];
+        for (int i = 0; i < n; i++) {
+            acc[i] = g.eids[hits[i]];
+        }
         return vector(acc, n);
     }
 
     private static Object vector(Object[] a, int n) {
-        if (n == 0) return PersistentVector.EMPTY;
-        if (n < a.length) a = Arrays.copyOf(a, n);
+        if (n == 0) {
+            return PersistentVector.EMPTY;
+        }
+        if (n < a.length) {
+            a = Arrays.copyOf(a, n);
+        }
         return LazilyPersistentVector.createOwning(a);
     }
 
@@ -342,7 +347,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         int n = 1;
         for (long bx = x0; bx <= x1; bx++) {
             for (long bz = z0; bz <= z1; bz++) {
-                for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
+                for (int j = heads.get(key(bx, bz)); j >= 0; j = next[j]) {
                     double rj = ph[s] + ph[j] + far;
                     if (j != s && Math.abs(px[j] - x) < rj && Math.abs(pz[j] - z) < rj) {
                         if (j < s) {
@@ -362,39 +367,5 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     int bodies() {
         return eids.length;
-    }
-
-    /// Returns the bodies of each push cell of four by four columns,
-    /// by the key of the cell.
-    @Override
-    public Set<Map.Entry<Long, PushCell>> entrySet() {
-        Map<Long, int[]> in = new HashMap<>();
-        for (int i = 0; i < eids.length; i++) {
-            long k = key(cellCoord(xs[i]), cellCoord(zs[i]));
-            int[] c = in.getOrDefault(k, new int[0]);
-            c = Arrays.copyOf(c, c.length + 1);
-            c[c.length - 1] = i;
-            in.put(k, c);
-        }
-        Map<Long, PushCell> out = new HashMap<>();
-        in.forEach((k, c) -> out.put(k, pushCell(c)));
-        return out.entrySet();
-    }
-
-    private PushCell pushCell(int[] bodies) {
-        int n = bodies.length;
-        long[] e = new long[n];
-        double[] h = new double[n], t = new double[n];
-        double[] x = new double[n], y = new double[n], z = new double[n];
-        for (int i = 0; i < n; i++) {
-            int j = bodies[i];
-            e[i] = eids[j];
-            h[i] = halfs[j];
-            t[i] = heights[j];
-            x[i] = xs[j];
-            y[i] = ys[j];
-            z[i] = zs[j];
-        }
-        return new PushCell(e, h, t, x, y, z);
     }
 }

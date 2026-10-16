@@ -11,7 +11,7 @@
             [collider.world.blocks.climb :as climb]
             [collider.world.chunk :as chunk])
   (:import (clojure.lang MapEntry)
-           (collider.game.mob Bodies PushGrid Slots Turns)))
+           (collider.game.mob Bodies PushGrid Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -27,14 +27,15 @@
   (double (nth (pushable-box e) 1)))
 
 (defn alive?
-  "Returns true when a body takes shoves.
-  A dead body takes none but still steps and shoves the living."
+  "Returns true when body e has health above zero or keeps none. A
+  dead body takes no shoves but still steps and shoves the living."
   [e]
   (let [h (:health e)] (or (nil? h) (pos? (double h)))))
 
 (defn body?
-  "Returns true when the entity of entry shoves and takes shoves in
-  a chunk of held."
+  "Returns true when the entity of entry stands in a chunk of held
+  and joins the shoves. A spectator never joins, and a mob leaves
+  when its death ends."
   [held [_ e]]
   (and (or (= :player (:type e))
            (and (mobs/mob-type? (:type e))
@@ -43,9 +44,9 @@
        (contains? held (chunk/pos-chunk (:pos e)))))
 
 (defn pushable?
-  "Returns true when body e takes shoves among chunks. A body that
-  climbs takes none but still shoves the others, and an aloof kind
-  takes none."
+  "Returns true when body e takes shoves. A dead body, an aloof kind
+  and a body that climbs in chunks take none. The climber still
+  shoves the others."
   [chunks e]
   (and (alive? e) (not (mobs/flag? e :aloof?))
        (not (climb/climbing? chunks e))))
@@ -65,23 +66,22 @@
                   (recur (inc i)))))))
 
 (defn moved
-  "Returns index after body eid moved to its place in entry e."
-  [^PushGrid index eid _old-pos e]
+  "Moves body eid of index to the place and box of e and returns
+  index."
+  [^PushGrid index eid e]
   (let [p (:pos e) [h t] (pushable-box e)]
     (PushGrid/moved index (long eid) (double h) (double t)
-                    (double (v/x p))
-                    (double (v/y p)) (double (v/z p)) (came e)
-                    (rank eid e))))
+                    (v/x p) (v/y p) (v/z p) (came e) (rank eid e))))
 
 (defn- same-section? [c c']
   (== (bit-shift-right (long (Math/floor (double c))) 4)
       (bit-shift-right (long (Math/floor (double c'))) 4)))
 
 (defn arrived
-  "Returns when body e, which moves to to in tick t, came into its
-  entity section. The order of pushable entities follows it. A body
-  that stays in its section keeps its old arrival, and one that moves
-  arrives this tick after the bodies of lower id."
+  "Returns when body eid came into its entity section once e moves
+  to to in tick t. Bodies of one section meet in the order they came.
+  A body that stays in its section keeps its arrival, and one that
+  leaves it arrives in tick t after the bodies of lower id."
   [e to t eid]
   (let [from (:pos e)]
     (if (and (same-section? (v/x from) (v/x to))
@@ -91,14 +91,13 @@
       [(* 2 (long t)) (inc (* 2 (long eid)))])))
 
 (defn slot
-  "Returns the index of body eid in slots, or -1 when it has none."
-  {:inline (fn [s eid]
-             `(Slots/slot ~(with-meta s {:tag `Slots}) (long ~eid)))}
-  ^long [^Slots s eid]
-  (Slots/slot s (long eid)))
+  "Returns the slot of body eid in index, its place among the bodies
+  by id, or -1 for a body that is not in it."
+  ^long [^PushGrid index ^long eid]
+  (PushGrid/slot index eid))
 
 (defn bodies
-  "Returns no bodies, to which add-body adds them in id order."
+  "Returns empty bodies for add-body to fill."
   ^Bodies []
   (Bodies.))
 
@@ -108,17 +107,19 @@
   ^Bodies [^Bodies b [eid e :as entry] ticks?]
   (let [p (:pos e) [h t] (pushable-box e)]
     (Bodies/add b entry (long eid) (double h) (double t)
-                (double (v/x p)) (double (v/y p)) (double (v/z p))
+                (v/x p) (v/y p) (v/z p)
                 (came e) (rank eid e) (boolean ticks?))))
 
 (defn joined-bodies
-  "Adds the bodies of o to bodies b after its own and returns b."
+  "Adds the bodies of o to bodies b after its own and returns b. No
+  body may be added to o after."
   ^Bodies [^Bodies b ^Bodies o]
   (Bodies/joined b o))
 
 (defn groups
-  "Returns the bodies of b in groups that one tick of movement cannot
-  bring together, each as the indices of its bodies in b by id."
+  "Returns the indices of the bodies of b in groups that one tick of
+  movement cannot bring together. Each group ascends by id, and the
+  groups go by their first id."
   [^Bodies b]
   (Bodies/islands b))
 
@@ -127,17 +128,12 @@
   (Bodies/entries b g))
 
 (defn grid-of
-  "Returns the index of the bodies of b at indices g, as index-of
-  gives it for their entries."
+  "Returns the index of the bodies of b at indices g, which ascend by
+  id. Its bodies meet regardless of team until teamed."
   ^PushGrid [^Bodies b ^ints g]
   (Bodies/grid b g))
 
-(defn slots-of
-  ^Slots [^Bodies b ^ints g]
-  (Bodies/slots b g))
-
 (defn ticks-of
-  "Returns whether each body of b at indices g ticks this tick."
   ^booleans [^Bodies b ^ints g]
   (Bodies/ticking b g))
 
@@ -168,9 +164,8 @@
 
 (defn- scan [^PushGrid index eid p half height hi]
   (if index
-    (PushGrid/shoves index (double (v/x p)) (double (v/y p))
-                     (double (v/z p)) (double half) (double height)
-                     (long eid) (long hi))
+    (PushGrid/shoves index (v/x p) (v/y p) (v/z p) (double half)
+                     (double height) (long eid) (long hi))
     []))
 
 (defn touching
@@ -178,25 +173,24 @@
   eid."
   [^PushGrid index eid e half height]
   (let [p (:pos e)]
-    (PushGrid/touching index (double (v/x p)) (double (v/y p))
-                       (double (v/z p)) (double half) (double height)
-                       (long eid))))
-
-(defn shoves
-  "Returns the shoves of one run of the body over every body it meets.
-  The run is the last part of its tick."
-  [index eid e half height]
-  (scan index eid (:pos e) half height Long/MAX_VALUE))
+    (PushGrid/touching index (v/x p) (v/y p) (v/z p) (double half)
+                       (double height) (long eid))))
 
 (defn shoves-at
-  "Returns the shoves of body eid run to pos, as shoves does."
+  "Returns the shoves between body eid at pos and each body it
+  overlaps, as [id dx dz] in the order the bodies meet. Body eid
+  takes dx dz and body id the opposite."
   [index eid pos half height]
   (scan index eid pos half height Long/MAX_VALUE))
 
+(defn shoves
+  "Returns the shoves of body eid where e stands, as shoves-at does."
+  [index eid e half height]
+  (shoves-at index eid (:pos e) half height))
+
 (defn before
-  "Returns the shoves that the bodies which stepped earlier this tick
-  gave to this body. This body takes the opposite of what each of
-  them took."
+  "Returns the shoves between body eid where e stands and each body
+  of lower id that stepped this tick, as shoves-at does."
   [index eid e half height]
   (scan index eid (:pos e) half height (long eid)))
 
@@ -207,12 +201,13 @@
   (PushGrid/pinned index (double reach)))
 
 (defn turns
-  "Calls mind before body with the index of each body of the
-  pinned index, in parallel, and join with each index in order. The
-  call of body with a body waits for the calls with each body of
-  lower id that it could meet in a tick in which no body moves
-  further than reach along x or z. The call of join with a body
-  follows the calls of body with it and each body of lower id."
+  "Calls mind before body with the slot of each body of the pinned
+  index, in parallel, and join with each slot in order. The call of
+  body with a slot waits for the calls with each lower slot whose
+  body it could meet in a tick in which no body moves further than
+  reach along x or z. The call of join with a slot follows the calls
+  of body with it and each lower slot, and no two calls of join
+  overlap."
   [^PushGrid index reach mind body join]
   (Turns/run index (double reach) mind body join))
 

@@ -82,7 +82,9 @@ public final class Turns extends CountedCompleter<Void> {
         mind.invoke(s);
         int[] near = grid.near(s, far);
         after[s] = near;
-        if (waiting.addAndGet(s, near[0]) == 0) spawn(s, s + 1, true);
+        if (waiting.addAndGet(s, near[0]) == 0) {
+            spawn(s, s + 1, true);
+        }
     }
 
     private boolean ready(int s) {
@@ -92,7 +94,9 @@ public final class Turns extends CountedCompleter<Void> {
     private void joinReady() {
         while (ready(joined.get()) && joining.compareAndSet(false, true)) {
             int s = joined.get();
-            while (ready(s)) join.invoke(s++);
+            while (ready(s)) {
+                join.invoke(s++);
+            }
             joined.set(s);
             joining.set(false);
         }
@@ -108,8 +112,11 @@ public final class Turns extends CountedCompleter<Void> {
             for (int k = 1; k < ts.length; k++) {
                 int t = ts[k];
                 if (waiting.decrementAndGet(t) == 0) {
-                    if (next < 0) next = t;
-                    else spawn(t, t + 1, true);
+                    if (next < 0) {
+                        next = t;
+                    } else {
+                        spawn(t, t + 1, true);
+                    }
                 }
             }
             joinReady();
@@ -126,7 +133,9 @@ public final class Turns extends CountedCompleter<Void> {
         } else if (moving) {
             moved(lo);
         } else {
-            for (int s = lo; s < hi; s++) thought(s);
+            for (int s = lo; s < hi; s++) {
+                thought(s);
+            }
         }
         tryComplete();
     }

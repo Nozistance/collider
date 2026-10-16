@@ -8,10 +8,6 @@ import java.util.Arrays;
 /// touch, directly or through a chain of touching cells.
 public final class Islands {
 
-    static long key(long cx, long cz) {
-        return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
-    }
-
     private static int root(int[] up, int i) {
         while (up[i] != i) {
             up[i] = up[up[i]];
@@ -29,13 +25,17 @@ public final class Islands {
 
     private static int[] linked(long[] cells, int m, LongIntMap at) {
         int[] up = new int[m];
-        for (int i = 0; i < m; i++) up[i] = i;
+        for (int i = 0; i < m; i++) {
+            up[i] = i;
+        }
         for (int i = 0; i < m; i++) {
             long cx = (int) (cells[i] >> 32), cz = (int) cells[i];
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    int j = at.get(key(cx + dx, cz + dz));
-                    if (j > i) join(up, i, j);
+                    int j = at.get(PushGrid.key(cx + dx, cz + dz));
+                    if (j > i) {
+                        join(up, i, j);
+                    }
                 }
             }
         }
@@ -50,12 +50,18 @@ public final class Islands {
             out[i] = i;
             sorted &= i == 0 || eids[i - 1] < eids[i];
         }
-        if (sorted) return out;
+        if (sorted) {
+            return out;
+        }
         LongIntMap at = new LongIntMap(n);
-        for (int i = 0; i < n; i++) at.put(eids[i], i);
+        for (int i = 0; i < n; i++) {
+            at.put(eids[i], i);
+        }
         long[] s = eids.clone();
         Arrays.sort(s);
-        for (int k = 0; k < n; k++) out[k] = at.get(s[k]);
+        for (int k = 0; k < n; k++) {
+            out[k] = at.get(s[k]);
+        }
         return out;
     }
 
@@ -86,14 +92,20 @@ public final class Islands {
         int g = 0;
         for (int k = 0; k < n; k++) {
             int r = root(up, cell[order[k]]);
-            if (group[r] < 0) group[r] = g++;
+            if (group[r] < 0) {
+                group[r] = g++;
+            }
             of[k] = group[r];
             sizes[of[k]]++;
         }
         int[][] out = new int[g][];
-        for (int j = 0; j < g; j++) out[j] = new int[sizes[j]];
+        for (int j = 0; j < g; j++) {
+            out[j] = new int[sizes[j]];
+        }
         int[] fill = new int[g];
-        for (int k = 0; k < n; k++) out[of[k]][fill[of[k]]++] = order[k];
+        for (int k = 0; k < n; k++) {
+            out[of[k]][fill[of[k]]++] = order[k];
+        }
         return out;
     }
 }

@@ -34,7 +34,9 @@ public final class Bodies {
             long rank,
             boolean ticking
     ) {
-        if (b.n == b.eids.length) b.grow(2 * b.n);
+        if (b.n == b.eids.length) {
+            b.grow(2 * b.n);
+        }
         int i = b.n++;
         b.entries[i] = entry;
         b.eids[i] = eid;
@@ -65,7 +67,9 @@ public final class Bodies {
     /// Adds to `b` the bodies of `o` after its own and returns `b`.
     /// No body may be added to `o` after.
     public static Bodies joined(Bodies b, Bodies o) {
-        if (b.rest == null) b.rest = new ArrayList<>();
+        if (b.rest == null) {
+            b.rest = new ArrayList<>();
+        }
         b.rest.add(o);
         if (o.rest != null) {
             b.rest.addAll(o.rest);
@@ -74,10 +78,14 @@ public final class Bodies {
         return b;
     }
 
-    private Bodies packed() {
-        if (rest == null) return this;
+    private void packed() {
+        if (rest == null) {
+            return;
+        }
         int m = n;
-        for (Bodies o : rest) m += o.n;
+        for (Bodies o : rest) {
+            m += o.n;
+        }
         grow(m);
         for (Bodies o : rest) {
             System.arraycopy(o.entries, 0, entries, n, o.n);
@@ -93,45 +101,50 @@ public final class Bodies {
             n += o.n;
         }
         rest = null;
-        return this;
     }
 
     /// Returns the indices in `b` of its bodies, in the groups whose
-    /// cells of the push grid touch.
+    /// cells of the push grid touch. Each group ascends by id, and the
+    /// groups go by their first id.
     public static int[][] islands(Bodies b) {
         b.packed();
         long[] cells = new long[b.n];
         for (int i = 0; i < b.n; i++) {
-            long cx = Math.floorDiv((long) Math.floor(b.xs[i]), 4);
-            long cz = Math.floorDiv((long) Math.floor(b.zs[i]), 4);
-            cells[i] = Islands.key(cx, cz);
+            cells[i] = PushGrid.key(PushGrid.cell(b.xs[i]), PushGrid.cell(b.zs[i]));
         }
         return Islands.of(Arrays.copyOf(b.eids, b.n), cells);
     }
 
-    /// Returns the map entries of the bodies of `b` at indices `g`.
     public static Object entries(Bodies b, int[] g) {
         b.packed();
-        if (g.length == 0) return PersistentVector.EMPTY;
+        if (g.length == 0) {
+            return PersistentVector.EMPTY;
+        }
         Object[] out = new Object[g.length];
-        for (int k = 0; k < g.length; k++) out[k] = b.entries[g[k]];
+        for (int k = 0; k < g.length; k++) {
+            out[k] = b.entries[g[k]];
+        }
         return LazilyPersistentVector.createOwning(out);
     }
 
     private static long[] longs(long[] a, int[] g) {
         long[] out = new long[g.length];
-        for (int k = 0; k < g.length; k++) out[k] = a[g[k]];
+        for (int k = 0; k < g.length; k++) {
+            out[k] = a[g[k]];
+        }
         return out;
     }
 
     private static double[] doubles(double[] a, int[] g) {
         double[] out = new double[g.length];
-        for (int k = 0; k < g.length; k++) out[k] = a[g[k]];
+        for (int k = 0; k < g.length; k++) {
+            out[k] = a[g[k]];
+        }
         return out;
     }
 
     /// Returns the push grid of the bodies of `b` at indices `g`,
-    /// ascending by id, as they stand now.
+    /// which ascend by id.
     public static PushGrid grid(Bodies b, int[] g) {
         b.packed();
         return new PushGrid(
@@ -147,17 +160,12 @@ public final class Bodies {
         );
     }
 
-    /// Returns the places by id of the bodies of `b` at indices `g`.
-    public static Slots slots(Bodies b, int[] g) {
-        b.packed();
-        return Slots.of(longs(b.eids, g));
-    }
-
-    /// Returns whether each body of `b` at indices `g` ticks.
     public static boolean[] ticking(Bodies b, int[] g) {
         b.packed();
         boolean[] out = new boolean[g.length];
-        for (int k = 0; k < g.length; k++) out[k] = b.ticking[g[k]];
+        for (int k = 0; k < g.length; k++) {
+            out[k] = b.ticking[g[k]];
+        }
         return out;
     }
 }

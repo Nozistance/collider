@@ -273,15 +273,15 @@
 (defn- takes-now? [^booleans ticking ^long i ^long j]
   (or (< j i) (not (aget ticking j))))
 
-(defn- taker [chunks ticking slots es i sh]
-  (let [j (push/slot slots (nth sh 0))]
+(defn- taker [chunks ticking index es i sh]
+  (let [j (push/slot index (nth sh 0))]
     (when (and (>= j 0) (takes-now? ticking i j)
                (push/pushable? chunks (nth (nth es j) 1)))
       j)))
 
-(defn- handing [chunks ticking vels slots es i shoves]
+(defn- handing [chunks ticking vels index es i shoves]
   (let [f (fn [acc sh]
-            (let [j (taker chunks ticking slots es i sh)
+            (let [j (taker chunks ticking index es i sh)
                   d (when j (hand (nth (nth es j) 1) vels j sh))]
               (if d (conj acc d) acc)))]
     (reduce f [] shoves)))
@@ -289,41 +289,41 @@
 (defn- takers
   "Returns the slot and the shove of each body that takes a shove
   of mob i now."
-  [chunks ticking slots es i shoves]
+  [chunks ticking index es i shoves]
   (let [f (fn [acc sh]
-            (if-let [j (taker chunks ticking slots es i sh)]
+            (if-let [j (taker chunks ticking index es i sh)]
               (conj (or acc []) [j sh])
               acc))]
     (reduce f nil shoves)))
 
-(defn- live-of [chunks slots es]
+(defn- live-of [chunks index es]
   (fn [o]
-    (push/pushable? chunks (nth (nth es (push/slot slots o)) 1))))
+    (push/pushable? chunks (nth (nth es (push/slot index o)) 1))))
 
-(defn- crowd [chunks index slots es eid e]
+(defn- crowd [chunks index es eid e]
   (let [[half height] (mobs/box-of e)
-        alive? (live-of chunks slots es)
+        alive? (live-of chunks index es)
         f (fn [^long n o] (if (alive? o) (inc n) n))]
     (reduce f 0 (push/touching index eid e half height))))
 
 (defn- crammed?
   "Returns true when mob e, crowded, takes cramming damage this
   tick."
-  [world index slots es eid e pos t]
+  [world index es eid e pos t]
   (and (push/alive? e)
        (push/cramming-draw? t eid)
        (let [e (assoc e :pos pos)]
          (push/crowded?
-           world (crowd (:chunks world) index slots es eid e)))))
+           world (crowd (:chunks world) index es eid e)))))
 
 (def ^:private crush {:type :cramming})
 
 (defn- cram-of
   "Returns the fn that hurts mob eid of es when it stands crammed,
   before it pushes."
-  [world index slots es eid t]
+  [world index es eid t]
   (fn [e pos]
-    (when (crammed? world index slots es eid e pos t)
+    (when (crammed? world index es eid e pos t)
       (damage/hurt (assoc e :pos pos) push/cramming-damage crush t
                    eid))))
 
@@ -333,12 +333,12 @@
 (defn- run-turn
   "Returns mob i of es after its step from what it thought, with its
   cramming, its deltas and the shoves it gave."
-  [world index t slots es i mind]
+  [world index t es i mind]
   (let [[eid e] (nth es i)
-        cram (cram-of world index slots es eid t)
+        cram (cram-of world index es eid t)
         [e2 ds shoves hit? ls moves]
         (step-mob world index eid e mind t cram
-                  (live-of (:chunks world) slots es))
+                  (live-of (:chunks world) index es))
         cs (when hit? [[:damage eid push/cramming-damage crush]])
         [e2 ds] (living/touched world eid e2 moves ds ls cs)]
     [e2 ds shoves]))
@@ -352,41 +352,40 @@
       w
       (assoc w :watchers (:watchers world)))))
 
-(defn- turn [world ticking vels tempters t index slots es i]
+(defn- turn [world ticking vels tempters t index es i]
   (let [[eid e] (nth es i)
         lw (live world eid)
         [e2 ds shoves]
         (if (stepping? ticking es i)
-          (run-turn lw index t slots es i
+          (run-turn lw index t es i
                     (mind world lw tempters eid e t))
           [e nil nil])
         es (assoc! es i [eid e2])
-        hs (handing (:chunks lw) ticking vels slots es i
+        hs (handing (:chunks lw) ticking vels index es i
                     shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
     [es (if (seq hs) (into (vec ds) hs) ds) from]))
 
 (defn- reindexed [index es i from]
   (if from
-    (let [[eid e] (nth es i)] (push/moved index eid from e))
+    (let [[eid e] (nth es i)] (push/moved index eid e))
     index))
 
 (defn- island
   [teams {:keys [es bodies at riders after]}]
   {:es es :index (push/teamed (push/grid-of bodies at) teams es)
-   :ticking (push/ticks-of bodies at)
-   :slots (push/slots-of bodies at) :riders riders :after after})
+   :ticking (push/ticks-of bodies at) :riders riders :after after})
 
 (defn- walk
   "Returns the deltas of the island isl stepped in the order of its
   bodies."
-  [world tempters t {:keys [es index ticking slots]}]
+  [world tempters t {:keys [es index ticking]}]
   (let [vels (object-array (count es))]
     (loop [i 0 es (transient es) index index acc (transient [])]
       (if (= i (count es))
         (persistent! acc)
         (let [[es ds from]
-              (turn world ticking vels tempters t index slots es i)]
+              (turn world ticking vels tempters t index es i)]
           (recur (inc i) es (reindexed index es i from)
                  (reduce conj! acc ds)))))))
 
@@ -420,7 +419,7 @@
           (aset ^booleans (:touched s) j true)
           (cond-> (update s :es assoc! j [eid e2])
             (not (identical? (:pos e) (:pos e2)))
-            (update :index push/moved eid (:pos e) e2))))))
+            (update :index push/moved eid e2))))))
 
 (defn- rider-turn [world t isl s [eid e]]
   (let [view (rider-view world isl s eid)
@@ -431,11 +430,11 @@
            :writes (conj (:writes s) [eid ds]))))
 
 (defn- body-turn [world tempters t isl s i]
-  (let [{:keys [ticking slots]} isl
+  (let [{:keys [ticking]} isl
         {:keys [es vels index]} s
         on? (stepping? ticking es i)
         [es ds from]
-        (turn world ticking vels tempters t index slots es i)]
+        (turn world ticking vels tempters t index es i)]
     (when on? (aset ^booleans (:touched s) i true))
     (assoc s :es es :index (reindexed (:index s) es i from)
            :acc (reduce conj! (:acc s) ds))))
@@ -490,21 +489,21 @@
 
 (defn- placed! [index ^objects cur i eid e e2]
   (when-not (identical? (:pos e) (:pos e2))
-    (push/moved index eid (:pos e) e2))
+    (push/moved index eid e2))
   (aset cur i [eid e2]))
 
 (defn- body-of
   "Returns the fn of slot i that moves mob i of the island isl as it
   thought. It tells when ok? finds the mob out of reach."
-  [world t {:keys [ticking index slots]}
+  [world t {:keys [ticking index]}
    [^objects minds cur ^objects runs] out ok?]
   (fn [i]
     (let [i (int i) m (aget minds i)]
       (when m
         (let [[eid e] (nth cur i)
               w (live world eid)
-              [e2 ds shoves] (run-turn w index t slots cur i m)
-              ts (takers (:chunks w) ticking slots cur i shoves)]
+              [e2 ds shoves] (run-turn w index t cur i m)
+              ts (takers (:chunks w) ticking index cur i shoves)]
           (when-not (ok? e e2) (aset ^booleans out 0 true))
           (placed! index cur i eid e e2)
           (aset runs i [ds ts]))))))
