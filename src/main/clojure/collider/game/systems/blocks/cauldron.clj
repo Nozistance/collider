@@ -25,12 +25,12 @@
       :water-bucket
       [(block/state :water-cauldron {:level :3}) :bucket/empty]
       :lava-bucket
-      (if dry? [(block/state :lava-cauldron) :bucket/empty-lava] [])
+      (if dry? [(block/state :lava-cauldron) :bucket/empty-lava] :consume)
       :powder-snow-bucket
       (if dry?
         [(block/state :powder-snow-cauldron {:level :3})
          :bucket/empty-snow]
-        [])
+        :consume)
       nil)))
 
 (defn- cauldron-scooped [cur]
@@ -52,7 +52,7 @@
         (block/with-long cur :level (inc lvl))))))
 
 (defn- hand-of [world eid]
-  (get-in world [:entities eid :use-hand] :main))
+  (get-in world [:entities eid :use-hand]))
 
 (defn- used-deltas [world eid pos item result sound stat]
   (concat (inventory/filled-result-deltas world eid result false
@@ -88,13 +88,14 @@
                    sound :custom/use-cauldron))))
 
 (defn- fill-deltas [world eid pos item]
-  (when-let [[st sound] (cauldron-filled world pos item)]
-    (if st
-      (concat
-        (changes/change-deltas world [[pos st]])
-        (used-deltas world eid pos item {:item :bucket :count 1}
-                     sound :custom/fill-cauldron))
-      [])))
+  (when-let [filled (cauldron-filled world pos item)]
+    (if (= :consume filled)
+      []
+      (let [[st sound] filled]
+        (concat
+          (changes/change-deltas world [[pos st]])
+          (used-deltas world eid pos item {:item :bucket :count 1}
+                       sound :custom/fill-cauldron))))))
 
 (defn- dyed-shulker? [item]
   (and (not= :shulker-box item)
@@ -111,12 +112,11 @@
 (defn- undyed-deltas [world eid pos cur held]
   (when (and (= :water-cauldron (block/block-of cur))
              (contains? (:components held) :dyed-color))
-    (let [e (get-in world [:entities eid])]
-      (concat
-        (changes/change-deltas world [[pos (cauldron/lowered cur)]])
-        [[:set-slot eid (player/hand-slot e (hand-of world eid))
-          (update held :components dissoc :dyed-color)]
-         [:award eid :custom/clean-armor 1]]))))
+    (concat
+      (changes/change-deltas world [[pos (cauldron/lowered cur)]])
+      [[:set-slot eid (player/use-slot world eid)
+        (update held :components dissoc :dyed-color)]
+       [:award eid :custom/clean-armor 1]])))
 
 (defn- washed [world eid pos cur item held]
   (let [layers (get-in held [:components :banner-patterns])]

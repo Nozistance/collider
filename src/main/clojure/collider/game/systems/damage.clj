@@ -88,23 +88,27 @@
            (contains? loose-types (:type e))
            (live? world entry)))))
 
-(defn- bodies [world due?]
+(defn- bodies
+  "Returns the transducer of the deltas of each due item and orb, and
+  in place of them the entry of one in a cauldron of water or snow."
+  [world due?]
   (comp (filter due?)
-        (remove (fn [[_ e]] (hurt/by-pot? world e)))
-        (mapcat (fn [[eid e]] (body-deltas world eid e)))))
+        (map (fn [[eid e :as entry]]
+               (if (hurt/in-layered-cauldron? world e)
+                 entry
+                 (vec (body-deltas world eid e)))))))
 
 (defn- in-turn
-  "Returns the deltas of the items and orbs in cauldrons of water or
-  snow, each on the world the ones before it left."
-  [world due?]
+  "Returns the deltas of rs in order, an entry in rs taking its deltas
+  on the world the entries before it left."
+  [world rs]
   (first
-    (reduce (fn [[ds w] [eid e]]
-              (let [d (vec (body-deltas w eid e))]
-                [(into ds d) (if (seq d) (first (apply/applied w d)) w)]))
-            [[] world]
-            (filter (fn [[_ e :as entry]]
-                      (and (due? entry) (hurt/by-pot? world e)))
-                    (:entities world)))))
+    (reduce (fn [[ds w] r]
+              (if (map-entry? r)
+                (let [[eid e] r d (vec (body-deltas w eid e))]
+                  [(into ds d) (if (seq d) (first (apply/applied w d)) w)])
+                [(into ds r) w]))
+            [[] world] rs)))
 
 (def ^:private ^:const bodies-leaf 64)
 
@@ -125,7 +129,6 @@
   its own in its turn, a player in its tick after the level."
   {:wake {:keys [:entities]}}
   [world _d]
-  (let [due? (due world)]
-    (deltas/of-vec
-      (into (par/select (bodies world due?) (:entities world) bodies-leaf)
-            (in-turn world due?)))))
+  (deltas/of-vec
+    (in-turn world (par/select (bodies world (due world)) (:entities world)
+                               bodies-leaf))))
