@@ -72,8 +72,7 @@ public final class LongSet extends APersistentSet
         return with(root == null ? null : Node.range(root, Node.u(lo), Node.u(hi)));
     }
 
-    /// Returns the keys in either set, or this set itself when o adds
-    /// none.
+    /// Returns the keys in either set, or this set itself when o adds none.
     public LongSet union(LongSet o) {
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
@@ -92,10 +91,10 @@ public final class LongSet extends APersistentSet
         return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
-    /// Reduces the set with (reducef acc k) in parallel parts of at
-    /// most n keys and joins the parts in key order with combinef. The
-    /// last four arguments are the fork and join functions of
-    /// clojure.core.reducers.
+    /// Reduces the set with (reducef acc k) in parallel parts and joins
+    /// the parts in key order with combinef. A part holds at most n keys,
+    /// or at most 64 when n is smaller. The last four arguments are the
+    /// clojure.core.reducers functions to fork and join.
     public Object fold(
             int n,
             IFn combinef,

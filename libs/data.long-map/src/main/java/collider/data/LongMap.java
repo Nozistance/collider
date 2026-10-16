@@ -100,8 +100,7 @@ public final class LongMap extends APersistentMap
         return with(root == null ? null : Node.range(root, Node.u(lo), Node.u(hi)));
     }
 
-    /// Returns the entries of both maps, with the values of o on shared
-    /// keys.
+    /// Returns the entries of both maps, with the values of o on shared keys.
     public LongMap merge(LongMap o) {
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
@@ -119,10 +118,10 @@ public final class LongMap extends APersistentMap
         return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
-    /// Reduces the map with (reducef acc k v) in parallel parts of at
-    /// most n entries and joins the parts in key order with combinef.
-    /// The last four arguments are the fork and join functions of
-    /// clojure.core.reducers.
+    /// Reduces the map with (reducef acc k v) in parallel parts and joins
+    /// the parts in key order with combinef. A part holds at most n
+    /// entries, or at most 64 when n is smaller. The last four arguments
+    /// are the clojure.core.reducers functions to fork and join.
     public Object fold(
             int n,
             IFn combinef,
