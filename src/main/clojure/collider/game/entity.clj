@@ -23,6 +23,13 @@
 
 (def ^:private arrow-types #{:arrow :spectral-arrow})
 
+(defn saveable?
+  "Returns true when a save keeps entity e. A player, a bolt, a
+  leash knot and a bobber go with their chunk."
+  [e]
+  (not (contains? #{:player :lightning-bolt :leash-knot :fishing-bobber}
+                  (:type e))))
+
 (defn arrow?
   "Returns true when e is an arrow of any kind."
   [e]

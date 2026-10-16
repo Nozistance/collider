@@ -38,7 +38,9 @@
                      (map (fn [[k v]] [k (stack/saved (f v t))])))]
     {:chunk c
      :block-entities (into {} (entries-of be/saved) block-entities)
-     :entities (into {} (entries-of entity/saved) entities)
+     :entities (into {} (comp (filter (comp entity/saveable? val))
+                              (entries-of entity/saved))
+                     entities)
      :block-ticks (or block-ticks [])
      :fluid-ticks (or fluid-ticks [])}))
 
