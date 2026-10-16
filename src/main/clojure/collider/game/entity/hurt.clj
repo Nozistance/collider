@@ -236,10 +236,11 @@
   (max (long fire) (* ticks-per-second (long seconds))))
 
 (defn- ignite-deltas [eid fire wet? damages seconds src]
-  (cond-> (mapv (fn [d] [:damage eid (double d) src]) damages)
-          (not wet?)
-          (conj [:merge-entity eid
-                 {:fire (fire-ticks fire seconds)}])))
+  (when (seq damages)
+    (cond-> (mapv (fn [d] [:damage eid (double d) src]) damages)
+            (not wet?)
+            (conj [:merge-entity eid
+                   {:fire (fire-ticks fire seconds)}]))))
 
 (defn- fizz-cell [e]
   (mapv (fn [c] (long (Math/floor (double c))))
@@ -574,8 +575,7 @@
         wet? (boolean (and touched? (item-wet? world e)))
         lava? (any-bit? flags phys/lava-mark)
         [fires lavas] (when (pos? flags) (item-cells world e))
-        ignite (fn [ds s] (when (seq ds)
-                            (ignite-deltas eid fire wet? ds s nil)))]
+        ignite (fn [ds s] (ignite-deltas eid fire wet? ds s nil))]
     (concat (burning-flag eid e (burnt-down fire wet?))
             (burn-tick-deltas eid fire wet? lava?)
             (ignite fires fire-seconds)
