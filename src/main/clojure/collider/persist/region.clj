@@ -16,13 +16,14 @@
   (Region/of id))
 
 (defn create
-  "Returns a new empty region of generation gen in dir."
+  "Returns a new empty region of generation gen in dir. An old one of
+  the same key and generation is lost."
   ^Region [dir ^long k ^long gen]
   (Region/create (path dir) k gen))
 
 (defn open-all
   "Returns the regions that the manifest of generation gen in dir
-  names."
+  names, none for generation 0."
   [dir ^long gen]
   (vec (Region/openAll (path dir) gen)))
 
@@ -36,16 +37,18 @@
   (.copy r))
 
 (defn append!
-  "Writes the bytes of chunk id to the end of r."
+  "Writes data to the end of r as the record of chunk id."
   [^Region r ^long id ^bytes data]
   (.append r id data))
 
 (defn chunk-bytes
-  "Returns the bytes of chunk id in r, or nil when r lacks it."
+  "Returns the bytes of chunk id in r, or nil when r lacks it. Throws
+  when no record of it reads."
   [^Region r ^long id]
   (.get r id))
 
 (defn chunks
+  "Returns the chunks with a record in r, by z and by x in a row."
   [^Region r]
   (.chunks r))
 
@@ -55,11 +58,15 @@
   (.sparse r))
 
 (defn compact
-  "Returns a new region of generation gen with the live records of r."
+  "Returns a new region of generation gen with the live records of r.
+  A chunk with no readable record is left out."
   ^Region [^Region r ^long gen]
   (.compact r gen))
 
-(defn force! [^Region r] (.force r))
+(defn force!
+  "Makes the records written to r durable."
+  [^Region r]
+  (.force r))
 
 (defn close! [^Region r] (.close r))
 

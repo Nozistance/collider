@@ -1,6 +1,7 @@
 (ns collider.proto.buf
-  "Byte buffers of the wire format."
+  "Growable byte sequences of the wire format, big end first."
   (:import (collider.proto Buf)
+           (java.io InputStream OutputStream)
            (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
@@ -30,6 +31,8 @@
   (.writeDouble b v))
 
 (defn write-bytes!
+  "Writes the bytes of src, a byte array or a Buf. A Buf src ends with
+  nothing unread."
   ([^Buf b src]
    (if (instance? Buf src)
      (.writeBytes b ^Buf src)
@@ -38,7 +41,8 @@
    (.writeBytes b src (int off) (int len))))
 
 (defn write-utf!
-  "Writes s in the modified UTF-8 of NBT."
+  "Writes s as a two-byte length and its chars in the modified UTF-8
+  of NBT. Throws past 65535 bytes."
   [^Buf b ^String s]
   (.writeModifiedUtf b s))
 
@@ -46,11 +50,14 @@
   (long (.readByte b)))
 
 (defn read-utf
-  "Returns the string in the modified UTF-8 of NBT at the read point."
+  "Returns the string in the modified UTF-8 of NBT at the read point.
+  Throws on a malformed or cut char."
   ^String [^Buf b]
   (.readModifiedUtf b))
 
-(defn read-boolean [^Buf b]
+(defn read-boolean
+  "Returns true for any byte but 0."
+  [^Buf b]
   (.readBoolean b))
 
 (defn read-unsigned-byte ^long [^Buf b]
@@ -81,7 +88,7 @@
   (long (.readableBytes b)))
 
 (defn peek-bytes
-  "Copies up to n unread bytes without moving the read point."
+  "Returns up to n unread bytes without moving the read point."
   ^bytes [^Buf b ^long n]
   (.peek b (int n)))
 
@@ -93,31 +100,38 @@
    (.clear b (int keep))))
 
 (defn ensure!
+  "Makes room in b for n more bytes."
   [^Buf b ^long n]
   (.ensure b (int n)))
 
 (defn adopt!
-  "Makes the first len bytes of src the unread content of b."
+  "Makes the first len bytes of src the unread content of b. b takes
+  src itself, not a copy."
   [^Buf b ^bytes src ^long len]
   (.adopt b src (int len)))
 
-(defn read-from! [^Buf b in ^long n]
+(defn read-from!
+  "Reads exactly n bytes from in into b. Throws when in ends first."
+  [^Buf b ^InputStream in ^long n]
   (.readFrom b in (int n)))
 
-(defn write-to! [^Buf b out]
+(defn write-to!
+  "Writes the unread bytes of b to out and marks them read."
+  [^Buf b ^OutputStream out]
   (.writeTo b out))
 
 (defn inflate-input!
-  "Gives the unread bytes to the inflater. The read point stays."
-  [^Buf b ^Inflater i]
-  (.inflateInput b i))
+  "Gives the unread bytes of b to inflater. The read point stays."
+  [^Buf b ^Inflater inflater]
+  (.inflateInput b inflater))
 
 (defn deflate-input!
-  "Gives the unread bytes to the deflater and marks them read."
-  [^Buf b ^Deflater d]
-  (.deflateInput b d))
+  "Gives the unread bytes of b to deflater and marks them read."
+  [^Buf b ^Deflater deflater]
+  (.deflateInput b deflater))
 
 (defn deflate!
-  "Writes what the deflater gives into the free room."
-  [^Buf b ^Deflater d]
-  (.deflate b d))
+  "Writes what deflater gives into the free room of b. That room does
+  not grow."
+  [^Buf b ^Deflater deflater]
+  (.deflate b deflater))

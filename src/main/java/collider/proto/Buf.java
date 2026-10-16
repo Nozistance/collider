@@ -7,7 +7,8 @@ import java.io.UTFDataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
-/// A resizable byte sequence with a read position and a write position.
+/// A growable byte sequence with a read position and a write position.
+/// Numbers go big end first.
 public final class Buf {
 
     private byte[] bytes;
@@ -34,7 +35,8 @@ public final class Buf {
         }
     }
 
-    /// Makes the first `len` bytes of `src` the unread content.
+    /// Makes the first len bytes of src the unread content. This takes
+    /// src itself, not a copy.
     public void adopt(byte[] src, int len) {
         bytes = src;
         readIndex = 0;
@@ -50,14 +52,15 @@ public final class Buf {
         readIndex = 0;
     }
 
-    /// Empties this buffer and gives back the room above `keep` bytes.
+    /// Empties this sequence and gives back the room above keep bytes.
     public void clear(int keep) {
-        if (bytes.length > keep) bytes = new byte[keep];
-        writeIndex = 0;
-        readIndex = 0;
+        if (bytes.length > keep) {
+            bytes = new byte[keep];
+        }
+        clear();
     }
 
-    /// Returns a copy of up to `n` unread bytes. The read position stays.
+    /// Returns a copy of up to n unread bytes. The read position stays.
     public byte[] peek(int n) {
         int k = Math.min(n, readableBytes());
         byte[] dst = new byte[k];
@@ -65,36 +68,44 @@ public final class Buf {
         return dst;
     }
 
+    /// Reads exactly n bytes from in. Throws when in ends before them.
     public void readFrom(InputStream in, int n) throws IOException {
         ensure(n);
         int got = 0;
         while (got < n) {
             int k = in.read(bytes, writeIndex + got, n - got);
-            if (k < 0) throw new IOException("end of stream");
+            if (k < 0) {
+                throw new IOException("end of stream");
+            }
             got += k;
         }
         writeIndex += n;
     }
 
+    /// Writes the unread bytes to out and marks them read.
     public void writeTo(OutputStream out) throws IOException {
         out.write(bytes, readIndex, writeIndex - readIndex);
         readIndex = writeIndex;
     }
 
-    /// Gives the unread bytes to `inflater`. The read position stays.
+    /// Gives the unread bytes to inflater. The read position stays.
     public void inflateInput(Inflater inflater) {
         inflater.setInput(bytes, readIndex, readableBytes());
     }
 
-    /// Gives the unread bytes to `deflater` and marks them read.
+    /// Gives the unread bytes to deflater and marks them read.
     public void deflateInput(Deflater deflater) {
         deflater.setInput(bytes, readIndex, readableBytes());
         readIndex = writeIndex;
     }
 
-    /// Writes what `deflater` gives into the free room.
+    /// Writes what deflater gives into the free room, which does not grow.
     public void deflate(Deflater deflater) {
-        writeIndex += deflater.deflate(bytes, writeIndex, bytes.length - writeIndex);
+        writeIndex += deflater.deflate(
+                bytes,
+                writeIndex,
+                bytes.length - writeIndex
+        );
     }
 
     public void writeByte(int v) {
@@ -114,12 +125,16 @@ public final class Buf {
 
     public void writeInt(int v) {
         ensure(4);
-        for (int i = 24; i >= 0; i -= 8) bytes[writeIndex++] = (byte) (v >> i);
+        for (int i = 24; i >= 0; i -= 8) {
+            bytes[writeIndex++] = (byte) (v >> i);
+        }
     }
 
     public void writeLong(long v) {
         ensure(8);
-        for (int i = 56; i >= 0; i -= 8) bytes[writeIndex++] = (byte) (v >> i);
+        for (int i = 56; i >= 0; i -= 8) {
+            bytes[writeIndex++] = (byte) (v >> i);
+        }
     }
 
     public void writeFloat(float v) {
@@ -140,6 +155,7 @@ public final class Buf {
         writeIndex += len;
     }
 
+    /// Writes the unread bytes of src and marks them read in src.
     public void writeBytes(Buf src) {
         writeBytes(src.bytes, src.readIndex, src.readableBytes());
         src.readIndex = src.writeIndex;
@@ -149,20 +165,26 @@ public final class Buf {
         int len = 0;
         for (int i = 0; i < s.length(); i++) {
             int ch = s.charAt(i);
-            if (ch >= 0x0001 && ch <= 0x007F) len++;
-            else if (ch > 0x07FF) len += 3;
-            else len += 2;
+            if (ch >= 0x0001 && ch <= 0x007F) {
+                len++;
+            } else if (ch > 0x07FF) {
+                len += 3;
+            } else {
+                len += 2;
+            }
         }
         return len;
     }
 
-    /// Writes `s` as its length in bytes in two bytes, big end first,
-    /// and its chars in modified UTF-8. The char 0 takes two bytes and
-    /// each surrogate three. Throws past 65535 bytes of chars.
+    /// Writes s as its length in bytes in two bytes and its chars in
+    /// modified UTF-8. The char 0 takes two bytes and each surrogate
+    /// three. Throws past 65535 bytes of chars.
     public void writeModifiedUtf(String s) throws UTFDataFormatException {
         int len = utfLength(s);
         if (len > 65535) {
-            throw new UTFDataFormatException("encoded string too long: " + len + " bytes");
+            throw new UTFDataFormatException(
+                    "encoded string too long: " + len + " bytes"
+            );
         }
         ensure(len + 2);
         bytes[writeIndex++] = (byte) (len >> 8);
@@ -190,9 +212,8 @@ public final class Buf {
         return new UTFDataFormatException("malformed input: partial character at end");
     }
 
-    /// Reads a string as its length in bytes in two bytes, big end
-    /// first, and its chars in modified UTF-8. Throws on a malformed
-    /// or cut char.
+    /// Reads a string as its length in bytes in two bytes and its chars
+    /// in modified UTF-8. Throws on a malformed or cut char.
     public String readModifiedUtf() throws UTFDataFormatException {
         int len = readUnsignedShort();
         checkRead(len);
@@ -210,14 +231,20 @@ public final class Buf {
                 }
                 case 12, 13 -> {
                     count += 2;
-                    if (count > len) throw partial();
+                    if (count > len) {
+                        throw partial();
+                    }
                     int c2 = bytes[start + count - 1];
-                    if ((c2 & 0xC0) != 0x80) throw malformed(count);
+                    if ((c2 & 0xC0) != 0x80) {
+                        throw malformed(count);
+                    }
                     chars[n++] = (char) (((c & 0x1F) << 6) | (c2 & 0x3F));
                 }
                 case 14 -> {
                     count += 3;
-                    if (count > len) throw partial();
+                    if (count > len) {
+                        throw partial();
+                    }
                     int c2 = bytes[start + count - 2];
                     int c3 = bytes[start + count - 1];
                     if ((c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80) {
@@ -238,6 +265,7 @@ public final class Buf {
         return bytes[readIndex++];
     }
 
+    /// Returns true for any byte but 0.
     public boolean readBoolean() {
         checkRead(1);
         return bytes[readIndex++] != 0;
@@ -250,7 +278,8 @@ public final class Buf {
 
     public short readShort() {
         checkRead(2);
-        return (short) (((bytes[readIndex++] & 0xFF) << 8) | (bytes[readIndex++] & 0xFF));
+        int hi = bytes[readIndex++] & 0xFF;
+        return (short) ((hi << 8) | (bytes[readIndex++] & 0xFF));
     }
 
     public int readUnsignedShort() {
@@ -260,14 +289,18 @@ public final class Buf {
     public int readInt() {
         checkRead(4);
         int v = 0;
-        for (int i = 0; i < 4; i++) v = (v << 8) | (bytes[readIndex++] & 0xFF);
+        for (int i = 0; i < 4; i++) {
+            v = (v << 8) | (bytes[readIndex++] & 0xFF);
+        }
         return v;
     }
 
     public long readLong() {
         checkRead(8);
         long v = 0;
-        for (int i = 0; i < 8; i++) v = (v << 8) | (bytes[readIndex++] & 0xFF);
+        for (int i = 0; i < 8; i++) {
+            v = (v << 8) | (bytes[readIndex++] & 0xFF);
+        }
         return v;
     }
 

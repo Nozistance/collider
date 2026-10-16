@@ -23,16 +23,16 @@ import java.util.zip.DataFormatException;
 
 /// The log of a region, 32 by 32 chunks, in one append-only file.
 ///
-/// A record is `cx cz len crc32` as ints, then `len` bytes. The last
-/// readable record of a chunk wins. Only the bytes up to `end` belong
-/// to the region. A commit writes past them, and a manifest names the
-/// new end. A copy shares the file and owns its index, so readers of
-/// the old region never see a record of an uncommitted write.
+/// A record is the ints cx, cz, len and crc32, then len bytes. The
+/// last readable record of a chunk wins. Only the bytes up to end
+/// belong to the region. A commit writes past them, and a manifest
+/// names the new end. A copy shares the file and owns its index, so
+/// readers of the old region never see an uncommitted record.
 public final class Region {
 
-    static final int HEAD = 16;
-    static final int SIDE = 32;
-    static final int ENTRY = 24;
+    private static final int HEAD = 16;
+    private static final int SIDE = 32;
+    private static final int ENTRY = 24;
     public final long key;
     public final long gen;
     private final Log log;
@@ -54,8 +54,12 @@ public final class Region {
         }
 
         synchronized FileChannel reopen(FileChannel dead) throws IOException {
-            if (shut) throw new ClosedChannelException();
-            if (ch == dead) ch = FileChannel.open(path, READ, WRITE);
+            if (shut) {
+                throw new ClosedChannelException();
+            }
+            if (ch == dead) {
+                ch = FileChannel.open(path, READ, WRITE);
+            }
             return ch;
         }
 
@@ -75,7 +79,9 @@ public final class Region {
             try {
                 return op.on(c);
             } catch (ClosedChannelException e) {
-                if (Thread.currentThread().isInterrupted()) throw e;
+                if (Thread.currentThread().isInterrupted()) {
+                    throw e;
+                }
                 c = log.reopen(c);
             }
         }
@@ -104,30 +110,33 @@ public final class Region {
         return new Region(log, key, gen, new long[n], new int[n], 0, 0);
     }
 
-    /// Returns the key of the region that holds chunk `id`.
+    /// Returns the key of the region that holds chunk id.
     public static long of(long id) {
         return ChunkIndex.id(ChunkIndex.x(id) >> 5, ChunkIndex.z(id) >> 5);
     }
 
-    static Path file(Path dir, long key, long gen) {
+    private static Path file(Path dir, long key, long gen) {
         String xz = ChunkIndex.x(key) + "." + ChunkIndex.z(key);
         return dir.resolve("r." + xz + "." + gen + ".log");
     }
 
-    /// Returns the path of the manifest of generation `gen` in `dir`.
     public static Path manifestPath(Path dir, long gen) {
         return dir.resolve("regions." + gen);
     }
 
-    /// Returns a new empty region of generation `gen` in `dir`.
-    public static Region create(Path dir, long key, long gen) throws IOException {
+    /// Returns a new empty region of generation gen in dir. An old one
+    /// of the same key and generation is lost.
+    public static Region create(Path dir, long key, long gen)
+            throws IOException {
         Files.createDirectories(dir);
         Path p = file(dir, key, gen);
-        FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
+        FileChannel ch =
+                FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
         return empty(new Log(p, ch), key, gen);
     }
 
-    static Region openOne(Path dir, long key, long gen, long end) throws IOException {
+    private static Region openOne(Path dir, long key, long gen, long end)
+            throws IOException {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, READ, WRITE);
         Region r = empty(new Log(p, ch), key, gen);
@@ -152,7 +161,9 @@ public final class Region {
 
     private void index(long id, long off, int n) {
         int s = slot(id);
-        if (at[s] != 0) live -= size[s];
+        if (at[s] != 0) {
+            live -= size[s];
+        }
         at[s] = off + 1;
         size[s] = n;
         live += n;
@@ -194,13 +205,15 @@ public final class Region {
         return (int) c.getValue();
     }
 
-    /// Writes chunk `id` past the end and makes it the chunk's record.
+    /// Writes data past the end as the record of chunk id.
     public void append(long id, byte[] data) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(HEAD + data.length);
         b.putInt(ChunkIndex.x(id)).putInt(ChunkIndex.z(id)).putInt(data.length);
         b.putInt(crc(data)).put(data).flip();
         long off = end;
-        while (b.hasRemaining()) io(c -> c.write(b, off + b.position()));
+        while (b.hasRemaining()) {
+            io(c -> c.write(b, off + b.position()));
+        }
         index(id, off, b.capacity());
     }
 
@@ -215,40 +228,55 @@ public final class Region {
         return crc(data) == h.getInt(12) ? data : null;
     }
 
-    private byte[] older(long before, long id) throws IOException, DataFormatException {
+    private byte[] older(long before, long id)
+            throws IOException, DataFormatException {
         long[] offs = new long[8];
         int n = 0;
         long off = 0;
         while (off < before) {
             ByteBuffer h = read(off, HEAD);
-            if (h.getInt(8) < 0) break;
+            int len = h.getInt(8);
+            if (len < 0) {
+                break;
+            }
             if (ChunkIndex.id(h.getInt(0), h.getInt(4)) == id) {
-                if (n == offs.length) offs = Arrays.copyOf(offs, 2 * n);
+                if (n == offs.length) {
+                    offs = Arrays.copyOf(offs, 2 * n);
+                }
                 offs[n++] = off;
             }
-            off += HEAD + h.getInt(8);
+            off += HEAD + len;
         }
         while (n > 0) {
             byte[] data = record(offs[--n], id);
-            if (data != null) return data;
+            if (data != null) {
+                return data;
+            }
         }
         throw new DataFormatException("no record of it reads in " + log.path);
     }
 
-    /// Returns the bytes of chunk `id`, or null when it has no record.
-    /// Throws DataFormatException when no record of it reads.
-    /// A record whose crc fails gives way to the one before it.
+    /// Returns the bytes of chunk id, or null when it has no record. A
+    /// record whose crc fails gives way to the one before it. Throws
+    /// DataFormatException when no record of it reads.
     public byte[] get(long id) throws IOException, DataFormatException {
         long a = at[slot(id)];
-        if (a == 0) return null;
+        if (a == 0) {
+            return null;
+        }
         byte[] data = record(a - 1, id);
         return data != null ? data : older(a - 1, id);
     }
 
+    /// Returns the chunks with a record, by z and by x in a row.
     public long[] chunks() {
         int n = 0;
         long[] ids = new long[SIDE * SIDE];
-        for (int s = 0; s < at.length; s++) if (at[s] != 0) ids[n++] = id(s);
+        for (int s = 0; s < at.length; s++) {
+            if (at[s] != 0) {
+                ids[n++] = id(s);
+            }
+        }
         return Arrays.copyOf(ids, n);
     }
 
@@ -257,7 +285,7 @@ public final class Region {
         return end > 2 * live;
     }
 
-    /// Returns a new region of generation `gen` with the live records
+    /// Returns a new region of generation gen with the live records
     /// alone. A chunk that no record of reads is left out.
     public Region compact(long gen) throws IOException {
         Region r = create(log.path.getParent(), key, gen);
@@ -290,26 +318,30 @@ public final class Region {
         log.close();
     }
 
-    /// Returns the bytes of a manifest that names `regions` with their
-    /// ends.
+    /// Returns the bytes of a manifest naming regions and their ends.
     public static byte[] manifest(Region[] regions) {
         ByteBuffer b = ByteBuffer.allocate(regions.length * ENTRY);
-        for (Region r : regions) b.putLong(r.key).putLong(r.gen).putLong(r.end);
+        for (Region r : regions) {
+            b.putLong(r.key).putLong(r.gen).putLong(r.end);
+        }
         return b.array();
     }
 
     private static ByteBuffer entries(Path dir, long gen) throws IOException {
-        ByteBuffer b = ByteBuffer.wrap(Files.readAllBytes(manifestPath(dir, gen)));
+        Path p = manifestPath(dir, gen);
+        ByteBuffer b = ByteBuffer.wrap(Files.readAllBytes(p));
         if (b.remaining() % ENTRY != 0) {
-            throw new IOException(manifestPath(dir, gen) + " is cut short");
+            throw new IOException(p + " is cut short");
         }
         return b;
     }
 
-    /// Returns the regions the manifest of generation `gen` names, each
-    /// with its index.
+    /// Returns the regions the manifest of generation gen names, each
+    /// with its index. Generation 0 names none.
     public static Region[] openAll(Path dir, long gen) throws IOException {
-        if (gen == 0) return new Region[0];
+        if (gen == 0) {
+            return new Region[0];
+        }
         ByteBuffer b = entries(dir, gen);
         Region[] rs = new Region[b.remaining() / ENTRY];
         int i = 0;
@@ -318,15 +350,21 @@ public final class Region {
                 rs[i] = openOne(dir, b.getLong(), b.getLong(), b.getLong());
             }
         } catch (IOException | RuntimeException e) {
-            while (i > 0) rs[--i].close();
+            while (i > 0) {
+                rs[--i].close();
+            }
             throw e;
         }
         return rs;
     }
 
-    private static void keep(Set<Path> kept, Path dir, long gen) throws IOException {
-        if (gen <= 0 || !Files.isRegularFile(manifestPath(dir, gen))) return;
-        kept.add(manifestPath(dir, gen));
+    private static void keep(Set<Path> kept, Path dir, long gen)
+            throws IOException {
+        Path p = manifestPath(dir, gen);
+        if (gen <= 0 || !Files.isRegularFile(p)) {
+            return;
+        }
+        kept.add(p);
         ByteBuffer b = entries(dir, gen);
         while (b.hasRemaining()) {
             kept.add(file(dir, b.getLong(), b.getLong()));
@@ -334,10 +372,12 @@ public final class Region {
         }
     }
 
-    /// Deletes every region file and manifest in `dir` that neither
-    /// generation `gen` nor the one before it names.
+    /// Deletes every region file and manifest in dir that neither
+    /// generation gen nor the one before it names.
     public static void sweep(Path dir, long gen) throws IOException {
-        if (!Files.isDirectory(dir)) return;
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
         Set<Path> kept = new HashSet<>();
         keep(kept, dir, gen);
         keep(kept, dir, gen - 1);
@@ -345,7 +385,9 @@ public final class Region {
             for (Path p : ps) {
                 String n = p.getFileName().toString();
                 boolean ours = n.startsWith("r.") || n.startsWith("regions.");
-                if (ours && !kept.contains(p)) Files.delete(p);
+                if (ours && !kept.contains(p)) {
+                    Files.delete(p);
+                }
             }
         }
     }
