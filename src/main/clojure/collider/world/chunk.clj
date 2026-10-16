@@ -157,8 +157,8 @@
   ^long [^Section s ^long c] (.word s (int c)))
 
 (defn tally
-  "Returns the number of blocks of s that block marks shifted left by
-  16, plus the number of those that fluid also marks."
+  "Returns the count of blocks of s marked in block, shifted left by
+  16, plus the count of those also marked in fluid."
   ^long [^Section s ^booleans block ^booleans fluid]
   (.tally s block fluid))
 

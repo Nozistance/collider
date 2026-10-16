@@ -582,8 +582,8 @@ public final class Section {
         return id < marks.length && marks[id];
     }
 
-    /// Returns the number of blocks that block marks shifted left by 16,
-    /// plus the number of those that fluid also marks.
+    /// Returns the count of blocks marked in block, shifted left by 16,
+    /// plus the count of those also marked in fluid.
     public long tally(boolean[] block, boolean[] fluid) {
         if (bits == 0) {
             int v = pal[0];
