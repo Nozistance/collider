@@ -74,7 +74,8 @@
 (defn- layered-fill [^long st precipitation]
   (let [level (block/prop-long st :level)]
     (when (and (not= 3 level)
-               (= (cauldron/precipitation (block/block-of st)) precipitation))
+               (= (cauldron/precipitation (block/block-of st))
+                  precipitation))
       (block/with-long st :level (inc level)))))
 
 (defn- cauldron-fill [^long st precipitation]

@@ -64,14 +64,9 @@
   point to is inside state st of cell c."
   [st [x y z] from to half height]
   (if-let [bs (cauldron/inside-boxes st)]
-    (some (fn [[b0 b1 b2 b3 b4 b5]]
-            (touches? [(+ (long x) (/ (double b0) 16.0))
-                       (+ (long y) (/ (double b1) 16.0))
-                       (+ (long z) (/ (double b2) 16.0))
-                       (+ (long x) (/ (double b3) 16.0))
-                       (+ (long y) (/ (double b4) 16.0))
-                       (+ (long z) (/ (double b5) 16.0))]
-                      from to half height))
+    (some #(touches? (mapv (fn [c b] (+ (long c) (/ (double b) 16.0)))
+                           [x y z x y z] %)
+                     from to half height)
           bs)
     true))
 
