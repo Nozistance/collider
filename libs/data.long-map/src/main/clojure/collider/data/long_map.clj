@@ -25,6 +25,11 @@
 
 (defn get
   "Returns the value at k in map m, nf or nil when absent."
+  {:inline (fn
+             ([m k] `(.get ~(with-meta m {:tag `LongMap}) (long ~k)))
+             ([m k nf]
+              `(.get ~(with-meta m {:tag `LongMap}) (long ~k) ~nf)))
+   :inline-arities #{2 3}}
   ([^LongMap m ^long k] (.get m k))
   ([^LongMap m ^long k nf] (.get m k nf)))
 
