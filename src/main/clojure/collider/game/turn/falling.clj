@@ -17,8 +17,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
-            [collider.world.blocks.support :as support])
-  (:import (collider.world Move)))
+            [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
 
@@ -139,7 +138,7 @@
     [cell cur concrete?
      (and concrete? (or (some? clipped) (block/water? cur)))]))
 
-(defn- fall-move ^Move [world e]
+(defn- fall-move [world e]
   (let [[vx vy vz] (:vel e)
         d [(double vx) (- (double vy) 0.04) (double vz)]]
     (phys/move (:chunks world) (:pos e)
@@ -283,7 +282,7 @@
     [[:remove-entity eid]
      (land-event :sound-anvil-broken (nth l 0))]))
 
-(defn- fallen ^double [world e ^Move mv]
+(defn- fallen ^double [world e mv]
   (let [f (double (or (:fall e) 0.0))]
     (phys/fallen (landing/cleared world (:pos e) (phys/pos mv) f)
                  (phys/moved-y mv))))
@@ -293,7 +292,7 @@
     (into hs (landed-deltas world eid e l))))
 
 (defn- step-deltas [world eid e]
-  (let [^Move mv (fall-move world e)
+  (let [mv (fall-move world e)
         pos (phys/pos mv) vel (phys/vel mv)
         time (inc (long (:time e)))
         f (fallen world e mv)

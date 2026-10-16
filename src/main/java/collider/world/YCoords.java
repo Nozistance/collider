@@ -1,7 +1,7 @@
 package collider.world;
 
-/// The y coordinates of collision shapes on the y axis, the grid
-/// points between the edges included.
+/// The y coordinates of collision shapes, the grid points between
+/// the edges included.
 ///
 /// @param states The coordinates of each block state as an empty
 ///     context meets it, null for those of a full cube.

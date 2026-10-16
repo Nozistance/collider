@@ -4,20 +4,19 @@ import collider.V3;
 import java.util.Arrays;
 
 /// Collision of a moving box against block boxes. The block tables
-/// that the methods take are indexed by block state. `kinds` holds
-/// the `Collision` kind of each state. `cube` is true for a full cube.
-/// `shapes` holds the boxes of each other state, six doubles each,
-/// in blocks. `bottom` and `flags` are the body as `Collision.shape`
-/// takes it.
+/// that the methods take are indexed by block state. kinds holds the
+/// Collision kind of each state. cube is true for a full cube. shapes
+/// holds the boxes of each other state, six doubles each, in blocks.
+/// bottom and flags are the body as Collision.shape takes it.
 public final class Phys {
 
-    /// The mark of a fire cell in the table of `burns`.
+    /// The mark of a fire cell in the table of burns.
     public static final long FIRE = 1;
 
-    /// The mark of a lava cell in the table of `burns`.
+    /// The mark of a lava cell in the table of burns.
     public static final long LAVA = 2;
 
-    /// The mark `burns` adds for lava inside the inner span.
+    /// The mark burns adds for lava inside the inner span.
     public static final long LAVA_INSIDE = 4;
 
     private static final long ALL_BURNS = FIRE | LAVA | LAVA_INSIDE;
@@ -32,9 +31,8 @@ public final class Phys {
     private static final ThreadLocal<double[]> BOX =
             ThreadLocal.withInitial(() -> new double[6]);
 
-    /// Returns `d` clamped so that the box `ebox` moving by `d` along
-    /// `axis` stops on the face of the nearest of the `n` boxes in
-    /// `a`. Each box takes six doubles.
+    /// Returns d clamped so that the box ebox moving by d along axis
+    /// stops on the face of the nearest of the n boxes in a.
     private static double clampAll(
             double[] a,
             int n,
@@ -50,7 +48,9 @@ public final class Phys {
         double eq1 = ebox[eo + q1], eq2 = ebox[eo + q2];
         double elo = ebox[eo + axis], ehi = ebox[eo + axis + 3];
         for (int i = 0; i < n; i++) {
-            if (Math.abs(d) < EPS) return 0.0;
+            if (Math.abs(d) < EPS) {
+                return 0.0;
+            }
             int o = i * 6;
             boolean across = ep1 + EPS < a[o + p2]
                     && ep2 - EPS >= a[o + p1]
@@ -60,19 +60,23 @@ public final class Phys {
                 double blo = a[o + axis], bhi = a[o + axis + 3];
                 if (d > 0.0 && ehi - EPS < blo) {
                     double m = blo - ehi;
-                    if (m < d) d = m;
+                    if (m < d) {
+                        d = m;
+                    }
                 } else if (d < 0.0 && elo + EPS >= bhi) {
                     double m = bhi - elo;
-                    if (m > d) d = m;
+                    if (m > d) {
+                        d = m;
+                    }
                 }
             }
         }
         return d;
     }
 
-    /// Writes into `out` the clamped x, y, z motion of `box` with the
-    /// velocity `vx`, `vy`, `vz` against the `n` boxes in `a`. Y goes
-    /// first and the wider of x and z goes last.
+    /// Writes into out the clamped x, y, z motion of box with the
+    /// velocity vx, vy, vz against the n boxes in a. Y goes first and
+    /// the wider of x and z goes last.
     private static void clampAxes(
             double[] a,
             int n,
@@ -107,7 +111,9 @@ public final class Phys {
 
     private static double[] buffer(long need) {
         double[] b = BUF.get();
-        if (b.length >= need) return b;
+        if (b.length >= need) {
+            return b;
+        }
         double[] nb = new double[(int) (2 * need)];
         BUF.set(nb);
         return nb;
@@ -137,8 +143,12 @@ public final class Phys {
             double bottom,
             int flags
     ) {
-        if (st <= 0) return null;
-        if (st < cube.length && cube[st]) return Collision.CUBE;
+        if (st <= 0) {
+            return null;
+        }
+        if (st < cube.length && cube[st]) {
+            return Collision.CUBE;
+        }
         return Collision.kind(kinds, st) == Collision.PLAIN
                 ? Collision.boxes(shapes, st)
                 : Collision.shape(
@@ -180,7 +190,9 @@ public final class Phys {
             double bottom,
             int flags
     ) {
-        if (st <= 0) return n;
+        if (st <= 0) {
+            return n;
+        }
         if (st < cube.length && cube[st]) {
             int o = n * 6;
             a[o] = x;
@@ -212,8 +224,12 @@ public final class Phys {
         void add(double[] cs, long y) {
             for (double c : cs) {
                 float r = (float) ((c + y) - base);
-                if (r < 0.0F || r == skip) continue;
-                if (r > step) return;
+                if (r < 0.0F || r == skip) {
+                    continue;
+                }
+                if (r > step) {
+                    return;
+                }
                 if (count == heights.length) {
                     heights = Arrays.copyOf(heights, 2 * count);
                 }
@@ -222,26 +238,10 @@ public final class Phys {
         }
     }
 
-    /// Returns the boxes of the blocks in `chunks` that the box
-    /// `ebox` meets on its way by `vx`, `vy`, `vz`, one block
-    /// lower included. The result shares the buffer of the thread
-    /// and stays valid until the next sweep of the thread.
-    private static Sweep sweep(
-            ChunkIndex chunks,
-            byte[] kinds,
-            boolean[] cube,
-            Object[] shapes,
-            double[] ebox,
-            double vx,
-            double vy,
-            double vz,
-            double bottom,
-            int flags
-    ) {
-        int n = swept(chunks, kinds, cube, shapes, ebox, vx, vy, vz, bottom, flags);
-        return new Sweep(BUF.get(), n);
-    }
-
+    /// Puts into BUF the boxes of the blocks in chunks that the box
+    /// ebox meets on its way by vx, vy, vz, one block lower included,
+    /// and returns how many. They stay valid until the next sweep on
+    /// the thread.
     private static int swept(
             ChunkIndex chunks,
             byte[] kinds,
@@ -285,12 +285,16 @@ public final class Phys {
 
     private static boolean meets(double[] a, int from, int to, double[] box) {
         for (int i = from; i < to; i++) {
-            if (Collision.meets(a, 6 * i, box)) return true;
+            if (Collision.meets(a, 6 * i, box)) {
+                return true;
+            }
         }
         return false;
     }
 
-    private static Sweep colliders(
+    /// Puts into BUF the boxes of the blocks that meet ebox, adds
+    /// their y coordinates to hs and returns how many boxes.
+    private static int colliders(
             ChunkIndex chunks,
             byte[] kinds,
             boolean[] cube,
@@ -319,7 +323,9 @@ public final class Phys {
                     }
                     int st = s == null ? 0 : s.block(cellIndex(x, y, z));
                     double[] b = shapeOf(st, kinds, cube, shapes, x, y, z, bottom, flags);
-                    if (b == null) continue;
+                    if (b == null) {
+                        continue;
+                    }
                     int m = putBoxes(a, n, b, x, y, z);
                     if (meets(a, n, m, ebox)) {
                         hs.add(Collision.ys(hs.ys, st, b), y);
@@ -328,10 +334,10 @@ public final class Phys {
                 }
             }
         }
-        return new Sweep(a, n);
+        return n;
     }
 
-    /// Returns true when no cell a body box of half width `half` and
+    /// Returns true when no cell a body box of half width half and
     /// that height touches, less the fluid margin, holds water or lava.
     public static boolean dry(
             ChunkIndex chunks,
@@ -358,9 +364,13 @@ public final class Phys {
                         s = wetSection(chunks, t, cx, cy, cz);
                         ckey = k;
                     }
-                    if (s == null) continue;
+                    if (s == null) {
+                        continue;
+                    }
                     int st = s.block(cellIndex(cx, cy, cz));
-                    if (st > 0 && wet(t, st)) return false;
+                    if (st > 0 && wet(t, st)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -406,7 +416,9 @@ public final class Phys {
                             (int) sy << 4,
                             (int) sz << 4
                     );
-                    if (s != null && s.holds(bits)) return true;
+                    if (s != null && s.holds(bits)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -414,7 +426,7 @@ public final class Phys {
     }
 
     /// Returns true when no section within a block of the box of half
-    /// width `half` and `height` at `x y z` holds a state of `bits`.
+    /// width half and that height at x, y, z holds a state of bits.
     public static boolean cool(
             ChunkIndex chunks,
             byte[] bits,
@@ -438,9 +450,8 @@ public final class Phys {
         );
     }
 
-    /// Returns true when some cell from `x0`, `y0`, `z0` up to `x1`,
-    /// `y1`, `z1`, the high ends left out, holds a state that `marks`
-    /// is true for.
+    /// Returns true when some cell from x0, y0, z0 up to x1, y1, z1,
+    /// the high ends left out, holds a state that marks is true for.
     public static boolean someCell(
             ChunkIndex chunks,
             boolean[] marks,
@@ -455,24 +466,28 @@ public final class Phys {
             for (long y = y0; y < y1; y++) {
                 for (long z = z0; z < z1; z++) {
                     int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
-                    if (st >= 0 && st < marks.length && marks[st]) return true;
+                    if (st >= 0 && st < marks.length && marks[st]) {
+                        return true;
+                    }
                 }
             }
         }
         return false;
     }
 
-    /// Returns the `FIRE` and `LAVA` marks of `bits` that the cells of
-    /// the span `outer` hold, plus `LAVA_INSIDE` when a cell of the
-    /// span `inner` holds lava. A span is `{x0 x1 y0 y1 z0 z1}`, the
-    /// ends left out.
+    /// Returns the marks in bits of the cells of the span outer, plus
+    /// LAVA_INSIDE when a cell of the span inner holds lava. A span is
+    /// x0 x1 y0 y1 z0 z1 with the high ends left out. The scan ends
+    /// once FIRE, LAVA and LAVA_INSIDE are all set.
     public static long burns(
             ChunkIndex chunks,
             byte[] bits,
             long[] outer,
             long[] inner
     ) {
-        if (!near(chunks, bits, outer)) return 0;
+        if (!near(chunks, bits, outer)) {
+            return 0;
+        }
         long acc = 0;
         for (long x = outer[0]; x < outer[1] && acc != ALL_BURNS; x++) {
             boolean xin = x >= inner[0] && x < inner[1];
@@ -491,40 +506,9 @@ public final class Phys {
         return acc;
     }
 
-    /// Returns true when a body with half width `half` and height
-    /// `height` standing at `x`, `y`, `z` meets no block.
-    public static boolean free(
-            ChunkIndex chunks,
-            byte[] kinds,
-            boolean[] cube,
-            Object[] shapes,
-            double x,
-            double y,
-            double z,
-            double half,
-            double height,
-            double bottom,
-            int flags
-    ) {
-        return clear(
-                chunks,
-                kinds,
-                cube,
-                shapes,
-                x,
-                y,
-                z,
-                half,
-                height,
-                0.0,
-                bottom,
-                flags
-        );
-    }
-
-    /// Returns true when the box of a body with half width `half` and
-    /// height `height` standing at `x`, `y`, `z`, shrunk by `inset` on
-    /// each side, meets no block.
+    /// Returns true when the box of a body with half width half and
+    /// that height standing at x, y, z, shrunk by inset on each side,
+    /// meets no block.
     public static boolean clear(
             ChunkIndex chunks,
             byte[] kinds,
@@ -549,8 +533,8 @@ public final class Phys {
         return freeBox(chunks, kinds, cube, shapes, box, bottom, flags);
     }
 
-    /// Returns true when the box `box`, six doubles in blocks, meets
-    /// no block. `bottom` is the foot of the body it belongs to.
+    /// Returns true when box, six doubles in blocks, meets no block.
+    /// bottom is the foot of the body it belongs to.
     public static boolean freeBox(
             ChunkIndex chunks,
             byte[] kinds,
@@ -561,17 +545,13 @@ public final class Phys {
             int flags
     ) {
         int n = swept(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0, bottom, flags);
-        double[] a = BUF.get();
-        for (int i = 0; i < n; i++) {
-            if (Collision.meets(a, 6 * i, box)) return false;
-        }
-        return true;
+        return !meets(BUF.get(), 0, n, box);
     }
 
-    /// Returns the block x, y, z that a body with half width `half`
-    /// standing at `x`, `y`, `z` rests on, or null when none. The
-    /// block under the body whose centre is nearest wins. A tie goes
-    /// to the last in the order of y, z and x.
+    /// Returns the block x, y, z that a body with half width half
+    /// standing at x, y, z rests on, or null when none. The block
+    /// under the body whose centre is nearest wins. A tie goes to the
+    /// last in the order of y, z and x.
     public static long[] support(
             ChunkIndex chunks,
             byte[] kinds,
@@ -584,11 +564,11 @@ public final class Phys {
             int flags
     ) {
         double[] box = {x - half, y - 1.0E-6, z - half, x + half, y, z + half};
-        Sweep sw = sweep(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0, y, flags);
-        double[] a = sw.boxes();
+        int n = swept(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0, y, flags);
+        double[] a = BUF.get();
         long[] best = null;
         double bd = Double.MAX_VALUE;
-        for (int i = 0; i < sw.count(); i++) {
+        for (int i = 0; i < n; i++) {
             int o = 6 * i;
             long bx = (long) Math.floor(a[o]);
             long by = (long) Math.floor(a[o + 1]);
@@ -607,9 +587,15 @@ public final class Phys {
     }
 
     private static boolean later(long bx, long by, long bz, long[] best) {
-        if (best == null) return true;
-        if (best[1] != by) return best[1] < by;
-        if (best[2] != bz) return best[2] < bz;
+        if (best == null) {
+            return true;
+        }
+        if (best[1] != by) {
+            return best[1] < by;
+        }
+        if (best[2] != bz) {
+            return best[2] < bz;
+        }
         return best[0] < bx;
     }
 
@@ -617,8 +603,7 @@ public final class Phys {
         return Math.abs(b - a) < EQUAL_SLACK;
     }
 
-    /// Returns the velocity `v` stopped by a block, a zero with the sign
-    /// opposite to `v` as a bounce of factor zero leaves it.
+    /// Returns a zero with the sign opposite to v.
     private static double stopped(double v) {
         return -v * 0.0;
     }
@@ -651,18 +636,25 @@ public final class Phys {
             int flags
     ) {
         double[] g = box0.clone();
-        if (landed) lift(g, out[1]);
+        if (landed) {
+            lift(g, out[1]);
+        }
         double[] up = towards(g, vx, step, vz);
-        if (!landed) up[1] -= 1.0E-5F;
+        if (!landed) {
+            up[1] -= 1.0E-5F;
+        }
         Heights hs = new Heights(ys, g[1], step, (float) out[1]);
-        Sweep sw = colliders(chunks, kinds, cube, shapes, up, box0[1], flags, hs);
+        int n = colliders(chunks, kinds, cube, shapes, up, box0[1], flags, hs);
+        double[] a = BUF.get();
         float[] h = hs.heights;
         Arrays.sort(h, 0, hs.count);
         double[] s = new double[3];
         double far = out[0] * out[0] + out[2] * out[2];
         for (int i = 0; i < hs.count; i++) {
-            if (i > 0 && h[i] == h[i - 1]) continue;
-            clampAxes(sw.boxes(), sw.count(), g, vx, h[i], vz, s);
+            if (i > 0 && h[i] == h[i - 1]) {
+                continue;
+            }
+            clampAxes(a, n, g, vx, h[i], vz, s);
             if (s[0] * s[0] + s[2] * s[2] > far) {
                 out[0] = s[0];
                 out[1] = s[1] - (box0[1] - g[1]);
@@ -672,13 +664,13 @@ public final class Phys {
         }
     }
 
-    /// Returns the move of a body with half width `half` and height
-    /// `height` from `px`, `py`, `pz` by the velocity `vx`, `vy`,
-    /// `vz`. The blocks it meets stop it. A body held back sideways
-    /// that lands or stood on the ground, as `ground` tells, climbs
-    /// to the lowest y coordinate of the shapes in `ys` up to `step`
-    /// that takes it further. A move under 1.0E-7 squared that the
-    /// blocks cut short leaves it where it was.
+    /// Returns the move of a body with half width half and that
+    /// height from px, py, pz by the velocity vx, vy, vz. The blocks
+    /// it meets stop it. A body held back sideways that lands or
+    /// stood on the ground climbs to the lowest y coordinate of the
+    /// shapes in ys up to step that takes it further. A move whose
+    /// squared length is under 1.0E-7 and that the blocks cut short
+    /// leaves the body where it was.
     public static Move move(
             ChunkIndex chunks,
             byte[] kinds,
@@ -698,9 +690,9 @@ public final class Phys {
             YCoords ys
     ) {
         double[] box0 = {px - half, py, pz - half, px + half, py + height, pz + half};
-        Sweep sw = sweep(chunks, kinds, cube, shapes, box0, vx, vy, vz, py, flags);
+        int n = swept(chunks, kinds, cube, shapes, box0, vx, vy, vz, py, flags);
         double[] out = new double[3];
-        clampAxes(sw.boxes(), sw.count(), box0, vx, vy, vz, out);
+        clampAxes(BUF.get(), n, box0, vx, vy, vz, out);
         boolean landed = out[1] != vy && vy < 0.0;
         boolean held = out[0] != vx || out[2] != vz;
         if ((float) step > 0.0F && (landed || ground) && held) {

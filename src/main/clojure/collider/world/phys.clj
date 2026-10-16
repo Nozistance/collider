@@ -40,26 +40,26 @@
              (full-cube? chunks x1 yb z1)))))
 
 (defn pos
+  "Returns where move m leaves the body."
   ^V3 [^Move m] (.pos m))
 
 (defn vel
+  "Returns the velocity the body keeps after move m, a zero on each
+  axis where a block stopped it."
   ^V3 [^Move m] (.vel m))
 
 (defn moved-y
-  "Returns how far up a move took the body."
+  "Returns how far up move m took the body, below zero when it went
+  down."
   ^double [^Move m] (.dy m))
 
 (defn fallen
-  "Returns fall distance fall after a move up by dy out of water."
+  "Returns fall plus the drop of a move up by dy, the drop rounded to
+  a float. A rise leaves fall as it is."
   ^double [^double fall ^double dy]
   (if (< dy 0.0) (- fall (double (float dy))) fall))
 
-(defn on-ground?
-  {:inline (fn [m]
-             (let [t 'collider.world.Move]
-               `(.onGround ~(with-meta m {:tag t}))))}
-  [^Move m]
-  (.onGround m))
+(defn on-ground? [^Move m] (.onGround m))
 
 (defn- hanging? [^long st]
   (let [ps (block/props-of st)]
@@ -83,9 +83,7 @@
       a)))
 
 (defn kinds
-  "Returns the collision kind of every block state by state id. Only
-  scaffolding, powder snow, bamboo, pointed dripstone and sulfur
-  spikes differ from the plain kind."
+  "Returns the collision kind of every block state by state id."
   ^bytes [] @kind-table)
 
 (defn- doubles-of [v] (when v (double-array v)))
@@ -139,13 +137,14 @@
        ~(with-tables m chunks
           (into [`(v/x ~p) `(v/y ~p) `(v/z ~p)] args)))))
 
-(defn- free-form [chunks pos half height dx dy dz ctx]
-  (let [p (gensym "pos")]
+(defn- clear-form [chunks pos half height inset ctx [dx dy dz]]
+  (let [p (gensym "pos")
+        at (fn [c d] (if d `(+ (~c ~p) (double ~d)) `(~c ~p)))]
     `(let [~p ~pos]
-       ~(with-tables `Phys/free chunks
-          [`(+ (v/x ~p) (double ~dx)) `(+ (v/y ~p) (double ~dy))
-           `(+ (v/z ~p) (double ~dz)) `(double ~half)
-           `(double ~height) `(v/y ~p) `(int ~ctx)]))))
+       ~(with-tables `Phys/clear chunks
+          [(at `v/x dx) (at `v/y dy) (at `v/z dz) `(double ~half)
+           `(double ~height) `(double ~inset) `(v/y ~p)
+           `(int ~ctx)]))))
 
 (defmacro ^:private inlined [form & args]
   (apply @(resolve form) args))
@@ -158,22 +157,23 @@
             (double half) (double height)))
 
 (defn burns
-  "Returns the marks in bits of the cells that span outer touches,
-  with Phys/LAVA_INSIDE set when lava lies in span inner. Each span is
-  x0 x1 y0 y1 z0 z1 with the ends left out."
+  "Returns the marks in bits of the cells of span outer, plus 4 when
+  a cell of span inner holds lava. Each span is x0 x1 y0 y1 z0 z1
+  with the high ends left out. The scan ends once marks 1, 2 and 4
+  are all found, so a higher mark may go unseen."
   ^long [chunks ^bytes bits ^longs outer ^longs inner]
   (Phys/burns chunks bits outer inner))
+
+(defn- some-cell-form [chunks marks x0 y0 z0 x1 y1 z1]
+  `(Phys/someCell ~chunks ~marks (long ~x0) (long ~y0) (long ~z0)
+                  (long ~x1) (long ~y1) (long ~z1)))
 
 (defn some-cell?
   "Returns true when a cell from x0 y0 z0 up to x1 y1 z1, the high
   ends left out, holds a state that marks is true for."
-  {:inline (fn [c m x0 y0 z0 x1 y1 z1]
-             `(Phys/someCell
-                ~c ~m (long ~x0) (long ~y0) (long ~z0)
-                (long ~x1) (long ~y1) (long ~z1)))}
-  [chunks ^booleans marks x0 y0 z0 x1 y1 z1]
-  (Phys/someCell chunks marks (long x0) (long y0) (long z0)
-                 (long x1) (long y1) (long z1)))
+  {:inline (fn [& args] (apply some-cell-form args))}
+  [chunks marks x0 y0 z0 x1 y1 z1]
+  (inlined some-cell-form chunks marks x0 y0 z0 x1 y1 z1))
 
 (defn cool?
   "Returns true when no block of bits lies within a block of a body
@@ -186,26 +186,19 @@
   move by dx dy dz. Only the end position counts, not the path.
   ctx is the context of the body at pos."
   {:inline (fn [c p h t dx dy dz & [x]]
-             (free-form c p h t dx dy dz (or x 0)))
+             (clear-form c p h t 0.0 (or x 0) [dx dy dz]))
    :inline-arities #{7 8}}
   ([chunks pos half height dx dy dz]
    (free? chunks pos half height dx dy dz 0))
   ([chunks pos half height dx dy dz ctx]
-   (inlined free-form chunks pos half height dx dy dz ctx)))
-
-(defn- clear-form [chunks pos half height inset]
-  (let [p (gensym "pos")]
-    `(let [~p ~pos]
-       ~(with-tables `Phys/clear chunks
-          [`(v/x ~p) `(v/y ~p) `(v/z ~p) `(double ~half)
-           `(double ~height) `(double ~inset) `(v/y ~p) `(int 0)]))))
+   (inlined clear-form chunks pos half height 0.0 ctx [dx dy dz])))
 
 (defn clear?
   "Returns true when a body of that size at pos, its box shrunk by
   inset on each side, meets no block."
-  {:inline (fn [c p h t i] (clear-form c p h t i))}
+  {:inline (fn [c p h t i] (clear-form c p h t i 0 nil))}
   [chunks pos half height inset]
-  (inlined clear-form chunks pos half height inset))
+  (inlined clear-form chunks pos half height inset 0 nil))
 
 (defn box-free?
   "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block. The
@@ -274,10 +267,10 @@
     (range (dec (cell (- lo 1e-7))) (+ 2 (cell (+ hi 1e-7))))))
 
 (defn- shape-at [chunks x y z bottom ctx]
-  (let [bs (Collision/shape (block/collision-arr) (kinds)
-                           (long (chunk/at chunks [x y z]))
-                           (int x) (int y) (int z) (double bottom)
-                           (int ctx))]
+  (let [st (chunk/at chunks [x y z])
+        bs (Collision/shape
+            (block/collision-arr) (kinds) (int st) (int x) (int y)
+            (int z) (double bottom) (int ctx))]
     (mapv (fn [[a b c d e f]]
             [(+ x a) (+ y b) (+ z c) (+ x d) (+ y e) (+ z f)])
           (partition 6 (or bs [])))))
@@ -293,8 +286,8 @@
     b))
 
 (defn- merged
-  "Returns the sorted values vs, each one within 1e-7 of the one
-  before left out, as voxel shapes merge their coordinates."
+  "Returns the sorted values vs without those within 1e-7 above the
+  last one kept."
   [vs]
   (reduce (fn [acc v]
             (if (and (seq acc)
@@ -325,25 +318,27 @@
   (let [[hx hy hz] (map #(/ (double %) 2.0) sizes)]
     [(- a hx) (- b hy) (- c hz) (+ d hx) (+ e hy) (+ f hz)]))
 
-(defn- inside? [solids x y z]
+(defn- inside? [solids [x y z]]
   (some (fn [[a b c d e f]] (and (< a x d) (< b y e) (< c z f)))
         solids))
 
 (defn- mid ^double [a b] (* 0.5 (+ (double a) (double b))))
 
+(defn- open-boxes [[ax0 ay0 az0 ax1 ay1 az1] solids]
+  (for [[x0 x1] (spans ax0 ax1 solids 0 3)
+        [y0 y1] (spans ay0 ay1 solids 1 4)
+        [z0 z1] (spans az0 az1 solids 2 5)
+        :when (not (inside? solids (mapv mid [x0 y0 z0] [x1 y1 z1])))]
+    [x0 y0 z0 x1 y1 z1]))
+
 (defn free-position
   "Returns the point nearest centre in the box allowed where the
   centre of a body of size sx sy sz meets no block, or nil when there
   is none. The body has its foot at bottom and its context in ctx."
-  [chunks [ax0 ay0 az0 ax1 ay1 az1] centre sx sy sz bottom ctx]
+  [chunks [ax0 ay0 az0 ax1 ay1 az1 :as allowed] centre sx sy sz
+   bottom ctx]
   (let [area [(- ax0 sx) (- ay0 sy) (- az0 sz)
               (+ ax1 sx) (+ ay1 sy) (+ az1 sz)]
         solids (mapv #(grown [sx sy sz] %)
                      (block-boxes chunks area bottom ctx))]
-    (nearest centre
-             (for [[x0 x1] (spans ax0 ax1 solids 0 3)
-                   [y0 y1] (spans ay0 ay1 solids 1 4)
-                   [z0 z1] (spans az0 az1 solids 2 5)
-                   :when (not (inside? solids (mid x0 x1) (mid y0 y1)
-                                       (mid z0 z1)))]
-               [x0 y0 z0 x1 y1 z1]))))
+    (nearest centre (open-boxes allowed solids))))

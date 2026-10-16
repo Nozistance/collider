@@ -38,21 +38,26 @@ public final class Collision {
 
     public static final int FALLING_BLOCK = 8;
 
-    /// Returns the boxes of `st` at the origin as an empty context
+    /// Returns the boxes of st at the origin as an empty context
     /// meets them, or null when it has none. A state past the end of
-    /// `shapes` counts as a full cube.
+    /// shapes counts as a full cube.
     public static double[] boxes(Object[] shapes, int st) {
-        if (st <= 0) return null;
-        if (st >= shapes.length) return CUBE;
+        if (st <= 0) {
+            return null;
+        }
+        if (st >= shapes.length) {
+            return CUBE;
+        }
         double[] b = (double[]) shapes[st];
         return b.length == 0 ? null : b;
     }
 
+    /// Returns the kind of st, PLAIN for a state that kinds lacks.
     public static int kind(byte[] kinds, int st) {
         return st > 0 && st < kinds.length ? kinds[st] : PLAIN;
     }
 
-    /// Returns true when some body meets boxes of `st`.
+    /// Returns true when some body meets boxes of st.
     public static boolean mayCollide(Object[] shapes, byte[] kinds, int st) {
         return boxes(shapes, st) != null || kind(kinds, st) == POWDER_SNOW;
     }
@@ -90,14 +95,20 @@ public final class Collision {
         return i == 0 ? lo : hi;
     }
 
-    /// Returns true when the span from `f0` to `f1` of a shape and
-    /// the span from `s0` to `s1` of a body meet on one axis once
-    /// their coordinates merge. A coordinate within `1.0E-7` above
-    /// the last one kept joins it.
+    /// Returns true when the span from f0 to f1 of a shape and the
+    /// span from s0 to s1 of a body meet on one axis once their
+    /// coordinates merge. A coordinate within 1.0E-7 above the last
+    /// one kept joins it.
     public static boolean joins(double f0, double f1, double s0, double s1) {
-        if (f1 - f0 < EPSILON || s1 - s0 < EPSILON) return false;
-        if (f1 < s0 - EPSILON || s1 < f0 - EPSILON) return false;
-        if (f0 == s0 && f1 == s1) return true;
+        if (f1 - f0 < EPSILON || s1 - s0 < EPSILON) {
+            return false;
+        }
+        if (f1 < s0 - EPSILON || s1 < f0 - EPSILON) {
+            return false;
+        }
+        if (f0 == s0 && f1 == s1) {
+            return true;
+        }
         int fi = 0, si = 0, cf = -1, cs = -1;
         boolean open = false;
         double last = Double.NaN;
@@ -105,9 +116,13 @@ public final class Collision {
             boolean outF = fi >= 2, outS = si >= 2;
             boolean first = !outF && (outS || at(fi, f0, f1) < at(si, s0, s1) + EPSILON);
             double v = first ? at(fi++, f0, f1) : at(si++, s0, s1);
-            if (first ? si == 0 || outS : fi == 0 || outF) continue;
+            if (first ? si == 0 || outS : fi == 0 || outF) {
+                continue;
+            }
             if (!(last >= v - EPSILON)) {
-                if (open && cf == 0 && cs == 0) return true;
+                if (open && cf == 0 && cs == 0) {
+                    return true;
+                }
                 open = true;
                 last = v;
             }
@@ -133,11 +148,13 @@ public final class Collision {
                 && unit(a[o + 2], a[o + 5]);
     }
 
-    /// Returns true when box `o` of `a`, a block box in blocks, meets
-    /// the body box `box`. A whole cell meets by any overlap, any
-    /// other box as `joins` finds it.
+    /// Returns true when the block box at offset o of a meets the
+    /// body box. A whole cell meets by any overlap, any other box as
+    /// joins finds it.
     public static boolean meets(double[] a, int o, double[] box) {
-        if (!cell(a, o)) return joins(a, o, box);
+        if (!cell(a, o)) {
+            return joins(a, o, box);
+        }
         return a[o + 3] > box[0]
                 && box[3] > a[o]
                 && a[o + 4] > box[1]
@@ -146,19 +163,23 @@ public final class Collision {
                 && box[5] > a[o + 2];
     }
 
-    /// Returns the y coordinates of `shape`, the boxes that `shape`
-    /// or `boxes` gave for `st`, in `ys`.
+    /// Returns the y coordinates in ys of shape, which shape or
+    /// boxes returned for st.
     public static double[] ys(YCoords ys, int st, double[] shape) {
-        if (shape == UNSTABLE_BOTTOM) return ys.scaffoldingBottom();
-        if (shape == SNOW_FALLING) return ys.snowFalling();
+        if (shape == UNSTABLE_BOTTOM) {
+            return ys.scaffoldingBottom();
+        }
+        if (shape == SNOW_FALLING) {
+            return ys.snowFalling();
+        }
         Object[] t = ys.states();
         double[] c = shape == CUBE || st >= t.length ? null : (double[]) t[st];
         return c == null ? ys.block() : c;
     }
 
-    /// Returns the boxes of `st` at `x`, `y`, `z`, relative to the
-    /// cell, that a body with its bottom at `bottom` and the `flags`
-    /// meets, or null when none.
+    /// Returns the boxes of st at x, y, z, relative to the cell, that
+    /// a body with its bottom at bottom and these flags meets, or
+    /// null when none.
     public static double[] shape(
             Object[] shapes,
             byte[] kinds,
@@ -173,13 +194,19 @@ public final class Collision {
         switch (kind) {
             case SCAFFOLDING, SCAFFOLDING_HANGING -> {
                 boolean still = (flags & DESCENDING) == 0;
-                if (still && above(bottom, y, 1.0)) return boxes(shapes, st);
+                if (still && above(bottom, y, 1.0)) {
+                    return boxes(shapes, st);
+                }
                 boolean hangs = kind == SCAFFOLDING_HANGING && above(bottom, y, 0.0);
                 return hangs ? UNSTABLE_BOTTOM : null;
             }
             case POWDER_SNOW -> {
-                if ((flags & FALLING) != 0) return SNOW_FALLING;
-                if ((flags & FALLING_BLOCK) != 0) return CUBE;
+                if ((flags & FALLING) != 0) {
+                    return SNOW_FALLING;
+                }
+                if ((flags & FALLING_BLOCK) != 0) {
+                    return CUBE;
+                }
                 boolean stands = (flags & WALKER) != 0
                         && above(bottom, y, 1.0)
                         && (flags & DESCENDING) == 0;

@@ -22,8 +22,7 @@
             [collider.game.turn.overlay :as overlay]
             [collider.num :as num]
             [collider.parallel :as par])
-  (:import (clojure.lang MapEntry)
-           (collider.world Move)))
+  (:import (clojure.lang MapEntry)))
 
 (set! *warn-on-reflection* true)
 
@@ -154,7 +153,7 @@
        :else [(v/x pushed) (- (v/y pushed) gravity) (v/z pushed)])
      (or (> water fluid-depth) (> lava fluid-depth))]))
 
-(defn- supported [chunks e ^Move mv]
+(defn- supported [chunks e mv]
   (if-not (phys/on-ground? mv)
     [nil false]
     (let [p (phys/pos mv)
@@ -170,7 +169,7 @@
   (let [f (motion/friction (motion/below-state chunks pos sup))]
     (num/f32 (* air-drag f))))
 
-(defn- moved-speed [chunks ^Move mv sup on-ground vy]
+(defn- moved-speed [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
         sf (motion/block-speed-factor chunks p sup)
         w (fall/landed-vel chunks mv sup vy gravity air-drag false)
@@ -186,7 +185,7 @@
 (defn- item-moved [chunks e vel]
   (let [vel (mapv double vel)
         half (item-half) height (item-height)
-        ^Move mv (phys/move chunks (:pos e) vel half height)
+        mv (phys/move chunks (:pos e) vel half height)
         og (phys/on-ground? mv)
         [sup nb?] (supported chunks e mv)
         p (phys/pos mv)

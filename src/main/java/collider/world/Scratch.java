@@ -19,8 +19,8 @@ public final class Scratch<V> {
         vals = new Object[c];
     }
 
-    /// Returns the key of the cell `x`, `y`, `z`, packed as the game
-    /// packs a block position.
+    /// Returns the key of the cell x, y, z, packed as a block
+    /// position.
     public static long cell(long x, long y, long z) {
         return (x & 0x3FFFFFFL) << 38 | (z & 0x3FFFFFFL) << 12 | (y & 0xFFFL);
     }
@@ -30,19 +30,26 @@ public final class Scratch<V> {
         return Long.hashCode(h) & mask;
     }
 
+    /// Returns the value of k, or null when it has none.
     @SuppressWarnings("unchecked")
     public V get(long k) {
         int mask = keys.length - 1;
         for (int i = mix(k, mask); ; i = (i + 1) & mask) {
             Object v = vals[i];
-            if (v == null) return null;
-            if (keys[i] == k) return (V) v;
+            if (v == null) {
+                return null;
+            }
+            if (keys[i] == k) {
+                return (V) v;
+            }
         }
     }
 
-    /// Maps `k` to `v`, which must not be null.
+    /// Maps k to v, which must not be null.
     public void put(long k, V v) {
-        if (2 * (n + 1) > keys.length) grow();
+        if (2 * (n + 1) > keys.length) {
+            grow();
+        }
         int mask = keys.length - 1;
         for (int i = mix(k, mask); ; i = (i + 1) & mask) {
             if (vals[i] == null) {
@@ -66,7 +73,9 @@ public final class Scratch<V> {
         vals = new Object[2 * ks.length];
         n = 0;
         for (int i = 0; i < ks.length; i++) {
-            if (vs[i] != null) put(ks[i], (V) vs[i]);
+            if (vs[i] != null) {
+                put(ks[i], (V) vs[i]);
+            }
         }
     }
 
@@ -78,7 +87,9 @@ public final class Scratch<V> {
         long[] r = new long[n];
         int j = 0;
         for (int i = 0; i < keys.length; i++) {
-            if (vals[i] != null) r[j++] = keys[i];
+            if (vals[i] != null) {
+                r[j++] = keys[i];
+            }
         }
         Arrays.sort(r);
         return r;

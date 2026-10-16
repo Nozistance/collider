@@ -16,8 +16,7 @@
             [collider.world.blocks.fall :as fall]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
-            [collider.world.phys :as phys])
-  (:import (collider.world Move)))
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -44,7 +43,7 @@
         v (if on-ground (mapv * v [0.7 -0.5 0.7]) v)]
     (v/add v (liquid-push world pos v))))
 
-(defn- tnt-move ^Move [world e]
+(defn- tnt-move [world e]
   (let [[vx vy vz] (:vel e)
         d [(double vx) (- (double vy) 0.04) (double vz)]
         stuck (:stuck e)]
@@ -64,7 +63,7 @@
 (defn- stepped
   "Returns the fields of TNT e after its move in its turn."
   [world e]
-  (let [^Move mv (tnt-move world e)
+  (let [mv (tnt-move world e)
         pos (phys/pos mv)
         on-ground (phys/on-ground? mv)
         stuck' (stuck-now world e pos)

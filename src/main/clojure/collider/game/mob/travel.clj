@@ -16,8 +16,7 @@
             [collider.world.blocks.fall :as fall]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
-            [collider.world.phys :as phys])
-  (:import (collider.world Move)))
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -166,16 +165,16 @@
           (* (v/z vel) (double sz)))
     vel))
 
-(defn- stepped ^Move [world e vel half height c]
+(defn- stepped [world e vel half height c]
   (phys/move (:chunks world) (:pos e) (held e vel) half height
              (mobs/step-height (:type e)) (boolean (:on-ground e)) c))
 
 (def ^:private still (v/v3 0.0 0.0 0.0))
 
-(defn- after-vel [e ^Move mv]
+(defn- after-vel [e mv]
   (if (:stuck e) still (phys/vel mv)))
 
-(defn- supported [world e ^Move mv half c]
+(defn- supported [world e mv half c]
   (if-not (phys/on-ground? mv)
     [nil false]
     (let [ch (:chunks world) p (phys/pos mv) o (:pos e)
@@ -228,7 +227,7 @@
                 (v/v3 (+ (+ x half) dx) (+ (+ y (double height)) up)
                       (+ (+ z half) dz)))))))
 
-(defn- jumped-out [world e ^Move mv vel half height oy hit?]
+(defn- jumped-out [world e mv vel half height oy hit?]
   (if (and hit?
            (climb-free? world e (phys/pos mv) vel half height oy))
     (v/v3 (v/x vel) out-of-fluid (v/z vel))
@@ -250,7 +249,7 @@
          (same-span? (+ y 0.001) (- (+ y height) 0.001)
                      (+ y' 0.001) (- (+ y' height) 0.001)))))
 
-(defn- dry-still? [e ^Move mv half height f]
+(defn- dry-still? [e mv half height f]
   (and (not (in-fluid? f))
        (same-cells? (:pos e) (phys/pos mv) half height)))
 
@@ -282,7 +281,7 @@
   velocity with the push of that fluid. A mob that stays in the same
   dry cells keeps the fluid it had, and so does a player, whose
   client has the say, with no push after its move."
-  [world e d ^Move mv half height f]
+  [world e d mv half height f]
   (if (or (dry-still? e mv half height f) (= :player (:type e)))
     [f (after-vel e mv)]
     (let [g (fluid-after world e (phys/pos mv) half height d)]
@@ -314,7 +313,7 @@
   "Returns speed u of body e after its move mv by d, lifted when it
   pushes into a climbable block. In the air a jump lifts it too, and
   so does powder snow it was in last tick and walks on."
-  [world e d ^Move mv u air?]
+  [world e d mv u air?]
   (if (and (or (and air? (:jump e))
                (hit-wall? (held e d) (phys/vel mv)))
            (or (climbing? world e (phys/pos mv))
@@ -327,7 +326,7 @@
         drive (friction-speed og? bf (speed-of e))
         d (held-on world e (driven e vel drive))
         c (phys/context e)
-        ^Move mv (stepped world e d half height c)
+        mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (if (:flying e) 1.0 (speed-factor world (phys/pos mv) sup))
         free? (:discard-friction? e)
@@ -388,7 +387,7 @@
 (defn- travel-glide [world e vel half height f]
   (let [d (glide-vel e vel)
         c (phys/context e)
-        ^Move mv (stepped world e d half height c)
+        mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         [h u] (moved-fluid world e d mv half height f)
         u (bounced world e d mv sup u)]
@@ -409,7 +408,7 @@
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
         c (phys/context e)
-        ^Move mv (stepped world e d half height c)
+        mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         u (bounced world e d mv sup (after-vel e mv))
@@ -431,7 +430,7 @@
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive) c (phys/context e)
-        ^Move mv (stepped world e d half height c)
+        mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         [h u] (moved-fluid world e d mv half height f)
