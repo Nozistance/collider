@@ -65,20 +65,21 @@
   "Returns the index of the stack picked to come out of bundle first,
   or -1 when none is picked."
   ^long [bundle]
-  (let [v (stack/component bundle :bundle-contents)]
-    (long (:selected (meta v) -1))))
+  (long (:bundle-selected bundle -1)))
 
-(defn- picked [templates ^long i]
-  (with-meta templates (when (<= 0 i) {:selected i})))
+(defn- picked [bundle ^long i]
+  (if (neg? i)
+    (dissoc bundle :bundle-selected)
+    (assoc bundle :bundle-selected i)))
 
 (defn- with-contents [bundle stacks ^long i]
-  (stack/put bundle :bundle-contents
-             (picked (mapv stack/template stacks) i)))
+  (-> (stack/put bundle :bundle-contents (mapv stack/template stacks))
+      (picked i)))
 
 (defn- select-in [bundle ^long i]
-  (let [v (stack/component bundle :bundle-contents)
-        hit? (and (not= i (selected bundle)) (< -1 i (count v)))]
-    (stack/put bundle :bundle-contents (picked v (if hit? i -1)))))
+  (let [n (count (stack/component bundle :bundle-contents))
+        hit? (and (not= i (selected bundle)) (< -1 i n))]
+    (picked bundle (if hit? i -1))))
 
 (defn- without [v ^long i]
   (into (subvec v 0 i) (subvec v (inc i))))

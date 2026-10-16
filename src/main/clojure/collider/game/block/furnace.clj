@@ -2,7 +2,8 @@
   "Furnace, blast furnace and smoker fuel, recipes and cooking."
   (:require [collider.data :as data]
             [collider.game.block.menu :as menu]
-            [collider.game.craft :as craft]))
+            [collider.game.craft :as craft]
+            [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
 
@@ -52,13 +53,12 @@
 (defn burn-duration ^long [stack]
   (long (get (data/fuel) (:item stack) 0)))
 
-(defn- same? [a b] (= (dissoc a :count) (dissoc b :count)))
 
 (defn- can-burn? [items result]
   (let [cur (nth items 2)]
     (cond
       (nil? cur) true
-      (not (same? cur result)) false
+      (not (stack/same-kind? cur result)) false
       :else (<= (+ (long (:count cur 1)) (long (:count result 1)))
                 (min 64 (data/max-stack (:item result)))))))
 
@@ -139,7 +139,7 @@
   [e stack]
   (let [old (nth (:items e) 0)
         e (assoc-in e [:items 0] stack)]
-    (if (and stack (same? old stack))
+    (if (and stack (stack/same-kind? old stack))
       e
       (assoc e :cook 0
                :cook-total (:time (recipe (:kind e) stack) 200)))))

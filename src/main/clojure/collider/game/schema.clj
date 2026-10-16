@@ -8,6 +8,7 @@
             [collider.game.gamerules :as rules]
             [collider.game.schedule :as schedule]
             [collider.game.scoreboard :as scoreboard]
+            [collider.game.stack :as stack]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather])
@@ -33,7 +34,7 @@
   "Returns the payload of chunk c at game tick t from its parts.
   Its entities come as [eid entity] entries."
   [c block-entities entities block-ticks fluid-ticks t]
-  (let [saved (fn [f] (map (fn [[k v]] [k (f v t)])))]
+  (let [saved (fn [f] (map (fn [[k v]] [k (stack/saved (f v t))])))]
     {:chunk c
      :block-entities (into {} (saved be/saved) block-entities)
      :entities (into {} (saved entity/saved) entities)
@@ -338,5 +339,6 @@
   "Returns what a profile keeps of player, who is in level dim."
   [player dim]
   (let [player (assoc player :dimension dim)]
-    (into {} (for [[k spec] profile :when (profile-kept? player k)]
-               [k (profile-value player k spec)]))))
+    (stack/saved
+      (into {} (for [[k spec] profile :when (profile-kept? player k)]
+                 [k (profile-value player k spec)])))))

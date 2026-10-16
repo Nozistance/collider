@@ -23,8 +23,6 @@
 
 (defn- max-of ^long [s] (stack/max-size s))
 
-(defn- same? [a b] (and a b (= (dissoc a :count) (dissoc b :count))))
-
 (defn- same-item? [a b] (and a b (= (:item a) (:item b))))
 
 (defn- sized [s ^long n] (when (pos? n) (assoc s :count n)))
@@ -138,7 +136,7 @@
 
 (defn- room? [cap inv slot stack]
   (let [s (get inv slot)]
-    (and (same? s stack) (> (max-of s) 1)
+    (and (stack/same-kind? s stack) (> (max-of s) 1)
          (< (count-of s) (min (long cap) (max-of s))))))
 
 (defn- space-slot [cap base held inv stack]
@@ -195,7 +193,7 @@
   (let [here (get inv slot)
         have (count-of here)]
     (if (or (not ((:place layout) slot stack))
-            (and here (not (same? here stack))))
+            (and here (not (stack/same-kind? here stack))))
       [inv stack]
       (let [room (- (slot-max layout slot stack) have)
             put (max 0 (min (long n) (count-of stack) room))
@@ -261,7 +259,8 @@
 
 (defn- onto-slot [m layout slot clicked carried primary?]
   (cond
-    (same? clicked carried) (place-carried m slot carried primary?)
+    (stack/same-kind? clicked carried)
+    (place-carried m slot carried primary?)
     (<= (count-of carried) (slot-max layout slot carried))
     (assoc m :inventory (assoc (:inventory m) slot carried)
              :carried clicked)
@@ -354,7 +353,7 @@
       (nil? carried) (take-carried m slot clicked primary?)
       ((:place layout) slot carried)
       (onto-slot m layout slot clicked carried primary?)
-      (same? clicked carried)
+      (stack/same-kind? clicked carried)
       (gather-onto-carried m slot clicked carried)
       :else m)))
 
@@ -373,7 +372,7 @@
   (reduce (fn [[inv s :as acc] slot]
             (cond
               (nil? s) (reduced acc)
-              (same? (get inv slot) s)
+              (stack/same-kind? (get inv slot) s)
               (insert layout inv slot s (count-of s))
               :else acc))
           [inv stack] slots))
@@ -577,7 +576,7 @@
 (defn- gathers? [m s ^long pass]
   (let [c (:carried m)
         here (get (:inventory m) s)]
-    (and (same? here c) (< (count-of c) (max-of c))
+    (and (stack/same-kind? here c) (< (count-of c) (max-of c))
          (<= (count-of here) (max-of c))
          (or (= 1 pass) (not= (count-of here) (max-of here))))))
 
@@ -603,7 +602,8 @@
 
 (defn- quick-replace? [here c]
   (or (nil? here)
-      (and (same? here c) (<= (count-of here) (max-of c)))))
+      (and (stack/same-kind? here c)
+           (<= (count-of here) (max-of c)))))
 
 (defn- drag-fits? [layout inv slot c n type]
   (and (quick-replace? (get inv slot) c)
@@ -690,7 +690,7 @@
     :else (click-mode m slot button mode)))
 
 (defn- put-on? [m slot part a b]
-  (and b (not= slot (:direct m)) (not (same? a b))
+  (and b (not= slot (:direct m)) (not (stack/same-kind? a b))
        (= part (data/equip-slot (:item b)))))
 
 (defn- equipped [m before]

@@ -11,6 +11,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.stack :as stack]
             [collider.game.systems.tracker.track :refer [->Track]]
             [collider.vec :as vv])
   (:import (collider.game.deltas.record Deltas)
@@ -72,8 +73,9 @@
   (let [inv (:inventory e)]
     (if (nil? inv)
       no-equip
-      [(held-stack e) (get inv 8) (get inv 7)
-       (get inv 6) (get inv 5)])))
+      (mapv stack/unpicked
+            [(held-stack e) (get inv 8) (get inv 7)
+             (get inv 6) (get inv 5)]))))
 
 (defmacro ^:private readers
   "Defines fast readers of record type t, named with prefix."

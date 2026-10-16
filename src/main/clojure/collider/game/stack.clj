@@ -135,7 +135,8 @@
   (when stack
     (cond-> {:item (:item stack) :count (long (:count stack 1))}
       (or (:components stack) (:removed stack))
-      (assoc :patch (select-keys stack [:components :removed])))))
+      (assoc :patch (select-keys stack [:components :removed
+                                        :bundle-selected])))))
 
 (defn of-template
   "Returns the stack template t describes."
@@ -143,10 +144,34 @@
   (when t
     (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
 
+(defn unpicked
+  "Returns stack without the pick of its bundle, which only the
+  stack in memory keeps."
+  [stack]
+  (dissoc stack :bundle-selected))
+
 (defn same-kind?
   "Returns true when stacks a and b differ in count at most."
   [a b]
-  (boolean (and a b (= (dissoc a :count) (dissoc b :count)))))
+  (let [kind #(dissoc % :count :bundle-selected)]
+    (boolean (and a b (= (kind a) (kind b))))))
+
+(declare saved)
+
+(defn- saved-in [coll]
+  (reduce-kv (fn [c k v]
+               (let [v' (saved v)]
+                 (if (identical? v v') c (assoc c k v'))))
+             coll coll))
+
+(defn saved
+  "Returns x as a save keeps it. No stack in it, however deep, keeps
+  the pick of its bundle."
+  [x]
+  (cond
+    (map? x) (saved-in (unpicked x))
+    (vector? x) (saved-in x)
+    :else x))
 
 (defn shrunk
   "Returns stack with k fewer items, or nil when none stay."

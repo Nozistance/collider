@@ -2,7 +2,8 @@
   "Crafting grids of the table and the player."
   (:require [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
-            [collider.game.player :as player]))
+            [collider.game.player :as player]
+            [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
 
@@ -43,9 +44,6 @@
     (craft/remainders r input)
     (:stacks input)))
 
-(defn- same-kind? [a b]
-  (= (dissoc a :count) (dissoc b :count)))
-
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
 
 (defn- give [ctx m stack]
@@ -59,7 +57,7 @@
   (let [here (get (:inventory m) slot)]
     (cond (nil? rep) m
           (nil? here) (assoc-in m [:inventory slot] rep)
-          (same-kind? here rep)
+          (stack/same-kind? here rep)
           (let [n (+ (count-of rep) (count-of here))]
             (assoc-in m [:inventory slot] (assoc rep :count n)))
           :else (give ctx m rep))))
