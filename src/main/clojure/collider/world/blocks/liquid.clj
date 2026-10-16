@@ -358,7 +358,9 @@
 
 (defn- fluid-code ^long [st]
   (let [st (state-of st)]
-    (long (if (pos? st) (fluid-codes (liquid-class st) 0) 0))))
+    (long (if (pos? st)
+            (fluid-codes (liquid-class st) Flow/NONE)
+            Flow/NONE))))
 
 (defn- fluid-level ^long [st]
   (let [st (state-of st)]
@@ -722,7 +724,7 @@
    :due     column-due})
 
 (defn eye-in-water?
-  "Returns true when the eyes, eye blocks above pos, are under the
+  "Returns true when the point eye blocks above pos is under the
   surface of water."
   [chunks pos ^double eye]
   (let [ey (+ (v/y pos) eye)

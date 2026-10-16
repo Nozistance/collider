@@ -282,8 +282,8 @@ public final class Light {
 
     /// Returns the sky light seeds of the columns that cells stand in.
     /// Every cell between the old and the new lowest sky cell of a
-    /// column is seeded, then every changed cell once. A seed is full
-    /// at or above the new lowest sky cell and dark below it.
+    /// column is seeded before the changed cells, each once. A seed is
+    /// full at or above the new lowest sky cell and dark below it.
     private static long[] skyCells(
             ChunkIndex chunks,
             long[] cells,

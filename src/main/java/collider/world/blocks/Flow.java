@@ -12,7 +12,7 @@ import java.util.Arrays;
 /// liquid of amount n has the level 8 minus n.
 public final class Flow {
 
-    private static final int NONE = 0;
+    public static final int NONE = 0;
 
     public static final int WATER = 1;
 
@@ -165,6 +165,14 @@ public final class Flow {
 
     private final ChunkIndex chunks;
 
+    private final Chunk[] near = new Chunk[4];
+
+    private final int[] nearX = new int[4];
+
+    private final int[] nearZ = new int[4];
+
+    private final int[] mixedAround = new int[UPDATES.length];
+
     private int[] overX = new int[0];
 
     private int[] overY = new int[0];
@@ -201,14 +209,6 @@ public final class Flow {
 
     private long stamp;
 
-    private final Chunk[] near = new Chunk[4];
-
-    private final int[] nearX = new int[4];
-
-    private final int[] nearZ = new int[4];
-
-    private final int[] mixedAround = new int[UPDATES.length];
-
     private Flow(Tables t, ChunkIndex chunks) {
         this.t = t;
         this.chunks = chunks;
@@ -242,14 +242,13 @@ public final class Flow {
         return changes[4 + CHANGE * k];
     }
 
-    /// Returns the state that change k of a packed change list drops,
-    /// or -1 when it drops none.
+    /// Returns the state that change k of changes drops, or -1 when it
+    /// drops none.
     public static int changeDrop(int[] changes, int k) {
         return changes[5 + CHANGE * k];
     }
 
-    /// Returns the effect of change k of a packed change list, or 0 when
-    /// it has none.
+    /// Returns the effect of change k of changes, or 0 when it has none.
     public static int changeEffect(int[] changes, int k) {
         return changes[6 + CHANGE * k];
     }
