@@ -7,9 +7,11 @@
 (set! *warn-on-reflection* true)
 
 (defn- with-patch [stack patch]
-  (reduce #(put %1 %2 nil)
-          (reduce-kv put stack (:components patch))
-          (:removed patch)))
+  (cond-> (reduce #(put %1 %2 nil)
+                  (reduce-kv put stack (:components patch))
+                  (:removed patch))
+    (:bundle-selected patch)
+    (assoc :bundle-selected (:bundle-selected patch))))
 
 (defn- valid-or-nil [stack]
   (let [most (or (component stack :max-stack-size) 1)]

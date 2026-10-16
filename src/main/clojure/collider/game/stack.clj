@@ -145,18 +145,6 @@
   (when t
     (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
 
-(defn unpicked
-  "Returns stack without the pick of its bundle, which only the
-  stack in memory keeps."
-  [stack]
-  (dissoc stack :bundle-selected))
-
-(defn same-kind?
-  "Returns true when stacks a and b differ in count at most."
-  [a b]
-  (let [kind #(dissoc % :count :bundle-selected)]
-    (boolean (and a b (= (kind a) (kind b))))))
-
 (declare saved)
 
 (defn- saved-in [coll]
@@ -170,9 +158,15 @@
   the pick of its bundle."
   [x]
   (cond
-    (map? x) (saved-in (unpicked x))
+    (map? x) (saved-in (dissoc x :bundle-selected))
     (vector? x) (saved-in x)
     :else x))
+
+(defn same-kind?
+  "Returns true when stacks a and b differ in count at most."
+  [a b]
+  (let [kind #(saved (dissoc % :count))]
+    (boolean (and a b (= (kind a) (kind b))))))
 
 (defn shrunk
   "Returns stack with k fewer items, or nil when none stay."

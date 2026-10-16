@@ -14,7 +14,8 @@
   "Returns true when stacks a and b hold one item with one set of
   components."
   [a b]
-  (and (= (:item a) (:item b)) (= (:components a) (:components b))
+  (and (= (:item a) (:item b))
+       (= (stack/saved (:components a)) (stack/saved (:components b)))
        (= (:removed a) (:removed b))))
 
 (def ^:private slot-order

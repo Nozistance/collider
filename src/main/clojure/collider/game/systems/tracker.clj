@@ -73,7 +73,7 @@
   (let [inv (:inventory e)]
     (if (nil? inv)
       no-equip
-      (mapv stack/unpicked
+      (mapv stack/saved
             [(held-stack e) (get inv 8) (get inv 7)
              (get inv 6) (get inv 5)]))))
 
