@@ -34,10 +34,11 @@
   "Returns the payload of chunk c at game tick t from its parts.
   Its entities come as [eid entity] entries."
   [c block-entities entities block-ticks fluid-ticks t]
-  (let [saved (fn [f] (map (fn [[k v]] [k (stack/saved (f v t))])))]
+  (let [entries-of (fn [f]
+                     (map (fn [[k v]] [k (stack/saved (f v t))])))]
     {:chunk c
-     :block-entities (into {} (saved be/saved) block-entities)
-     :entities (into {} (saved entity/saved) entities)
+     :block-entities (into {} (entries-of be/saved) block-entities)
+     :entities (into {} (entries-of entity/saved) entities)
      :block-ticks (or block-ticks [])
      :fluid-ticks (or fluid-ticks [])}))
 

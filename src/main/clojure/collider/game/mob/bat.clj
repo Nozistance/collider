@@ -102,17 +102,18 @@
         d (num/fsub (num/f32 r) 90.0)]
     (num/f32 (+ yaw (num/wrap-degrees (num/fsub d yaw))))))
 
+(defn- offset ^double [c ^double o ^double a] (- (+ (long c) o) a))
+
 (defn drive
   "Returns the speed vel of bat e turned toward where it flutters this
   tick, and its yaw along that speed, or nil when it does not."
   [e vel]
   (when-let [[x y z] (:flap e)]
     (let [p (:pos e)
-          d (fn [c ^double o a] (- (+ (long c) o) (double a)))
-          w (v/v3 (toward (v/x vel) (d x 0.5 (v/x p)) 0.5)
-                  (toward (v/y vel) (d y 0.1 (v/y p)) climb)
-                  (toward (v/z vel) (d z 0.5 (v/z p)) 0.5))]
-      [w (yaw-to (double (:yaw e)) w)])))
+          speed (v/v3 (toward (v/x vel) (offset x 0.5 (v/x p)) 0.5)
+                      (toward (v/y vel) (offset y 0.1 (v/y p)) climb)
+                      (toward (v/z vel) (offset z 0.5 (v/z p)) 0.5))]
+      [speed (yaw-to (double (:yaw e)) speed)])))
 
 (def ^:private ^:const height (double (float 0.9)))
 

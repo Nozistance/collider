@@ -31,9 +31,9 @@
   (let [s (bit-xor (long (unchecked-multiply-int (int x) 3129871))
                    (unchecked-multiply (long z) 116129781)
                    (long y))
-        a (unchecked-multiply (unchecked-multiply s s) 42317861)
-        b (unchecked-multiply s 11)]
-    (bit-shift-right (unchecked-add a b) 16)))
+        square (unchecked-multiply (unchecked-multiply s s) 42317861)
+        linear (unchecked-multiply s 11)]
+    (bit-shift-right (unchecked-add square linear) 16)))
 
 (defn positional
   "Returns the longs the random of seed forked for block pos gives."

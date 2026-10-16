@@ -168,22 +168,24 @@
     (when (and k (:sounds m))
       (keyword (name (sound-set m e k)) (name k)))))
 
+(defn- trait [e k] (get (get types (:type e)) k))
+
 (defn volume
   "Returns how loud mob e makes its voice sounds."
   ^double [e]
-  (double (get-in types [(:type e) :volume] 1.0)))
+  (double (or (trait e :volume) 1.0)))
 
 (defn voice-pitch
   "Returns pitch p of a voice sound as mob e makes it."
   ^double [e ^double p]
-  (if-let [k (get-in types [(:type e) :pitch])]
+  (if-let [k (trait e :pitch)]
     (num/fmul (num/f32 p) (num/f32 (double k)))
     p))
 
 (defn flag?
   "Returns true when the kind of mob e has flag k."
   [e k]
-  (boolean (get (get types (:type e)) k)))
+  (boolean (trait e k)))
 
 (defn eating-sound
   "Returns the sound mob e eats with, or nil for a breed that eats
@@ -297,7 +299,7 @@
 (defn ambient-interval
   "Returns the ticks mob e keeps quiet after it was heard or hurt."
   ^long [e]
-  (long (get-in types [(:type e) :ambient-interval] 120)))
+  (long (or (trait e :ambient-interval) 120)))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
