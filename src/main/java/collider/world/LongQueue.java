@@ -30,7 +30,8 @@ public final class LongQueue {
         in[tail++] = e;
     }
 
-    /// Takes the oldest long, which must be there.
+    /// Removes and returns the oldest long. The queue must not be
+    /// empty.
     public long poll() {
         if (head == out.length) {
             spare = out;

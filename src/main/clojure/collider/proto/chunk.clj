@@ -8,7 +8,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome])
-  (:import (collider.world Chunk Light Section)))
+  (:import (collider.world Light)))
 
 (set! *warn-on-reflection* true)
 
@@ -61,19 +61,20 @@
 
 (def ^:private dark (byte-array 2048))
 
-(defn- write-palette! [buf ^Section s]
-  (let [n (.paletteSize s)]
+(defn- write-palette! [buf s]
+  (let [n (chunk/palette-size s)]
     (when-not (zero? n)
-      (when-not (zero? (.bits s)) (c/write-varint buf n))
-      (dotimes [k n] (c/write-varint buf (.paletteId s k))))))
+      (when-not (zero? (chunk/section-bits s)) (c/write-varint buf n))
+      (dotimes [k n] (c/write-varint buf (chunk/palette-id s k))))))
 
-(defn- write-section! [buf ^Section s ^long biome]
-  (let [t (.tally s ^booleans @fluid-arr)]
+(defn- write-section! [buf s ^long biome]
+  (let [t (chunk/tally s @fluid-arr)]
     (buf/write-short! buf (unsigned-bit-shift-right t 16))
     (buf/write-short! buf (bit-and t 0xFFFF))
-    (buf/write-byte! buf (.bits s))
+    (buf/write-byte! buf (chunk/section-bits s))
     (write-palette! buf s)
-    (dotimes [c (.wordCount s)] (buf/write-long! buf (.word s c)))
+    (dotimes [c (chunk/word-count s)]
+      (buf/write-long! buf (chunk/word s c)))
     (buf/write-byte! buf 0)
     (c/write-varint buf biome)))
 
@@ -181,12 +182,10 @@
     (or (not (chunk/sky-lit? s)) (dark-bottom? s))
     false))
 
-(defn- below? [^long si] (= si Chunk/BELOW))
-
 (defn- sky-empty? [chunk ^long si]
   (if-let [s (chunk/chunk-section chunk si)]
     (not (chunk/sky-lit? s))
-    (if (below? si)
+    (if (chunk/below? si)
       (nil? (chunk/edge-light chunk si Light/SKY))
       (dark-inherited? chunk si))))
 
@@ -217,17 +216,17 @@
 
 (defn- write-sky-layer! [buf chunk ^long si]
   (buf/write-bytes!
-    buf (if (below? si)
+    buf (if (chunk/below? si)
           (chunk/edge-light chunk si Light/SKY)
           (let [s (or (chunk/chunk-section chunk si)
                       (chunk/new-section chunk si))]
-            (or (.skyLightBytes ^Section s) dark)))))
+            (or (chunk/sky-light-bytes s) dark)))))
 
 (defn- write-block-layer! [buf chunk ^long si]
   (buf/write-bytes!
     buf (if (chunk/edge? si)
           (chunk/edge-light chunk si Light/BLOCK)
-          (or (.blockLightBytes ^Section (chunk/chunk-section chunk si))
+          (or (chunk/block-light-bytes (chunk/chunk-section chunk si))
               dark))))
 
 (defn- write-light-layers! [buf chunk lo m write-layer!]

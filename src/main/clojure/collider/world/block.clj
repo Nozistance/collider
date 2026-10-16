@@ -51,17 +51,12 @@
 
 (declare tables)
 
-(defn- via [m & args]
-  (fn [st] `(~m (tables) ~st ~@args)))
-
 (defn type-of
   "Returns the class of the block of st."
-  {:inline (via `Block/type)}
   [^long st]
   (Block/type (tables) st))
 
 (defn block-of
-  {:inline (via `Block/name)}
   [^long st]
   (Block/name (tables) st))
 
@@ -196,10 +191,6 @@
    :leaf-litter :segment-amount
    :turtle-egg :eggs})
 
-(def replaceable-types
-  (disj (into ground-types (concat torch-types wall-torch-types))
-        :standing-sign))
-
 (defn- boolean-table ^booleans [pred]
   (Block/table @type-arr @name-arr pred))
 
@@ -212,10 +203,6 @@
            (fn [_ t _]
              (or (contains? needs-support-types t)
                  (contains? attached-types t))))))
-
-(def ^:private ^:table replaceable-arr
-  (delay (boolean-table
-           (fn [_ t _] (contains? replaceable-types t)))))
 
 (def ^:private ^:table liquid-arr
   (delay (boolean-table (fn [_ t _] (= :liquid t)))))
@@ -257,25 +244,21 @@
 
 (defn needs-support?
   "Returns true when st breaks without a block to hold it."
-  {:inline (via `Block/needsSupport)}
   [^long st]
   (Block/needsSupport (tables) st))
 
 (defn attached?
   "Returns true when st hangs on a neighbour."
-  {:inline (via `Block/attached)}
   [^long st]
   (Block/attached (tables) st))
 
 (defn liquid?
   "Returns true when st is a fluid, not a block that holds one."
-  {:inline (via `Block/liquid)}
   [^long st]
   (Block/liquid (tables) st))
 
 (defn waterlogged?
   "Returns true when st holds water, as a water plant does."
-  {:inline (via `Block/waterlogged)}
   [^long st]
   (Block/waterlogged (tables) st))
 
@@ -372,13 +355,11 @@
      [[:break st] [:drop st]])])
 
 (defn falls?
-  {:inline (via `Block/falls)}
   [^long st]
   (Block/falls (tables) st))
 
 (defn can-be-replaced?
   "Returns true when the replaceable tag holds st."
-  {:inline (via `Block/canBeReplaced)}
   [^long st]
   (Block/canBeReplaced (tables) st))
 
@@ -419,13 +400,8 @@
   (delay (block-table (fn [_ b] (shape-type b)))))
 
 (defn shape-of
-  {:inline (via `Block/shape)}
   [^long st]
   (Block/shape (tables) st))
-
-(defn fence?
-  "Returns true when st joins like a fence."
-  [^long st] (= :fence (shape-of st)))
 
 (defn- stops? [^long st]
   (and (pos? st)
@@ -437,7 +413,6 @@
 
 (defn solid?
   "Returns true when st stops a walking body."
-  {:inline (via `Block/solid)}
   [^long st]
   (Block/solid (tables) st))
 
@@ -525,24 +500,20 @@
 
 (defn dampening
   "Returns how much light st takes away."
-  {:inline (via `Block/dampening)}
   ^long [^long st]
   (Block/dampening (tables) st))
 
 (defn emits
   "Returns the light level st gives."
-  {:inline (via `Block/emission)}
   ^long [^long st]
   (Block/emission (tables) st))
 
 (defn use-shape-for-light-occlusion?
-  {:inline (via `Block/useShape)}
   [^long st]
   (Block/useShape (tables) st))
 
 (defn can-occlude?
   "Returns true when st may stop light."
-  {:inline (via `Block/canOcclude)}
   [^long st]
   (Block/canOcclude (tables) st))
 
@@ -552,9 +523,6 @@
 
 (defn light-dampening-into
   "Returns the light cost of crossing from into to along dir."
-  {:inline (fn [from to dir simple]
-             `(Block/dampeningInto
-                (tables) ~from ~to (dir/index ~dir) ~simple))}
   ^long [^long from ^long to dir ^long simple]
   (Block/dampeningInto (tables) from to (dir/index dir) simple))
 
@@ -653,7 +621,6 @@
 
 (defn legacy-solid?
   "Returns true when st counts as solid for old rules."
-  {:inline (via `Block/legacySolid)}
   [^long st]
   (Block/legacySolid (tables) st))
 
@@ -662,7 +629,6 @@
 
 (defn full-cube?
   "Returns true when the collision shape of st is a full cube."
-  {:inline (via `Block/fullCube)}
   [^long st]
   (Block/fullCube (tables) st))
 
@@ -684,19 +650,18 @@
     (BlockTables/install
      (BlockTables.
        @type-arr @name-arr @shape-arr @needs-support-arr @attached-arr
-       @replaceable-arr @liquid-arr @waterlogged-arr @falls-arr
-       @can-be-replaced-arr @solid-table @legacy-solid-arr
-       @full-cube-arr @blocks-motion-arr @use-shape-arr
-       @can-occlude-arr @dampening-arr @emission-arr @touch-arr
-       @face-arr @resist-table (states/flags) (states/sturdy)
-       (states/sturdy-rigid) (states/sturdy-center)))))
+       @liquid-arr @waterlogged-arr @falls-arr @can-be-replaced-arr
+       @solid-table @legacy-solid-arr @full-cube-arr
+       @blocks-motion-arr @use-shape-arr @can-occlude-arr
+       @dampening-arr @emission-arr @touch-arr @face-arr
+       (states/flags) (states/sturdy) (states/sturdy-rigid)
+       (states/sturdy-center)))))
 
 (defn tables
   ^BlockTables []
   (or (BlockTables/current) @table-set))
 
 (defn blocks-motion?
-  {:inline (via `Block/blocksMotion)}
   [^long st]
   (Block/blocksMotion (tables) st))
 
@@ -714,29 +679,24 @@
            (not (liquid? st)))))
 
 (defn ignited-by-lava?
-  {:inline (via `Block/flag lava-bit)}
   [^long st]
   (flag? st lava-bit))
 
 (defn solid-render?
-  {:inline (via `Block/flag render-bit)}
   [^long st]
   (flag? st render-bit))
 
 (defn collision-face-full-up?
   "Returns true when the top face of st is full."
-  {:inline (via `Block/flag top-face-bit)}
   [^long st]
   (flag? st top-face-bit))
 
 (defn signal-source?
   "Returns true when st gives a redstone signal."
-  {:inline (via `Block/flag signal-bit)}
   [^long st]
   (flag? st signal-bit))
 
 (defn randomly-ticking?
-  {:inline (via `Block/flag ticking-bit)}
   [^long st]
   (flag? st ticking-bit))
 
@@ -746,24 +706,18 @@
   (let [ignite (get-in (data/fire) [(block-of st) :ignite] 0)]
     (and (known? st) (pos? (long ignite)))))
 
-(defn- face-form [m]
-  (fn [st face] `(~m (tables) ~st (dir/index ~face))))
-
 (defn face-sturdy?
   "Returns true when face of st holds a block."
-  {:inline (face-form `Block/sturdy)}
   [^long st face]
   (Block/sturdy (tables) st (dir/index face)))
 
 (defn face-holds-rigid?
   "Returns true when face of st holds a block rigidly."
-  {:inline (face-form `Block/sturdyRigid)}
   [^long st face]
   (Block/sturdyRigid (tables) st (dir/index face)))
 
 (defn face-holds-center?
   "Returns true when face of st holds a block at its center."
-  {:inline (face-form `Block/sturdyCenter)}
   [^long st face]
   (Block/sturdyCenter (tables) st (dir/index face)))
 

@@ -22,17 +22,18 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 
-/// A persistent map from chunk coordinates to chunk values.
+/// A persistent map from chunk ids to chunks. Each chunk coordinate
+/// must lie from -2130440 to 2063863.
 ///
-/// An index may carry an owner `token`, opened by `editable()` and
-/// closed by `frozen()`. Every edit of such an index reuses its
-/// token, and `Edit.own` writes in place into nodes tagged with it.
-/// A node tagged with token T is reachable only from indexes carrying
-/// T, the ones edits of that window returned. A frozen index has no
-/// token, an edit of it makes a fresh one, and no later window reuses
-/// T, so nodes tagged T are never written again and frozen indexes
-/// are immutable values. Inside a window only the index returned last
-/// is valid to read, as with a transient.
+/// An index may carry an owner token, opened by editable and closed
+/// by frozen. Every edit of such an index keeps its token and writes
+/// in place into the nodes tagged with it. A node tagged with token T
+/// is reachable only from the indexes that edits of that window
+/// returned. A frozen index has no token. An edit of it makes a fresh
+/// one, and no later window reuses T. So nodes tagged T are never
+/// written again, and frozen indexes are immutable values. Inside a
+/// window only the index returned last is valid to read, as with a
+/// transient.
 public final class ChunkIndex extends APersistentMap
         implements IObj, IKVReduce, IReduceInit, IEditableCollection {
 
@@ -73,7 +74,7 @@ public final class ChunkIndex extends APersistentMap
 
     /// Returns this index with a fresh owner token. Edits of the
     /// result and of their results copy each node once and then write
-    /// it in place until `frozen()`.
+    /// it in place until frozen.
     public ChunkIndex editable() {
         Object fresh = new Object();
         return new ChunkIndex(root, span, prefixU, prefixV, count, meta, shape, fresh);
@@ -86,7 +87,9 @@ public final class ChunkIndex extends APersistentMap
     /// Returns this index without an owner token, the same object
     /// when it has none.
     public ChunkIndex frozen() {
-        if (token == null) return this;
+        if (token == null) {
+            return this;
+        }
         return new ChunkIndex(root, span, prefixU, prefixV, count, meta, shape, null);
     }
 
@@ -98,16 +101,24 @@ public final class ChunkIndex extends APersistentMap
 
     static Object find(Object[] n, int span, int prefixU, int prefixV, int cx, int cz) {
         int u = cx + BIAS, v = cz + BIAS, s = span;
-        if ((u >>> s) != prefixU || (v >>> s) != prefixV) return null;
+        if ((u >>> s) != prefixU || (v >>> s) != prefixV) {
+            return null;
+        }
         for (s -= INNER_BITS; s >= LEAF_BITS; s -= INNER_BITS) {
             n = (Object[]) n[slot(u, v, s)];
-            if (n == null) return null;
+            if (n == null) {
+                return null;
+            }
         }
-        return n[((u & LEAF_MASK) << LEAF_BITS) | (v & LEAF_MASK)];
+        return n[leafSlot(u, v)];
     }
 
     static int slot(int u, int v, int s) {
         return (((u >>> s) & INNER_MASK) << INNER_BITS) | ((v >>> s) & INNER_MASK);
+    }
+
+    static int leafSlot(int u, int v) {
+        return ((u & LEAF_MASK) << LEAF_BITS) | (v & LEAF_MASK);
     }
 
     public Object get(int cx, int cz) {
@@ -138,74 +149,72 @@ public final class ChunkIndex extends APersistentMap
     }
 
     static long key(Object k) {
-        if (integral(k)) return ((Number) k).longValue();
+        if (integral(k)) {
+            return ((Number) k).longValue();
+        }
         throw new IllegalArgumentException("ChunkIndex key: " + k);
     }
 
     @Override
-
     public Object valAt(Object k, Object nf) {
-        if (!integral(k)) return nf;
+        if (!integral(k)) {
+            return nf;
+        }
         Object o = get(((Number) k).longValue());
         return o == null ? nf : o;
     }
 
     @Override
-
     public Object valAt(Object k) {
         return valAt(k, null);
     }
 
     @Override
-
     public boolean containsKey(Object k) {
         return valAt(k, null) != null;
     }
 
     @Override
-
     public IMapEntry entryAt(Object k) {
         Object o = valAt(k, null);
         return o == null ? null : MapEntry.create(((Number) k).longValue(), o);
     }
 
     @Override
-
     public int count() {
         return count;
     }
 
     @Override
-
     public IPersistentMap meta() {
         return meta;
     }
 
     @Override
-
     public ChunkIndex withMeta(IPersistentMap m) {
-        if (m == meta) return this;
+        if (m == meta) {
+            return this;
+        }
         return new ChunkIndex(root, span, prefixU, prefixV, count, m, shape, token);
     }
 
     @Override
-
     public ChunkIndex empty() {
         return EMPTY.withMeta(meta);
     }
 
     @Override
-
     public ChunkIndex assoc(Object k, Object val) {
         long id = key(k);
-        if (val != null && get(id) == val) return this;
+        if (val != null && get(id) == val) {
+            return this;
+        }
         Edit e = new Edit(this);
         e.put(id, val);
         return e.done(meta);
     }
 
     @Override
-
     public ChunkIndex assocEx(Object k, Object val) {
         if (containsKey(k)) {
             throw Util.runtimeException("Key already present");
@@ -214,32 +223,38 @@ public final class ChunkIndex extends APersistentMap
     }
 
     @Override
-
     public ChunkIndex without(Object k) {
-        if (!containsKey(k)) return this;
+        if (!containsKey(k)) {
+            return this;
+        }
         Edit e = new Edit(this);
         e.remove(((Number) k).longValue());
         return e.done(meta);
     }
 
-    /// Returns this index with the block at x y z set to `state`, the
-    /// same index when its chunk is absent or was written in place.
+    /// Returns this index with the block at x, y, z set to state. The
+    /// same index comes back when the chunk is absent or was written
+    /// in place.
     public ChunkIndex withBlock(int x, int y, int z, int state) {
         Object c = find(root, span, prefixU, prefixV, x >> 4, z >> 4);
-        if (c == null) return this;
+        if (c == null) {
+            return this;
+        }
         Chunk n = ((Chunk) c).withBlock(x, y, z, state, token);
-        if (n == c) return this;
+        if (n == c) {
+            return this;
+        }
         return assoc(id(x >> 4, z >> 4), n);
     }
 
-    /// Returns this index with each key of `ids` set to the value of
-    /// `values` at the same place, removed where that value is null.
+    /// Returns this index with each key of ids set to the value of
+    /// values at the same place, removed where that value is null.
     public ChunkIndex withAll(long[] ids, Object[] values) {
         Edit e = new Edit(this);
-        if (Edit.holes(values)) {
-            e.mixed(ids, values);
-        } else {
-            for (int i = 0; i < ids.length; i++) {
+        for (int i = 0; i < ids.length; i++) {
+            if (values[i] == null) {
+                e.remove(ids[i]);
+            } else {
                 e.put(ids[i], values[i]);
             }
         }
@@ -247,7 +262,6 @@ public final class ChunkIndex extends APersistentMap
     }
 
     @Override
-
     public ITransientMap asTransient() {
         return new Transient(new Edit(this), meta);
     }
@@ -256,8 +270,12 @@ public final class ChunkIndex extends APersistentMap
         boolean put(long id, Object v);
     }
 
+    /// Gives sink each entry in ascending id order until it returns
+    /// false.
     void walk(Sink sink) {
-        if (root == null) return;
+        if (root == null) {
+            return;
+        }
         Walk w = new Walk(sink);
         w.nodes[0][0] = root;
         w.vps[0][0] = prefixV;
@@ -266,7 +284,6 @@ public final class ChunkIndex extends APersistentMap
     }
 
     @Override
-
     public Object reduce(IFn f, Object init) {
         Object[] acc = {init};
         walk((id, v) -> {
@@ -277,7 +294,6 @@ public final class ChunkIndex extends APersistentMap
     }
 
     @Override
-
     public Object kvreduce(IFn f, Object init) {
         Object[] acc = {init};
         walk((id, v) -> {
@@ -302,13 +318,11 @@ public final class ChunkIndex extends APersistentMap
     }
 
     @Override
-
     public ISeq seq() {
         return count == 0 ? null : ArraySeq.create(entries());
     }
 
     @Override
-
     public Iterator<Object> iterator() {
         return Arrays.asList(entries()).iterator();
     }
@@ -328,10 +342,16 @@ public final class ChunkIndex extends APersistentMap
         }
 
         boolean rows(int d, int s, int up) {
-            if (s == LEAF_BITS) return leaves(d, up);
+            if (s == LEAF_BITS) {
+                return leaves(d, up);
+            }
             for (int ud = 0; ud <= INNER_MASK; ud++) {
-                if (fill(d, ud) == 0) continue;
-                if (!rows(d + 1, s - INNER_BITS, (up << INNER_BITS) | ud)) return false;
+                if (fill(d, ud) == 0) {
+                    continue;
+                }
+                if (!rows(d + 1, s - INNER_BITS, (up << INNER_BITS) | ud)) {
+                    return false;
+                }
             }
             return true;
         }
@@ -343,7 +363,9 @@ public final class ChunkIndex extends APersistentMap
                 int row = ud << INNER_BITS, vp = vps[d][i] << INNER_BITS;
                 for (int vd = 0; vd <= INNER_MASK; vd++) {
                     Object kid = n[row | vd];
-                    if (kid != null) m = add(d + 1, m, kid, vp | vd);
+                    if (kid != null) {
+                        m = add(d + 1, m, kid, vp | vd);
+                    }
                 }
             }
             return size[d + 1] = m;
@@ -387,7 +409,9 @@ public final class ChunkIndex extends APersistentMap
             for (int vd = a; vd <= b; vd++) {
                 Object o = n[row | vd];
                 long lo = (base + vd - BIAS) & 0xFFFFFFFFL;
-                if (o != null && !sink.put(hi | lo, o)) return false;
+                if (o != null && !sink.put(hi | lo, o)) {
+                    return false;
+                }
             }
             return true;
         }
@@ -413,7 +437,9 @@ public final class ChunkIndex extends APersistentMap
         }
 
         ChunkIndex done(IPersistentMap meta) {
-            if (root == null) return EMPTY.withMeta(meta);
+            if (root == null) {
+                return EMPTY.withMeta(meta);
+            }
             return new ChunkIndex(root, span, prefixU, prefixV, count, meta, shape, keep);
         }
 
@@ -449,7 +475,7 @@ public final class ChunkIndex extends APersistentMap
             }
             while ((u >>> span) != prefixU || (v >>> span) != prefixV) {
                 Object[] r = own(null, INNER_BITS);
-                r[((prefixU & INNER_MASK) << INNER_BITS) | (prefixV & INNER_MASK)] = root;
+                r[slot(prefixU, prefixV, 0)] = root;
                 root = r;
                 span += INNER_BITS;
                 prefixU >>>= INNER_BITS;
@@ -469,46 +495,25 @@ public final class ChunkIndex extends APersistentMap
                 n = kid;
             }
             path[d] = n;
-            at[d] = ((u & LEAF_MASK) << LEAF_BITS) | (v & LEAF_MASK);
+            at[d] = leafSlot(u, v);
             return d;
         }
 
-        Object[] leaf(int u, int v) {
-            if ((u >>> span) != prefixU || (v >>> span) != prefixV) grow(u, v);
-            Object[] n = root = own(root, nodeBits(span));
-            for (int s = span - INNER_BITS; s >= LEAF_BITS; s -= INNER_BITS) {
-                int k = slot(u, v, s);
-                Object[] kid = own((Object[]) n[k], nodeBits(s));
-                n[k] = kid;
-                n = kid;
-            }
-            return n;
-        }
-
         void put(long id, Object o) {
-            int u = (int) (id >> 32) + BIAS, v = (int) id + BIAS;
-            if (o == null || ((u | v) >>> KEY_BITS) != 0) throw bad(id, o);
-            Object[] n = leaf(u, v);
-            int k = ((u & LEAF_MASK) << LEAF_BITS) | (v & LEAF_MASK);
-            if (n[k] == null) {
+            int u = x(id) + BIAS, v = z(id) + BIAS;
+            if (o == null || ((u | v) >>> KEY_BITS) != 0) {
+                throw bad(id, o);
+            }
+            if ((u >>> span) != prefixU || (v >>> span) != prefixV) {
+                grow(u, v);
+            }
+            int d = descend(u, v);
+            Object[] n = path[d];
+            if (n[at[d]] == null) {
                 count++;
                 reshaped();
             }
-            n[k] = o;
-        }
-
-        static boolean holes(Object[] values) {
-            for (Object o : values) {
-                if (o == null) return true;
-            }
-            return false;
-        }
-
-        void mixed(long[] ids, Object[] values) {
-            for (int i = 0; i < ids.length; i++) {
-                if (values[i] == null) remove(ids[i]);
-                else put(ids[i], values[i]);
-            }
+            n[at[d]] = o;
         }
 
         static IllegalArgumentException bad(long id, Object o) {
@@ -516,12 +521,16 @@ public final class ChunkIndex extends APersistentMap
         }
 
         void remove(long id) {
-            if (get(id) == null) return;
-            int d = descend((int) (id >> 32) + BIAS, (int) id + BIAS);
+            if (get(id) == null) {
+                return;
+            }
+            int d = descend(x(id) + BIAS, z(id) + BIAS);
             path[d][at[d]] = null;
             count--;
             reshaped();
-            while (d > 0 && vacant(path[d])) path[--d][at[d]] = null;
+            while (d > 0 && vacant(path[d])) {
+                path[--d][at[d]] = null;
+            }
             if (d == 0 && vacant(path[0])) {
                 root = null;
                 span = LEAF_BITS;
@@ -532,7 +541,9 @@ public final class ChunkIndex extends APersistentMap
 
         static boolean vacant(Object[] n) {
             for (int i = 0; i < n.length - 1; i++) {
-                if (n[i] != null) return false;
+                if (n[i] != null) {
+                    return false;
+                }
             }
             return true;
         }
@@ -556,21 +567,20 @@ public final class ChunkIndex extends APersistentMap
         }
 
         @Override
-
         public ITransientMap assoc(Object k, Object val) {
             live().put(key(k), val);
             return this;
         }
 
         @Override
-
         public ITransientMap without(Object k) {
-            if (integral(k)) live().remove(((Number) k).longValue());
+            if (integral(k)) {
+                live().remove(((Number) k).longValue());
+            }
             return this;
         }
 
         @Override
-
         public ITransientMap conj(Object o) {
             if (o instanceof Map.Entry<?, ?> e) {
                 return assoc(e.getKey(), e.getValue());
@@ -582,7 +592,6 @@ public final class ChunkIndex extends APersistentMap
         }
 
         @Override
-
         public IPersistentMap persistent() {
             ChunkIndex x = live().done(meta);
             edit = null;
@@ -590,45 +599,38 @@ public final class ChunkIndex extends APersistentMap
         }
 
         @Override
-
         public Object valAt(Object k, Object nf) {
             Object o = integral(k) ? live().get(((Number) k).longValue()) : null;
             return o == null ? nf : o;
         }
 
         @Override
-
         public Object valAt(Object k) {
             return valAt(k, null);
         }
 
         @Override
-
         public int count() {
             return live().count;
         }
 
         @Override
-
         public boolean containsKey(Object k) {
             return valAt(k, null) != null;
         }
 
         @Override
-
         public IMapEntry entryAt(Object k) {
             Object o = valAt(k, null);
             return o == null ? null : MapEntry.create(((Number) k).longValue(), o);
         }
 
         @Override
-
         public Object invoke(Object k) {
             return valAt(k, null);
         }
 
         @Override
-
         public Object invoke(Object k, Object nf) {
             return valAt(k, nf);
         }

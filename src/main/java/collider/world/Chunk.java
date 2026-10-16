@@ -6,9 +6,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
 
-/// A chunk column of `COUNT` sections, some of which may be absent,
-/// and the light of the section below it and above it, which hold no
-/// blocks.
+/// A column of COUNT sections, some of them absent, with the light of
+/// the sections just below and above it, which hold no blocks.
 public final class Chunk {
 
     public static final int COUNT = 24;
@@ -43,35 +42,47 @@ public final class Chunk {
     }
 
     private static int edge(int si, int ch) {
-        if (si == BELOW) return ch == Light.SKY ? 0 : 1;
-        if (si == ABOVE && ch == Light.BLOCK) return 2;
+        if (si == BELOW) {
+            return ch == Light.SKY ? 0 : 1;
+        }
+        if (si == ABOVE && ch == Light.BLOCK) {
+            return 2;
+        }
         throw new IllegalArgumentException("edge " + si + " " + ch);
     }
 
     private static boolean dark(byte[] light) {
         for (byte b : light) {
-            if (b != 0) return false;
+            if (b != 0) {
+                return false;
+            }
         }
         return true;
     }
 
-    /// Returns the light of channel `ch` in the section `BELOW` or
-    /// `ABOVE` the column, or null where it is dark. The sky above
-    /// is always full and has none.
+    /// Returns the light of channel ch in section si, BELOW or ABOVE
+    /// the column, or null where it is dark. The sky light above is
+    /// always full and is not kept.
     public byte[] edgeLight(int si, int ch) {
         return edges[edge(si, ch)];
     }
 
+    /// Returns this chunk with the light of channel ch in section si,
+    /// BELOW or ABOVE the column, set to light. Dark light is not kept.
     public Chunk withEdgeLight(int si, int ch, byte[] light) {
         int i = edge(si, ch);
-        if (light != null && dark(light)) light = null;
-        if (edges[i] == light) return this;
+        if (light != null && dark(light)) {
+            light = null;
+        }
+        if (edges[i] == light) {
+            return this;
+        }
         byte[][] e = edges.clone();
         e[i] = light;
         return new Chunk(sections, e, null);
     }
 
-    /// Returns the column of `sections`, from the lowest up, the
+    /// Returns the column of sections, from the lowest up, with the
     /// missing top ones absent.
     public static Chunk of(Object[] sections) {
         if (sections.length > COUNT) {
@@ -84,26 +95,34 @@ public final class Chunk {
         return new Chunk(a);
     }
 
+    /// Returns section si, or null when it is absent or outside the
+    /// column.
     public Section section(int si) {
         return si >= 0 && si < COUNT ? sections[si] : null;
     }
 
     public Chunk with(int si, Section s) {
-        if (sections[si] == s) return this;
+        if (sections[si] == s) {
+            return this;
+        }
         Section[] a = sections.clone();
         a[si] = s;
         return new Chunk(a, edges, null);
     }
 
-    /// Returns this chunk with the block at chunk-relative x and z and
-    /// world y set to `state`, written in place where the edit window
-    /// `token` owns the chunk and its section, as `ChunkIndex` allows.
+    /// Returns this chunk with the block at x, y, z set to state, x and
+    /// z taken within the chunk. The edit window token writes in place
+    /// the chunk and the section it owns. A null token copies them.
     public Chunk withBlock(int x, int y, int z, int state, Object token) {
         int si = sectionIndex(y);
         Section s = sections[si];
-        if (s == null) s = fresh(si);
+        if (s == null) {
+            s = fresh(si);
+        }
         Section n = s.withOwned(Section.index(x, y, z), state, token);
-        if (token == null) return with(si, n);
+        if (token == null) {
+            return with(si, n);
+        }
         if (this.token == token) {
             sections[si] = n;
             return this;
@@ -113,12 +132,18 @@ public final class Chunk {
         return new Chunk(a, edges, token);
     }
 
-    /// Returns the block state at chunk-relative x and z and world y.
+    /// Returns the block state at x, y, z, x and z taken within the
+    /// chunk. Air comes back outside the column and in an absent
+    /// section.
     public int block(int x, int y, int z) {
         int si = sectionIndex(y);
-        if (si < 0 || si >= COUNT) return 0;
+        if (si < 0 || si >= COUNT) {
+            return 0;
+        }
         Section s = sections[si];
-        if (s == null) return 0;
+        if (s == null) {
+            return 0;
+        }
         return s.block(Section.index(x, y, z));
     }
 
@@ -126,54 +151,63 @@ public final class Chunk {
         return (y >> 4) + OFFSET;
     }
 
-    /// Returns the chunk at chunk coordinates, or `EMPTY` if absent.
+    /// Returns the chunk at cx, cz in chunks, or EMPTY when absent.
     public static Chunk at(ChunkIndex chunks, int cx, int cz) {
         Object c = chunks.get(cx, cz);
         return c == null ? EMPTY : (Chunk) c;
     }
 
-    /// Returns the block state at `x`, `y`, `z` in `chunks`, air in
-    /// an absent chunk or section.
+    /// Returns the block state at x, y, z in chunks. Air comes back
+    /// outside the height and in an absent chunk or section.
     public static int blockAt(ChunkIndex chunks, int x, int y, int z) {
         return at(chunks, x >> 4, z >> 4).block(x, y, z);
     }
 
-    /// Returns the section that holds `x`, `y`, `z` in `chunks`, or null.
+    /// Returns the section that holds x, y, z in chunks, or null.
     public static Section sectionAt(ChunkIndex chunks, int x, int y, int z) {
         return at(chunks, x >> 4, z >> 4).section(sectionIndex(y));
     }
 
-    /// Returns the lowest present section above section index `si`.
+    /// Returns the lowest present section above section si, or null.
     public Section firstAbove(int si) {
         for (int i = Math.max(0, si + 1); i < COUNT; i++) {
-            if (sections[i] != null) return sections[i];
+            if (sections[i] != null) {
+                return sections[i];
+            }
         }
         return null;
     }
 
-    /// Returns a starting section for `si` that inherits sky light from
-    /// the first present section above it, or `Section.EMPTY`.
+    /// Returns an air section for si with the sky light that the
+    /// lowest present section above it lets down, or Section.EMPTY
+    /// when there is none.
     public Section fresh(int si) {
         Section s = firstAbove(si);
         return s == null ? Section.EMPTY : s.below();
     }
 
-    /// Returns a bit mask with bit `i` set when section `i` is present.
-    public int present() {
+    private int present() {
         int mask = 0;
         for (int i = 0; i < COUNT; i++) {
-            if (sections[i] != null) mask |= 1 << i;
+            if (sections[i] != null) {
+                mask |= 1 << i;
+            }
         }
         return mask;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (o == this) return true;
-        if (!(o instanceof Chunk)) return false;
-        Chunk c = (Chunk) o;
+        if (o == this) {
+            return true;
+        }
+        if (!(o instanceof Chunk c)) {
+            return false;
+        }
         for (int i = 0; i < COUNT; i++) {
-            if (!Objects.equals(sections[i], c.sections[i])) return false;
+            if (!Objects.equals(sections[i], c.sections[i])) {
+                return false;
+            }
         }
         return Arrays.deepEquals(edges, c.edges);
     }
@@ -187,23 +221,28 @@ public final class Chunk {
         return 31 * h + Arrays.deepHashCode(edges);
     }
 
-    /// Writes the column to `out` in the snapshot form. The mask of
-    /// the present sections and edge lights comes first, then each.
+    /// Writes the column to out in the snapshot form.
     public void save(DataOutput out) throws IOException {
         int mask = present();
         for (int i = 0; i < EDGES; i++) {
-            if (edges[i] != null) mask |= 1 << (COUNT + i);
+            if (edges[i] != null) {
+                mask |= 1 << (COUNT + i);
+            }
         }
         out.writeInt(mask);
         for (Section s : sections) {
-            if (s != null) s.save(out);
+            if (s != null) {
+                s.save(out);
+            }
         }
         for (byte[] e : edges) {
-            if (e != null) out.write(e);
+            if (e != null) {
+                out.write(e);
+            }
         }
     }
 
-    /// Reads a column that `save` wrote.
+    /// Reads a column that save wrote.
     public static Chunk load(DataInput in) throws IOException {
         int mask = in.readInt();
         if ((mask >>> (COUNT + EDGES)) != 0) {
@@ -211,7 +250,9 @@ public final class Chunk {
         }
         Section[] a = new Section[COUNT];
         for (int i = 0; i < COUNT; i++) {
-            if ((mask & (1 << i)) != 0) a[i] = Section.load(in);
+            if ((mask & (1 << i)) != 0) {
+                a[i] = Section.load(in);
+            }
         }
         byte[][] e = new byte[EDGES][];
         for (int i = 0; i < EDGES; i++) {

@@ -8,8 +8,7 @@
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen])
-  (:import (collider.world ChunkIndex)))
+            [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)
 
@@ -49,10 +48,10 @@
   (if-let [w (:writable world)] (contains? w eid) true))
 
 (defn- dx ^long [^long cp ^long id]
-  (- (ChunkIndex/x id) (ChunkIndex/x cp)))
+  (- (chunk/id-x id) (chunk/id-x cp)))
 
 (defn- dz ^long [^long cp ^long id]
-  (- (ChunkIndex/z id) (ChunkIndex/z cp)))
+  (- (chunk/id-z id) (chunk/id-z cp)))
 
 (defn- sees? [^long cp ^long r ^long id]
   (chunk/tracked? r (dx cp id) (dz cp id)))

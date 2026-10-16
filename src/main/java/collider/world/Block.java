@@ -3,7 +3,7 @@ package collider.world;
 import clojure.lang.IFn;
 import clojure.lang.RT;
 
-/// Lookups by block state over the `BlockTables` and the builders of
+/// Lookups by block state over the block tables, and the builders of
 /// the tables. A state outside the tables is unknown. It answers
 /// false, null or the default of the table.
 public final class Block {
@@ -40,10 +40,6 @@ public final class Block {
         return is(t.attached(), st);
     }
 
-    public static boolean replaceable(BlockTables t, long st) {
-        return is(t.replaceable(), st);
-    }
-
     public static boolean liquid(BlockTables t, long st) {
         return is(t.liquid(), st);
     }
@@ -65,7 +61,7 @@ public final class Block {
         return is(t.solid(), st);
     }
 
-    /// Returns true when `st` is solid by the legacy rule, never air.
+    /// Returns true when st is solid by the legacy rule. Air never is.
     public static boolean legacySolid(BlockTables t, long st) {
         return st > 0 && is(t.legacySolid(), st);
     }
@@ -86,7 +82,7 @@ public final class Block {
         return is(t.canOcclude(), st);
     }
 
-    /// Returns the light that `st` takes, 15 for an unknown state.
+    /// Returns the light that st takes, 15 for an unknown state.
     public static long dampening(BlockTables t, long st) {
         int[] a = t.dampening();
         return st >= 0 && st < a.length ? a[(int) st] : 15;
@@ -95,12 +91,6 @@ public final class Block {
     public static long emission(BlockTables t, long st) {
         int[] a = t.emission();
         return st >= 0 && st < a.length ? a[(int) st] : 0;
-    }
-
-    /// Returns the blast resistance of `st`, 3.0 when unknown.
-    public static double resist(BlockTables t, long st) {
-        double[] a = t.resist();
-        return st >= 0 && st < a.length ? a[(int) st] : 3.0;
     }
 
     public static boolean flag(BlockTables t, long st, long mask) {
@@ -144,21 +134,27 @@ public final class Block {
     }
 
     private static boolean seals(long[] a, long[] b) {
-        if (a == null && b == null) return false;
-        if (a == null) return full(b);
-        if (b == null) return full(a);
+        if (a == null && b == null) {
+            return false;
+        }
+        if (a == null) {
+            return full(b);
+        }
+        if (b == null) {
+            return full(a);
+        }
         return covers(a, b);
     }
 
-    /// Returns true when the face of `from` along `d` and the
-    /// opposite face of `to` seal and let no light through.
+    /// Returns true when the face of from along d and the opposite
+    /// face of to seal and let no light through.
     public static boolean occludes(BlockTables t, long from, long to, long d) {
         return seals(face(t, from, (int) d), face(t, to, (int) d ^ 1));
     }
 
-    /// Returns the light cost of crossing from `from` into `to` along
-    /// `d`. The cost is 16 when the faces that the shapes touch seal
-    /// and `simple` otherwise.
+    /// Returns the light cost of crossing from from into to along d.
+    /// The cost is 16 when the faces that the shapes touch seal and
+    /// simple otherwise.
     public static long dampeningInto(
             BlockTables t,
             long from,
@@ -172,8 +168,8 @@ public final class Block {
     }
 
     /// Returns the face of a shape as 16 by 16 bits in four longs.
-    /// `boxes` holds the low u and v and the high u and v of each
-    /// box, in pixels.
+    /// boxes holds the low u and v and the high u and v of each box,
+    /// in pixels.
     public static long[] faceMask(long[] boxes) {
         long[] m = new long[4];
         for (int i = 0; i + 3 < boxes.length; i += 4) {
@@ -187,9 +183,9 @@ public final class Block {
         return m;
     }
 
-    /// Returns the table true for each state whose `pred` is truthy.
-    /// `pred` takes the state, its type and its block. A state
-    /// without a type is false.
+    /// Returns the table true for each state that pred finds truthy.
+    /// pred takes the state, its type and its block. A state without a
+    /// type is false.
     public static boolean[] table(Object[] types, Object[] names, IFn pred) {
         boolean[] a = new boolean[types.length];
         for (int i = 0; i < a.length; i++) {
@@ -201,10 +197,12 @@ public final class Block {
     }
 
     /// Returns the table true for each state but air that is a full
-    /// cube, with a null `shapes` entry.
+    /// cube, which shapes marks with null.
     public static boolean[] fullCubes(Object[] shapes) {
         boolean[] a = new boolean[shapes.length];
-        for (int i = 1; i < a.length; i++) a[i] = shapes[i] == null;
+        for (int i = 1; i < a.length; i++) {
+            a[i] = shapes[i] == null;
+        }
         return a;
     }
 }

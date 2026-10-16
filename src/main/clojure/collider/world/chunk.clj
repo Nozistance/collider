@@ -44,6 +44,8 @@
 (def ^Section empty-section Section/EMPTY)
 
 (defn section
+  "Returns a section of 4096 blocks in y, z, x order with block light
+  bl and sky light sl, 2048 bytes each or nil for dark."
   ^Section [^shorts blocks ^bytes bl ^bytes sl]
   (Section/of blocks bl sl))
 
@@ -74,6 +76,7 @@
   (Chunk/of (object-array sections)))
 
 (defn first-above
+  "Returns the lowest section of chunk above si, or nil."
   ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
@@ -88,6 +91,8 @@
   (Chunk/at chunks (int cx) (int cz)))
 
 (defn chunk-section
+  "Returns section si of chunk, or nil when it is absent or outside
+  the column."
   ^Section [^Chunk chunk ^long si]
   (.section chunk (int si)))
 
@@ -97,10 +102,15 @@
   ^bytes [^Chunk chunk ^long si ^long ch]
   (.edgeLight chunk (int si) (int ch)))
 
+(defn below?
+  "Returns true when section si lies just below a chunk."
+  [^long si]
+  (= si Chunk/BELOW))
+
 (defn edge?
   "Returns true when section si lies just below or above a chunk."
   [^long si]
-  (or (= si Chunk/BELOW) (= si Chunk/ABOVE)))
+  (or (below? si) (= si Chunk/ABOVE)))
 
 (defn holds?
   "Returns true when section s may hold a state true in pred."
@@ -118,6 +128,39 @@
   "Returns true when s holds its own block light."
   [^Section s] (.hasBlockLight s))
 
+(defn sky-light-bytes
+  "Returns the sky light of s, or nil when it is all dark. The caller
+  must not change it."
+  ^bytes [^Section s] (.skyLightBytes s))
+
+(defn block-light-bytes
+  "Returns the block light of s, or nil when it is all dark. The
+  caller must not change it."
+  ^bytes [^Section s] (.blockLightBytes s))
+
+(defn section-bits
+  "Returns how many bits each packed palette index of s takes."
+  ^long [^Section s] (.bits s))
+
+(defn palette-size
+  "Returns how many states the palette of s holds, 0 without one."
+  ^long [^Section s] (.paletteSize s))
+
+(defn palette-id
+  ^long [^Section s ^long k] (.paletteId s (int k)))
+
+(defn word-count
+  "Returns how many longs hold the packed palette indices of s."
+  ^long [^Section s] (.wordCount s))
+
+(defn word
+  ^long [^Section s ^long c] (.word s (int c)))
+
+(defn tally
+  "Returns the number of blocks of s other than state 0 shifted left
+  by 16, plus the number of blocks that fluid marks."
+  ^long [^Section s ^booleans fluid] (.tally s fluid))
+
 (defn heights!
   "Fills the unset heightmap columns in out with the height above
   base of the top block of s that pred marks."
@@ -133,7 +176,7 @@
 (defn get-block
   "Returns the block state at local lx y lz. Air comes back where
   no section exists, outside the world height and for no chunk."
-  ^long [^Chunk chunk lx y lz]
+  ^long [^Chunk chunk ^long lx ^long y ^long lz]
   (if chunk
     (.block chunk (int lx) (int y) (int lz))
     0))
@@ -141,14 +184,20 @@
 (defn pos->id
   "Returns the chunk coordinates cx cz as one long id."
   ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
-          (bit-and cz 0xFFFFFFFF)))
+  (ChunkIndex/id (unchecked-int cx) (unchecked-int cz)))
+
+(defn id-x
+  "Returns the chunk x that chunk-id holds."
+  ^long [^long chunk-id] (ChunkIndex/x chunk-id))
+
+(defn id-z
+  "Returns the chunk z that chunk-id holds."
+  ^long [^long chunk-id] (ChunkIndex/z chunk-id))
 
 (defn id->pos
   "Returns the chunk coordinates that chunk-id holds."
   [chunk-id]
-  [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
-   (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
+  [(id-x chunk-id) (id-z chunk-id)])
 
 (defn shape
   "Returns a token shared by every version of chunks with the same
@@ -201,12 +250,12 @@
   (pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
            (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
-(definline block-state
-  "Returns the block state at x y z, air where the chunk is absent."
-  [chunks x y z]
-  `(long (Chunk/blockAt
-           ~chunks (unchecked-int ~x) (unchecked-int ~y)
-           (unchecked-int ~z))))
+(defn block-state
+  "Returns the block state at x y z, air outside the world height and
+  where the chunk is absent."
+  ^long [^ChunkIndex chunks ^long x ^long y ^long z]
+  (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
+                 (unchecked-int z)))
 
 (defn at
   "Returns the block state at p, air outside the world height and
@@ -234,8 +283,8 @@
   (Batch/changed chunks changes (level-min-y lv) (level-max-y lv)))
 
 (defn by-chunk
-  "Returns the changes [pos old st] as a map from chunk id to the
-  cells of that chunk, in order."
+  "Returns the cells of the changes [pos old st] by chunk id, each
+  chunk in order."
   [changes]
   (Batch/byChunk changes))
 

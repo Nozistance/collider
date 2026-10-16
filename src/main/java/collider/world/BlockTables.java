@@ -7,11 +7,9 @@ package collider.world;
 /// @param shapes The shape kind of each state, or null.
 /// @param needsSupport True for a state that breaks without support.
 /// @param attached True for a state that hangs on a neighbour.
-/// @param replaceable True for a state that a placement replaces.
 /// @param falls True for a state that falls without a block under it.
 /// @param canBeReplaced True for a state in the replaceable tag.
 /// @param solid True for a state that stops a body.
-/// @param legacySolid True for a state solid by the legacy rule.
 /// @param fullCube True for a state whose collision is a full cube.
 /// @param useShape True for a state that occludes light by shape.
 /// @param dampening The light that each state takes, 0 to 15.
@@ -19,7 +17,6 @@ package collider.world;
 /// @param touch The faces, one bit each, that the shape touches.
 /// @param faces The six occlusion faces of each state, as four
 ///        longs of 16 by 16 bits, or null.
-/// @param resist The blast resistance of each state.
 /// @param sturdy The faces, one bit each, that hold things.
 /// @param sturdyRigid The faces that hold things rigidly.
 /// @param sturdyCenter The faces that hold things at the center.
@@ -29,7 +26,6 @@ public record BlockTables(
         Object[] shapes,
         boolean[] needsSupport,
         boolean[] attached,
-        boolean[] replaceable,
         boolean[] liquid,
         boolean[] waterlogged,
         boolean[] falls,
@@ -44,20 +40,19 @@ public record BlockTables(
         int[] emission,
         int[] touch,
         Object[] faces,
-        double[] resist,
         byte[] flags,
         byte[] sturdy,
         byte[] sturdyRigid,
         byte[] sturdyCenter) {
     private static BlockTables current;
 
-    /// Returns the tables that `install` set last, or null before
-    /// the first.
+    /// Returns the tables that install set last, or null before the
+    /// first.
     public static BlockTables current() {
         return current;
     }
 
-    /// Makes `t` the tables that `current` returns, and returns it.
+    /// Makes t the tables that current returns, and returns it.
     public static BlockTables install(BlockTables t) {
         current = t;
         return t;

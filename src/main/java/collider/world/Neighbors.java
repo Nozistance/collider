@@ -38,13 +38,15 @@ public final class Neighbors {
     private final ArrayList<Object> added = new ArrayList<>();
     private boolean running;
 
-    /// Starts a run over the window `chunks`.
+    /// Starts a run over the edit window chunks.
     public Neighbors(ChunkIndex chunks) {
         this.chunks = chunks;
     }
 
     private static ITransientCollection conj(ITransientCollection v, Object x) {
-        if (v == null) v = PersistentVector.EMPTY.asTransient();
+        if (v == null) {
+            v = PersistentVector.EMPTY.asTransient();
+        }
         return v.conj(x);
     }
 
@@ -67,16 +69,18 @@ public final class Neighbors {
         return this;
     }
 
-    /// Adds `x` to what the clients are told.
+    /// Adds x to what the clients are told.
     public Neighbors send(Object x) {
         sent = conj(sent, x);
         return this;
     }
 
-    /// Adds `p` to the placed cells, `old` being its state before.
+    /// Adds p to the placed cells, old being its state before.
     public Neighbors addPlaced(Object p, long old) {
         int n = placed.size();
-        if (n == placedOld.length) placedOld = Arrays.copyOf(placedOld, 2 * n);
+        if (n == placedOld.length) {
+            placedOld = Arrays.copyOf(placedOld, 2 * n);
+        }
         placedOld[n] = old;
         placed.add(p);
         return this;
@@ -106,18 +110,24 @@ public final class Neighbors {
         };
     }
 
-    /// Returns the distinct cells of the `records` of a run that its
-    /// `sent` cells do not hold, in order.
+    /// Returns the distinct cells of the records of a run that its
+    /// sent cells do not hold, in order.
     public static Object unheard(Object records, Object sent) {
-        if (paired(records, sent)) return PersistentVector.EMPTY;
+        if (paired(records, sent)) {
+            return PersistentVector.EMPTY;
+        }
         Scratch<Boolean> heard = new Scratch<>(RT.count(sent));
-        for (Object p : (Iterable<?>) sent) heard.put(packed(p), Boolean.TRUE);
+        for (Object p : (Iterable<?>) sent) {
+            heard.put(packed(p), Boolean.TRUE);
+        }
         Scratch<Boolean> seen = new Scratch<>();
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object r : (Iterable<?>) records) {
             Object p = RT.nth(r, 0);
             long k = packed(p);
-            if (heard.get(k) != null || seen.get(k) != null) continue;
+            if (heard.get(k) != null || seen.get(k) != null) {
+                continue;
+            }
             seen.put(k, Boolean.TRUE);
             out = out.conj(p);
         }
@@ -129,7 +139,9 @@ public final class Neighbors {
         Indexed s = (Indexed) sent;
         int m = RT.count(sent), j = 0;
         for (Object r : (Iterable<?>) records) {
-            if (j == m || !Util.equiv(RT.nth(r, 0), s.nth(j))) return false;
+            if (j == m || !Util.equiv(RT.nth(r, 0), s.nth(j))) {
+                return false;
+            }
             j++;
         }
         return true;
@@ -143,11 +155,10 @@ public final class Neighbors {
         );
     }
 
-    /// Sets the block at `p`, which is `x` `y` `z`, to `st` with
-    /// `flags` when its chunk is present, `y` is inside `minY` to
-    /// `maxY` and the block is not `st` already. Records the write and
-    /// tells the clients when the flags ask. Returns the old state, or
-    /// -1 when nothing was set.
+    /// Sets the block at p, which is x, y, z, to st with flags when its
+    /// chunk is present, y is inside minY to maxY and the block is not
+    /// st already. Records the write and tells the clients when the
+    /// flags ask. Returns the old state, or -1 when nothing was set.
     public long place(
             Object p,
             int x,
@@ -161,8 +172,8 @@ public final class Neighbors {
         return put(p, null, x, y, z, st, flags, minY, maxY);
     }
 
-    /// Places as `place` does, recording `rec` when it is the change
-    /// `[p st]` itself, else a new one.
+    /// Places as place does, recording rec when it is the change
+    /// [p st] itself, else a new one.
     private long put(
             Object p,
             Object rec,
@@ -174,21 +185,29 @@ public final class Neighbors {
             int minY,
             int maxY
     ) {
-        if (y < minY || y > maxY) return -1;
+        if (y < minY || y > maxY) {
+            return -1;
+        }
         ChunkIndex c = chunks;
-        if (c.get(x >> 4, z >> 4) == null) return -1;
+        if (c.get(x >> 4, z >> 4) == null) {
+            return -1;
+        }
         long old = Chunk.blockAt(c, x, y, z);
-        if (old == st) return -1;
+        if (old == st) {
+            return -1;
+        }
         chunks = c.withBlock(x, y, z, (int) st);
         Object boxed = rec != null ? RT.nth(rec, 1) : Long.valueOf(st);
         records = conj(records, rec != null ? rec : vec(p, boxed));
         writes = conj(writes, vec(p, old, boxed, flags));
-        if ((flags & CLIENTS) != 0) sent = conj(sent, p);
+        if ((flags & CLIENTS) != 0) {
+            sent = conj(sent, p);
+        }
         return old;
     }
 
-    /// Returns true when the six blocks beside `x` `y` `z` are all
-    /// marked in `deaf`. Outside the height counts as air.
+    /// Returns true when deaf marks all six blocks beside x, y, z.
+    /// Outside the height counts as air.
     public boolean deafAround(
             long x,
             long y,
@@ -200,7 +219,9 @@ public final class Neighbors {
         ChunkIndex c = chunks;
         for (int d = 0; d < 6; d++) {
             int st = stateAt(c, x + DX[d], y + DY[d], z + DZ[d], minY, maxY);
-            if (!deaf[st]) return false;
+            if (!deaf[st]) {
+                return false;
+            }
         }
         return true;
     }
@@ -213,15 +234,17 @@ public final class Neighbors {
             int minY,
             int maxY
     ) {
-        if (y < minY || y > maxY) return 0;
+        if (y < minY || y > maxY) {
+            return 0;
+        }
         return Chunk.blockAt(c, (int) x, (int) y, (int) z);
     }
 
-    /// Sets the changes of a command in order, each with `flags`. A
-    /// change `[pos st]` of a state `plain` marks is set here, and when a
-    /// block beside it is not `deaf`, `shaped` runs its shape updates as
-    /// `(shaped run pos old)`. `other` sets any other change as
-    /// `(other run change)`. Each change set here that alters its block
+    /// Sets the changes of a command in order, each with flags. A
+    /// change [pos st] of a state that plain marks is set here, and when
+    /// a block beside it is not deaf, shaped runs its shape updates as
+    /// (shaped run pos old). other sets any other change as
+    /// (other run change). Each change set here that alters its block
     /// joins the placed cells.
     public Neighbors command(
             Object changes,
@@ -245,7 +268,9 @@ public final class Neighbors {
             int z = RT.intCast(RT.nth(p, 2));
             Object rec = RT.count(c) == 2 && RT.nth(c, 1) instanceof Long ? c : null;
             long old = put(p, rec, x, y, z, st, flags, minY, maxY);
-            if (old < 0) continue;
+            if (old < 0) {
+                continue;
+            }
             addPlaced(p, old);
             if (!deafAround(x, y, z, deaf, minY, maxY)) {
                 shaped.invoke(this, p, old);
@@ -254,9 +279,8 @@ public final class Neighbors {
         return this;
     }
 
-    /// Runs `(told run pos old)` for each placed cell `pos`, `old`
-    /// being its state before, with a block beside it that `deaf` does
-    /// not mark.
+    /// Runs (told run pos old) for each placed cell pos, old being its
+    /// state before, with a block beside it that deaf does not mark.
     public Neighbors tell(boolean[] deaf, IFn told, int minY, int maxY) {
         for (int i = 0; i < placed.size(); i++) {
             Object p = placed.get(i);
@@ -279,9 +303,9 @@ public final class Neighbors {
         return running;
     }
 
-    /// Adds `item`. When none runs, it runs the item and all it adds with
-    /// `step`, a function of this run and an item that returns the item to
-    /// run again or nil.
+    /// Adds item. When none runs, it runs the item and all it adds with
+    /// step, a function of this run and an item that returns the item
+    /// to run again or nil.
     public Neighbors addAndRun(Object item, IFn step) {
         if (running) {
             added.add(item);
@@ -289,33 +313,39 @@ public final class Neighbors {
         }
         running = true;
         stack.push(item);
-        for (; ; ) {
+        while (true) {
             for (int k = added.size() - 1; k >= 0; k--) {
                 stack.push(added.get(k));
             }
             added.clear();
-            if (stack.isEmpty()) break;
-            for (; ; ) {
+            if (stack.isEmpty()) {
+                break;
+            }
+            while (true) {
                 Object top = stack.pop();
                 Object next = top instanceof Pass p
                         ? p.step(this)
                         : step.invoke(this, top);
-                if (next == null) break;
+                if (next == null) {
+                    break;
+                }
                 stack.push(next);
-                if (!added.isEmpty()) break;
+                if (!added.isEmpty()) {
+                    break;
+                }
             }
         }
         running = false;
         return this;
     }
 
-    /// Adds a pass over the six blocks beside `x` `y` `z` and runs it
-    /// like `addAndRun`. The pass goes in the order of shape updates
-    /// when `shape` is true, else of neighbour updates, and runs
-    /// `(told run pos side st)` for each block that `deaf` does not
-    /// mark when it comes to it, `st` being its state then. `sides`
-    /// names the side of each step as seen from the block told.
-    /// Outside the height counts as air.
+    /// Adds a pass over the six blocks beside x, y, z and runs it like
+    /// addAndRun. The pass goes in the order of shape updates when
+    /// shape is true, else of neighbour updates. It runs
+    /// (told run pos side st) for each block that deaf does not mark
+    /// when it comes to it, st being its state then. sides names the
+    /// side of each step as seen from the block told. Outside the
+    /// height counts as air.
     public Neighbors pass(
             long x,
             long y,
@@ -372,7 +402,9 @@ public final class Neighbors {
                 int d = i++;
                 long nx = x + DX[d], ny = y + dy[d], nz = z + dz[d];
                 int st = stateAt(s.chunks, nx, ny, nz, minY, maxY);
-                if (deaf[st]) continue;
+                if (deaf[st]) {
+                    continue;
+                }
                 told.invoke(s, vec(nx, ny, nz), sides[d], (long) st);
                 break;
             }

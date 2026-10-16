@@ -58,11 +58,15 @@ public final class Section {
     }
 
     private static byte[] canon(byte[] a) {
-        if (a == null || a == FULL) return a;
+        if (a == null || a == FULL) {
+            return a;
+        }
         if (a.length != LIGHT) {
             throw new IllegalArgumentException("light " + a.length);
         }
-        if (Arrays.equals(a, ZERO)) return null;
+        if (Arrays.equals(a, ZERO)) {
+            return null;
+        }
         return Arrays.equals(a, FULL) ? FULL : a;
     }
 
@@ -71,26 +75,34 @@ public final class Section {
     }
 
     private static int width(int n) {
-        if (n <= 1) return 0;
-        if (n > MAX_PALETTE) return GLOBAL_BITS;
+        if (n <= 1) {
+            return 0;
+        }
+        if (n > MAX_PALETTE) {
+            return GLOBAL_BITS;
+        }
         int b = 32 - Integer.numberOfLeadingZeros(n - 1);
         return Math.max(4, b);
     }
 
     private static int longs(int bits) {
-        if (bits == 0) return 0;
+        if (bits == 0) {
+            return 0;
+        }
         int per = 64 / bits;
         return (SIZE + per - 1) / per;
     }
 
-    /// Builds a section from 4096 block states in y, z, x order and
-    /// optional light of 2048 bytes each.
+    /// Returns a section of 4096 blocks in y, z, x order with
+    /// blockLight and skyLight, 2048 bytes each or null for dark.
     public static Section of(short[] blocks, byte[] blockLight, byte[] skyLight) {
         if (blocks.length != SIZE) {
             throw new IllegalArgumentException("blocks");
         }
         int[] v = new int[SIZE];
-        for (int i = 0; i < SIZE; i++) v[i] = blocks[i] & 0xFFFF;
+        for (int i = 0; i < SIZE; i++) {
+            v[i] = blocks[i] & 0xFFFF;
+        }
         return build(v, canon(blockLight), canon(skyLight));
     }
 
@@ -99,7 +111,9 @@ public final class Section {
         int[] ix = new int[SIZE];
         int n = scan(v, ids, ix);
         int bits = width(n);
-        if (bits == 0) return single(v[0], bl, sl);
+        if (bits == 0) {
+            return single(v[0], bl, sl);
+        }
         if (bits == GLOBAL_BITS) {
             return new Section(bits, null, pack(bits, v), bl, sl);
         }
@@ -114,7 +128,9 @@ public final class Section {
         for (int i = 0; i < SIZE; i++) {
             int h = probe(slots, ids, v[i]);
             if (slots[h] < 0) {
-                if (n == MAX_PALETTE) return n + 1;
+                if (n == MAX_PALETTE) {
+                    return n + 1;
+                }
                 slots[h] = n;
                 ids[n++] = v[i];
             }
@@ -149,43 +165,57 @@ public final class Section {
         boolean same = bits == o.bits
                 && Arrays.equals(pal, o.pal)
                 && Arrays.equals(data, o.data);
-        if (same) return true;
+        if (same) {
+            return true;
+        }
         for (int i = 0; i < SIZE; i++) {
-            if (block(i) != o.block(i)) return false;
+            if (block(i) != o.block(i)) {
+                return false;
+            }
         }
         return true;
     }
 
     @Override
     public boolean equals(Object other) {
-        if (other == this) return true;
-        if (!(other instanceof Section o)) return false;
+        if (other == this) {
+            return true;
+        }
+        if (!(other instanceof Section o)) {
+            return false;
+        }
         return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl) && sameBlocks(o);
     }
 
     @Override
     public int hashCode() {
         int h = 31 * Arrays.hashCode(bl) + Arrays.hashCode(sl);
-        for (int i = 0; i < SIZE; i++) h = 31 * h + block(i);
+        for (int i = 0; i < SIZE; i++) {
+            h = 31 * h + block(i);
+        }
         return h;
     }
 
     /// Returns the block state at index i in y, z, x order.
     public int block(int i) {
-        if (bits == 0) return pal[0];
+        if (bits == 0) {
+            return pal[0];
+        }
         int q = index(data, i);
         return pal == null ? q : pal[q];
     }
 
-    /// Writes the states of the `n` blocks from index `i` along x
-    /// into `out`, from `at` and `step` apart.
+    /// Writes the states of the n blocks from index i along x into out,
+    /// from at and step apart.
     public void blocksAlongX(int i, int n, char[] out, int at, int step) {
         if (bits == 0) {
-            for (int k = 0; k < n; k++) out[at + k * step] = (char) pal[0];
+            for (int k = 0; k < n; k++) {
+                out[at + k * step] = (char) pal[0];
+            }
             return;
         }
         long mask = (1L << bits) - 1;
-        int c = (int) ((i * mul) >>> 32);
+        int c = wordOf(i);
         int left = per - (i - c * per);
         long w = data[c] >>> ((i - c * per) * bits);
         for (int k = 0; k < n; k++) {
@@ -200,14 +230,20 @@ public final class Section {
         }
     }
 
+    private int wordOf(int i) {
+        return (int) ((i * mul) >>> 32);
+    }
+
     private int index(long[] d, int i) {
-        int c = (int) ((i * mul) >>> 32);
+        int c = wordOf(i);
         return (int) ((d[c] >>> ((i - c * per) * bits)) & ((1L << bits) - 1));
     }
 
     private void put(long[] d, int i, int q) {
-        if (bits == 0) return;
-        int c = (int) ((i * mul) >>> 32);
+        if (bits == 0) {
+            return;
+        }
+        int c = wordOf(i);
         int off = (i - c * per) * bits;
         long mask = ((1L << bits) - 1) << off;
         d[c] = (d[c] & ~mask) | (((long) q) << off);
@@ -218,12 +254,12 @@ public final class Section {
         return ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
     }
 
-    /// Returns the light level at index `i` of `a`.
+    /// Returns the light level at index i of a.
     public static int nibble(byte[] a, int i) {
         return (a[i >> 1] >> ((i & 1) << 2)) & 15;
     }
 
-    /// Sets the light level at index `i` of `a` to `v`.
+    /// Sets the light level at index i of a to v, from 0 to 15.
     public static void setNibble(byte[] a, int i, int v) {
         int b = a[i >> 1];
         a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v : (b & 0x0F) | (v << 4));
@@ -275,7 +311,9 @@ public final class Section {
     /// Returns the 4096 block states in y, z, x order.
     public short[] blocks() {
         short[] out = new short[SIZE];
-        for (int i = 0; i < SIZE; i++) out[i] = (short) block(i);
+        for (int i = 0; i < SIZE; i++) {
+            out[i] = (short) block(i);
+        }
         return out;
     }
 
@@ -299,14 +337,14 @@ public final class Section {
         return sl != null;
     }
 
-    /// Returns this section with block light replaced by `a`, which
-    /// must be 2048 bytes.
+    /// Returns this section with block light a, 2048 bytes or null for
+    /// dark.
     public Section withBlockLight(byte[] a) {
         return new Section(bits, pal, data, canon(a), sl);
     }
 
-    /// Returns this section with sky light replaced by `a`, which
-    /// must be 2048 bytes.
+    /// Returns this section with sky light a, 2048 bytes or null for
+    /// dark.
     public Section withSkyLight(byte[] a) {
         return new Section(bits, pal, data, bl, canon(a));
     }
@@ -324,19 +362,22 @@ public final class Section {
         return single(0, null, canon(a));
     }
 
-    /// Returns this section with block `i` set to `state`.
-    public Section with(int i, int state) {
+    private Section with(int i, int state) {
         return apply(new int[] {i}, new int[] {state}, 1);
     }
 
-    /// Returns this section with block `i` set to `state`, owned by
-    /// the edit window `token`. A section the window owns is written
-    /// in place and returned. Any other is copied once and tagged.
-    /// Owned sections obey the invariant of `ChunkIndex`. Once the
-    /// window is frozen, nothing writes them again.
+    /// Returns this section with block i set to state, owned by the
+    /// edit window token. A section the window owns is written in place
+    /// and returned. Any other is copied once and tagged. Once the
+    /// window is frozen, nothing writes it again. A null token always
+    /// copies.
     public Section withOwned(int i, int state, Object token) {
-        if (token == null) return with(i, state);
-        if (this.token != token) return with(i, state).owned(token);
+        if (token == null) {
+            return with(i, state);
+        }
+        if (this.token != token) {
+            return with(i, state).owned(token);
+        }
         int q = find(pal, state);
         if (q >= 0) {
             put(data, i, q);
@@ -349,10 +390,12 @@ public final class Section {
         return t == token ? this : new Section(bits, pal, data, bl, sl, t);
     }
 
-    /// Returns this section with the first n entries of `idx` set to
-    /// the matching entries of `states`.
+    /// Returns this section with the blocks at the first n entries of
+    /// idx set to the matching entries of states, in order.
     public Section apply(int[] idx, int[] states, int n) {
-        if (n == 0) return this;
+        if (n == 0) {
+            return this;
+        }
         long[] d = data == null ? null : data.clone();
         return run(idx, states, 0, n, d, pal);
     }
@@ -375,9 +418,13 @@ public final class Section {
     }
 
     private static int find(int[] p, int state) {
-        if (p == null) return state;
+        if (p == null) {
+            return state;
+        }
         for (int k = 0; k < p.length; k++) {
-            if (p[k] == state) return k;
+            if (p[k] == state) {
+                return k;
+            }
         }
         return -1;
     }
@@ -385,7 +432,9 @@ public final class Section {
     private static int[] kept(int[] p, int[] remap, int used, int state) {
         int[] np = new int[used + 1];
         for (int q = 0; q < p.length; q++) {
-            if (remap[q] >= 0) np[remap[q]] = p[q];
+            if (remap[q] >= 0) {
+                np[remap[q]] = p[q];
+            }
         }
         np[used] = state;
         return np;
@@ -414,14 +463,20 @@ public final class Section {
         int n = 0;
         for (int i = 0; i < SIZE; i++) {
             int q = index(d, i);
-            if (remap[q] < 0) remap[q] = n++;
+            if (remap[q] < 0) {
+                remap[q] = n++;
+            }
         }
         return n;
     }
 
     private Section settle(long[] d, int[] p) {
-        if (bits == 0) return new Section(0, p, null, bl, sl);
-        if (p == null) return settleGlobal(d);
+        if (bits == 0) {
+            return new Section(0, p, null, bl, sl);
+        }
+        if (p == null) {
+            return settleGlobal(d);
+        }
         int q0 = index(d, 0);
         if (uniform(d, q0)) {
             return single(p[q0], bl, sl);
@@ -436,7 +491,9 @@ public final class Section {
         }
         int full = SIZE / per;
         for (int c = 0; c < full; c++) {
-            if (d[c] != word) return false;
+            if (d[c] != word) {
+                return false;
+            }
         }
         int rest = SIZE - full * per;
         long mask = rest == 0 ? 0 : (1L << (rest * bits)) - 1;
@@ -445,7 +502,9 @@ public final class Section {
 
     private Section settleGlobal(long[] d) {
         int[] v = new int[SIZE];
-        for (int i = 0; i < SIZE; i++) v[i] = index(d, i);
+        for (int i = 0; i < SIZE; i++) {
+            v[i] = index(d, i);
+        }
         int[] ids = new int[MAX_PALETTE + 1];
         int[] ix = new int[SIZE];
         if (scan(v, ids, ix) > MAX_PALETTE) {
@@ -454,39 +513,53 @@ public final class Section {
         return build(v, bl, sl);
     }
 
-    /// Returns true when any block id in this section is true
-    /// in `pred`.
+    /// Returns true when the section may hold a state true in pred. A
+    /// section without a palette always may.
     public boolean holds(boolean[] pred) {
-        if (pal == null) return true;
+        if (pal == null) {
+            return true;
+        }
         for (int id : pal) {
-            if (id < pred.length && pred[id]) return true;
+            if (id < pred.length && pred[id]) {
+                return true;
+            }
         }
         return false;
     }
 
-    /// Returns true when any block id in this section is not zero
-    /// in `pred`.
+    /// Returns true when the section may hold a state not zero in
+    /// pred. A section without a palette always may.
     public boolean holds(byte[] pred) {
-        if (pal == null) return true;
+        if (pal == null) {
+            return true;
+        }
         for (int id : pal) {
-            if (id < pred.length && pred[id] != 0) return true;
+            if (id < pred.length && pred[id] != 0) {
+                return true;
+            }
         }
         return false;
     }
 
-    /// Sets each unset entry of the 256 columns of `out` to the
-    /// height above `base` of the top block in that column that
-    /// matches `pred`.
+    /// Sets each zero entry of the 256 columns of out to the height
+    /// above base of the top block in that column that pred marks.
+    /// A column without one stays zero.
     public void heights(boolean[] pred, int[] out, int base) {
-        if (!holds(pred)) return;
+        if (!holds(pred)) {
+            return;
+        }
         boolean[] hit = hits(pred);
         for (int c = 0; c < 256; c++) {
-            if (out[c] == 0) out[c] = top(hit, c, base);
+            if (out[c] == 0) {
+                out[c] = top(hit, c, base);
+            }
         }
     }
 
     private boolean[] hits(boolean[] pred) {
-        if (pal == null) return pred;
+        if (pal == null) {
+            return pred;
+        }
         boolean[] hit = new boolean[pal.length];
         for (int q = 0; q < pal.length; q++) {
             hit[q] = pal[q] < pred.length && pred[pal[q]];
@@ -498,7 +571,9 @@ public final class Section {
         for (int y = 15; y >= 0; y--) {
             int i = (y << 8) | c;
             int q = bits == 0 ? 0 : index(data, i);
-            if (q < hit.length && hit[q]) return base + y + 1;
+            if (q < hit.length && hit[q]) {
+                return base + y + 1;
+            }
         }
         return 0;
     }
@@ -507,21 +582,27 @@ public final class Section {
         return id < fluid.length && fluid[id];
     }
 
-    /// Returns the count of non-air blocks shifted left by 16 bits,
-    /// plus the count of blocks whose id is true in `fluid`.
+    /// Returns the number of blocks other than state 0 shifted left by
+    /// 16, plus the number of blocks that fluid marks.
     public long tally(boolean[] fluid) {
         if (bits == 0) {
             int v = pal[0];
             long air = v == 0 ? 0 : SIZE;
             return (air << 16) | (fluid(fluid, v) ? SIZE : 0);
         }
-        if (pal != null && !marked(fluid)) return (long) SIZE << 16;
+        if (pal != null && !marked(fluid)) {
+            return (long) SIZE << 16;
+        }
         int[] counts = counts();
         long nonAir = 0, fl = 0;
         for (int q = 0; q < counts.length; q++) {
             int v = pal == null ? q : pal[q];
-            if (v != 0) nonAir += counts[q];
-            if (fluid(fluid, v)) fl += counts[q];
+            if (v != 0) {
+                nonAir += counts[q];
+            }
+            if (fluid(fluid, v)) {
+                fl += counts[q];
+            }
         }
         return (nonAir << 16) | fl;
     }
@@ -541,20 +622,26 @@ public final class Section {
 
     private boolean marked(boolean[] fluid) {
         for (int id : pal) {
-            if (id == 0 || fluid(fluid, id)) return true;
+            if (id == 0 || fluid(fluid, id)) {
+                return true;
+            }
         }
         return false;
     }
 
-    /// Writes the section to `out` in the snapshot form.
+    /// Writes the section to out in the snapshot form.
     public void save(DataOutput out) throws IOException {
         out.writeByte(bits);
         if (pal != null) {
             out.writeShort(pal.length);
-            for (int id : pal) out.writeInt(id);
+            for (int id : pal) {
+                out.writeInt(id);
+            }
         }
         if (data != null) {
-            for (long x : data) out.writeLong(x);
+            for (long x : data) {
+                out.writeLong(x);
+            }
         }
         saveLight(out, bl);
         saveLight(out, sl);
@@ -562,10 +649,12 @@ public final class Section {
 
     private static void saveLight(DataOutput out, byte[] a) throws IOException {
         out.writeByte(a == null ? 0 : a == FULL ? 1 : 2);
-        if (a != null && a != FULL) out.write(a);
+        if (a != null && a != FULL) {
+            out.write(a);
+        }
     }
 
-    /// Reads a section that `save` wrote.
+    /// Reads a section that save wrote.
     public static Section load(DataInput in) throws IOException {
         int bits = in.readUnsignedByte();
         boolean global = bits == GLOBAL_BITS;
@@ -574,7 +663,9 @@ public final class Section {
         }
         int[] pal = global ? null : loadPalette(in, bits);
         long[] data = new long[longs(bits)];
-        for (int c = 0; c < data.length; c++) data[c] = in.readLong();
+        for (int c = 0; c < data.length; c++) {
+            data[c] = in.readLong();
+        }
         byte[] bl = loadLight(in);
         byte[] sl = loadLight(in);
         long[] d = bits == 0 ? null : data;
@@ -588,14 +679,20 @@ public final class Section {
             throw new IOException("section palette " + n);
         }
         int[] pal = new int[n];
-        for (int k = 0; k < n; k++) pal[k] = in.readInt();
+        for (int k = 0; k < n; k++) {
+            pal[k] = in.readInt();
+        }
         return pal;
     }
 
     private static byte[] loadLight(DataInput in) throws IOException {
         int tag = in.readUnsignedByte();
-        if (tag == 0) return null;
-        if (tag == 1) return FULL;
+        if (tag == 0) {
+            return null;
+        }
+        if (tag == 1) {
+            return FULL;
+        }
         byte[] a = new byte[LIGHT];
         in.readFully(a);
         return canon(a);

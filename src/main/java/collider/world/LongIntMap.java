@@ -13,7 +13,7 @@ public final class LongIntMap {
     private int shift;
     private int n;
 
-    /// Returns a map that takes `size` keys without growing.
+    /// Returns a map that takes size keys without growing.
     public LongIntMap(int size) {
         int c = Integer.highestOneBit(Math.max(8, size) * 2 - 1) * 2;
         keys = new long[c];
@@ -29,13 +29,15 @@ public final class LongIntMap {
     public int get(long k) {
         int mask = keys.length - 1;
         for (int i = slot(k); vals[i] != FREE; i = (i + 1) & mask) {
-            if (keys[i] == k) return vals[i];
+            if (keys[i] == k) {
+                return vals[i];
+            }
         }
         return -1;
     }
 
-    /// Maps `k` to `v`, which must not be `Integer.MIN_VALUE`, and
-    /// returns the value `k` had.
+    /// Maps k to v, which must not be Integer.MIN_VALUE, and returns
+    /// the value k had.
     public int put(long k, int v) {
         int mask = keys.length - 1;
         int i = slot(k);
@@ -48,7 +50,9 @@ public final class LongIntMap {
         }
         keys[i] = k;
         vals[i] = v;
-        if (2 * ++n > keys.length) grow();
+        if (2 * ++n > keys.length) {
+            grow();
+        }
         return -1;
     }
 
@@ -61,9 +65,13 @@ public final class LongIntMap {
         shift--;
         int mask = keys.length - 1;
         for (int j = 0; j < ks.length; j++) {
-            if (vs[j] == FREE) continue;
+            if (vs[j] == FREE) {
+                continue;
+            }
             int i = slot(ks[j]);
-            while (vals[i] != FREE) i = (i + 1) & mask;
+            while (vals[i] != FREE) {
+                i = (i + 1) & mask;
+            }
             keys[i] = ks[j];
             vals[i] = vs[j];
         }
