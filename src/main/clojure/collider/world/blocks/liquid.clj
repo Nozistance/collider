@@ -125,7 +125,7 @@
 
 (defn- own-at ^double [chunks cls p]
   (let [st (state-at chunks (p 0) (p 1) (p 2))]
-    (if (and (pos? (long st)) (= cls (liquid-class st)))
+    (if (and (pos? st) (= cls (liquid-class st)))
       (num/f32 (height st))
       0.0)))
 
@@ -179,7 +179,7 @@
   "Returns the unit vector the liquid at p flows along, or nil."
   [chunks [x y z :as p]]
   (let [st (state-at chunks x y z)]
-    (when-let [cls (when (pos? (long st)) (liquid-class st))]
+    (when-let [cls (when (pos? st) (liquid-class st))]
       (let [[vx vz] (pull-sum chunks cls (own-at chunks cls p) p)]
         (if (and (>= (level st) 8) (walled? chunks cls p))
           (let [[nx _ nz] (unit [vx 0.0 vz])]
@@ -487,7 +487,7 @@
 
 (defn- column-up [chunks [x y z] col]
   (loop [y (inc (long y)) acc []]
-    (let [st (long (raw-at chunks x y z))]
+    (let [st (raw-at chunks x y z)]
       (if (and (can-occupy? st) (not= st col))
         (recur (inc y) (conj acc [[x y z] col nil 2]))
         acc))))
@@ -496,7 +496,7 @@
   "Returns the changes that the block below makes to the bubble
   column from p upward."
   [chunks [x y z :as p]]
-  (let [occupy (long (raw-at chunks x y z))
+  (let [occupy (raw-at chunks x y z)
         below (raw-at chunks x (dec (long y)) z)]
     (when (can-occupy? occupy)
       (let [col (column-state below occupy)]
@@ -552,7 +552,7 @@
   (let [x (num/floor (v/x pos))
         y (num/floor (v/y pos))
         z (num/floor (v/z pos))
-        st (long (raw-at chunks x y z))]
+        st (raw-at chunks x y z)]
     (if (bubble-column? st)
       (column-push (= :true (:drag (block/props-of st)))
                    (open-above? (raw-at chunks x (inc y) z))
@@ -631,7 +631,7 @@
         [:north :south :west :east :up]))
 
 (defn- fire-state-at [chunks [x y z :as p]]
-  (let [below (long (raw-at chunks x (dec (long y)) z))]
+  (let [below (raw-at chunks x (dec (long y)) z)]
     (cond
       (block/tagged? below "soul_fire_base_blocks")
       (block/state :soul-fire {:age :0})
@@ -656,7 +656,7 @@
   (loop [tp p i 0]
     (when (< i (long passes))
       (let [tp' (jittered tp r3 i 1)
-            st (long (raw-at chunks (tp' 0) (tp' 1) (tp' 2)))]
+            st (raw-at chunks (tp' 0) (tp' 1) (tp' 2))]
         (cond
           (not (loaded? chunks tp')) nil
           (zero? st) (if (flammable-around? chunks tp')
@@ -668,9 +668,9 @@
 (defn- spot-fire [chunks [_ y _] tp]
   (let [above [(tp 0) (inc (long y)) (tp 2)]
         over (raw-at chunks (above 0) (above 1) (above 2))]
-    (when (and (zero? (long over))
+    (when (and (zero? over)
                (block/ignited-by-lava?
-                 (long (raw-at chunks (tp 0) (tp 1) (tp 2)))))
+                 (raw-at chunks (tp 0) (tp 1) (tp 2))))
       [above (fire-state-at chunks above)])))
 
 (defn- spot-fires [chunks p tp acc]
@@ -722,8 +722,8 @@
    :due     column-due})
 
 (defn eye-in-water?
-  "Returns true when the eyes eye above pos are under the surface of
-  water."
+  "Returns true when the eyes, eye blocks above pos, are under the
+  surface of water."
   [chunks pos ^double eye]
   (let [ey (+ (v/y pos) eye)
         cx (num/floor (v/x pos)) cy (num/floor ey)

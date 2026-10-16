@@ -4,16 +4,15 @@ import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import java.util.Arrays;
 
-/// The spread of one liquid on its fluid tick. It finds the changes
-/// of the tick with their effects, and the lava next to each change
-/// that mixes with water as the change reaches it. It reads the chunks
-/// under an overlay of the states that the tick changed.
+/// The spread of one liquid on its fluid tick, with the lava that
+/// mixes with water as the spread reaches it. Each change of the tick
+/// sees the changes before it.
 /// Directions 0 to 3 go east, west, south and north, 4 up and 5 down.
 /// A level is 0 for a source and 8 for a falling liquid. A flowing
 /// liquid of amount n has the level 8 minus n.
 public final class Flow {
 
-    public static final int NONE = 0;
+    private static final int NONE = 0;
 
     public static final int WATER = 1;
 
@@ -144,10 +143,9 @@ public final class Flow {
 
     private static final int CHANGE = 6;
 
-    /// The per-thread arrays of the slope search and the face test. An
-    /// entry holds its value in the low half and the epoch of the search
-    /// that wrote it in the high half. Entries of older searches count
-    /// as unset.
+    /// The reused state of the slope search and the face test. An entry
+    /// holds its value in the low half and the epoch of its search in the
+    /// high half. An entry of an older search counts as unset.
     private static final class Scratch {
         long[] cells = new long[SLOTS * 11 * 11];
 
@@ -283,7 +281,9 @@ public final class Flow {
                 return overState[i];
             }
         }
-        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return t.voidAir();
+        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) {
+            return t.voidAir();
+        }
         int cx = x >> 4;
         int cz = z >> 4;
         int k = (cx & 1) | (cz & 1) << 1;
@@ -306,7 +306,9 @@ public final class Flow {
         int u1 = Math.min(16, (int) Math.floor(boxes[b + u + 3]));
         int v0 = Math.max(0, (int) Math.ceil(boxes[b + v]));
         int v1 = Math.min(16, (int) Math.floor(boxes[b + v + 3]));
-        if (u0 >= u1 || v0 >= v1) return;
+        if (u0 >= u1 || v0 >= v1) {
+            return;
+        }
         int m = ((1 << (v1 - v0)) - 1) << v0;
         for (int a = u0; a < u1; a++) {
             rows[a] |= m;
@@ -314,18 +316,26 @@ public final class Flow {
     }
 
     private boolean faceCovered(double[] first, double[] second, int axis) {
-        if (rows == null) rows = SCRATCH.get().rows;
+        if (rows == null) {
+            rows = SCRATCH.get().rows;
+        }
         int u = axis == 0 ? 1 : 0;
         int v = axis == 2 ? 1 : 2;
         Arrays.fill(rows, 0);
         for (int b = 0; b < first.length; b += 6) {
-            if (first[b + axis + 3] == 16.0) markFace(rows, first, b, u, v);
+            if (first[b + axis + 3] == 16.0) {
+                markFace(rows, first, b, u, v);
+            }
         }
         for (int b = 0; b < second.length; b += 6) {
-            if (second[b + axis] == 0.0) markFace(rows, second, b, u, v);
+            if (second[b + axis] == 0.0) {
+                markFace(rows, second, b, u, v);
+            }
         }
         for (int row : rows) {
-            if (row != 0xFFFF) return false;
+            if (row != 0xFFFF) {
+                return false;
+            }
         }
         return true;
     }
@@ -334,7 +344,7 @@ public final class Flow {
         double[] s = t.boxes()[src];
         double[] g = t.boxes()[tgt];
         int axis = axisOf(d);
-        boolean ahead = d == 0 || d == 2 || d == UP;
+        boolean ahead = d == EAST || d == SOUTH || d == UP;
         return ahead ? !faceCovered(s, g, axis) : !faceCovered(g, s, axis);
     }
 
@@ -342,8 +352,12 @@ public final class Flow {
         byte[] k = t.kinds();
         int ks = k[src];
         int kt = k[tgt];
-        if (ks == FULL || kt == FULL) return false;
-        if (ks == OPEN && kt == OPEN) return true;
+        if (ks == FULL || kt == FULL) {
+            return false;
+        }
+        if (ks == OPEN && kt == OPEN) {
+            return true;
+        }
         return facesOpen(src, tgt, d);
     }
 
@@ -368,22 +382,44 @@ public final class Flow {
             int n = raw(x + DX[d], y, z + DZ[d]);
             if (same(n) && facesPass(raw, n, d)) {
                 highest = Math.max(highest, amount(n));
-                if (t.level()[n] == 0) sources++;
+                if (t.level()[n] == 0) {
+                    sources++;
+                }
             }
         }
         int below = raw(x, y - 1, z);
         int above = raw(x, y + 1, z);
-        if (infinite && sources >= 2 && t.ground()[below]) return 0;
-        if (same(above) && facesPass(raw, above, UP)) return 8;
+        if (infinite && sources >= 2 && t.ground()[below]) {
+            return 0;
+        }
+        if (same(above) && facesPass(raw, above, UP)) {
+            return 8;
+        }
         int n = highest - dropoff;
         return n > 0 ? 8 - n : -1;
     }
 
-    private boolean replaceableDown(int st) {
+    private boolean replaceable(int st, boolean down) {
         int f = t.fluid()[st];
-        if (f == NONE) return true;
-        if (f == WATER) return t.cls() != WATER;
+        if (f == NONE) {
+            return true;
+        }
+        if (f == WATER) {
+            return down && t.cls() != WATER;
+        }
         return t.cls() == WATER && amount(st) / 9.0 >= HALF_FULL;
+    }
+
+    private boolean canMaybePassThrough(int src, int tgt, int d) {
+        return !source(tgt) && t.holdsAny()[tgt] && facesPass(src, tgt, d);
+    }
+
+    private boolean holds(int st, int v) {
+        return (v == 0 ? t.holdsSource() : t.holdsFlowing())[st];
+    }
+
+    private boolean hole(int st, int below) {
+        return facesPass(st, below, DOWN) && t.holeFloor()[below];
     }
 
     private int index(int x, int z) {
@@ -393,7 +429,9 @@ public final class Flow {
     private int cellRaw(int i, int dy) {
         int k = i * SLOTS + (dy == 0 ? RAW : BELOW);
         long v = cells[k];
-        if ((v & EPOCH_MASK) == stamp) return (int) v;
+        if ((v & EPOCH_MASK) == stamp) {
+            return (int) v;
+        }
         int s = raw(px - radius + i / width, py + dy, pz - radius + i % width);
         cells[k] = stamp | s;
         return s;
@@ -402,9 +440,11 @@ public final class Flow {
     private boolean holeAtIndex(int i) {
         int k = i * SLOTS + HOLE;
         long v = cells[k];
-        if ((v & EPOCH_MASK) == stamp) return (int) v == 1;
+        if ((v & EPOCH_MASK) == stamp) {
+            return (int) v == 1;
+        }
         int braw = cellRaw(i, -1);
-        boolean h = facesPass(cellRaw(i, 0), braw, DOWN) && t.holeFloor()[braw];
+        boolean h = hole(cellRaw(i, 0), braw);
         cells[k] = stamp | (h ? 1 : 0);
         return h;
     }
@@ -416,7 +456,9 @@ public final class Flow {
     private boolean passable(int i, int d) {
         int k = i * SLOTS + PASS + d;
         long v = cells[k];
-        if ((v & EPOCH_MASK) == stamp) return (int) v == 1;
+        if ((v & EPOCH_MASK) == stamp) {
+            return (int) v == 1;
+        }
         int traw = cellRaw(i, 0);
         boolean ok = t.enterable()[traw]
                 && facesPass(cellRaw(step(i, d ^ 1), 0), traw, d);
@@ -437,7 +479,9 @@ public final class Flow {
                     if (i == c && d == back || seen[n] == mark || !passable(n, d)) {
                         continue;
                     }
-                    if (holeAtIndex(n)) return pass;
+                    if (holeAtIndex(n)) {
+                        return pass;
+                    }
                     seen[n] = mark;
                     queue[tail++] = n;
                 }
@@ -446,24 +490,17 @@ public final class Flow {
         return FAR;
     }
 
-    private boolean replaceable(int st) {
-        int f = t.fluid()[st];
-        if (f == NONE) return true;
-        if (f == t.cls()) return false;
-        return t.cls() == WATER && amount(st) / 9.0 >= HALF_FULL;
-    }
-
     private boolean candidate(int raw, int d, int[] out, int dropoff, boolean infinite) {
         int tx = px + DX[d];
         int tz = pz + DZ[d];
         int traw = cellRaw(index(tx, tz), 0);
-        if (source(traw) || !t.holdsAny()[traw] || !facesPass(raw, traw, d)) {
+        if (!canMaybePassThrough(raw, traw, d)) {
             return false;
         }
         int v = newLiquid(tx, py, tz, dropoff, infinite);
-        if (v < 0) return false;
-        boolean[] holds = v == 0 ? t.holdsSource() : t.holdsFlowing();
-        if (!holds[traw]) return false;
+        if (v < 0 || !holds(traw, v)) {
+            return false;
+        }
         out[d] = v;
         return true;
     }
@@ -500,7 +537,9 @@ public final class Flow {
             holes |= dist[d] == 0;
         }
         for (int d = 0; d < 4 && !holes; d++) {
-            if (levels[d] < 0) continue;
+            if (levels[d] < 0) {
+                continue;
+            }
             dist[d] = slopeDistance(side(d), d ^ 1, stamp | (d + 1));
         }
     }
@@ -520,17 +559,23 @@ public final class Flow {
         int open = 0;
         int fit = 0;
         for (int d = 0; d < 4; d++) {
-            if (!candidate(raw, d, levels, dropoff, infinite)) continue;
+            if (!candidate(raw, d, levels, dropoff, infinite)) {
+                continue;
+            }
             open++;
-            fits[d] = replaceable(cellRaw(side(d), 0));
-            if (fits[d]) fit++;
+            fits[d] = replaceable(cellRaw(side(d), 0), false);
+            if (fits[d]) {
+                fit++;
+            }
         }
         if (fit > 0 && open > 1) {
             int[] dist = new int[4];
             distances(levels, dist);
             int lowest = FAR;
             for (int d = 0; d < 4; d++) {
-                if (levels[d] >= 0) lowest = Math.min(lowest, dist[d]);
+                if (levels[d] >= 0) {
+                    lowest = Math.min(lowest, dist[d]);
+                }
             }
             for (int d = 0; d < 4; d++) {
                 fits[d] = fits[d] && dist[d] == lowest;
@@ -562,7 +607,9 @@ public final class Flow {
 
     private int mixed(int x, int y, int z) {
         int st = raw(x, y, z);
-        if (t.fluid()[st] != LAVA) return -1;
+        if (t.fluid()[st] != LAVA) {
+            return -1;
+        }
         Mix m = t.mix();
         boolean soul = raw(x, y - 1, z) == m.soulSoil();
         for (int d : MIXES) {
@@ -570,7 +617,9 @@ public final class Flow {
             if (t.fluid()[n] == WATER) {
                 return t.level()[st] == 0 ? m.source() : m.flowing();
             }
-            if (soul && n == m.blueIce()) return m.basalt();
+            if (soul && n == m.blueIce()) {
+                return m.basalt();
+            }
         }
         return -1;
     }
@@ -605,7 +654,9 @@ public final class Flow {
     }
 
     private void spreadTo(int x, int y, int z, int v, int d) {
-        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return;
+        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) {
+            return;
+        }
         int traw = raw(x, y, z);
         if (t.cls() == LAVA && d == DOWN && t.fluid()[traw] == WATER) {
             add(x, y, z, t.mix().smother(), -1, FIZZ);
@@ -622,24 +673,24 @@ public final class Flow {
     private int down(int x, int y, int z, int dropoff, boolean infinite) {
         int raw = raw(x, y, z);
         int braw = raw(x, y - 1, z);
-        if (source(braw) || !t.holdsAny()[braw] || !facesPass(raw, braw, DOWN)) {
+        if (!canMaybePassThrough(raw, braw, DOWN)) {
             return -1;
         }
         int v = newLiquid(x, y - 1, z, dropoff, infinite);
-        if (v < 0 || !replaceableDown(braw)) return -1;
-        boolean[] holds = v == 0 ? t.holdsSource() : t.holdsFlowing();
-        return holds[braw] ? v : -1;
+        return v >= 0 && replaceable(braw, true) && holds(braw, v) ? v : -1;
     }
 
     private boolean holeAt(int x, int y, int z) {
         int braw = raw(x, y - 1, z);
-        return facesPass(raw(x, y, z), braw, DOWN) && t.holeFloor()[braw];
+        return hole(raw(x, y, z), braw);
     }
 
     private int sourcesAround(int x, int y, int z) {
         int n = 0;
         for (int d = 0; d < 4; d++) {
-            if (source(raw(x + DX[d], y, z + DZ[d]))) n++;
+            if (source(raw(x + DX[d], y, z + DZ[d]))) {
+                n++;
+            }
         }
         return n;
     }
@@ -654,7 +705,9 @@ public final class Flow {
             boolean infinite
     ) {
         int n = l == 8 ? 7 : (l == 0 ? 8 : 8 - l) - dropoff;
-        if (n <= 0) return;
+        if (n <= 0) {
+            return;
+        }
         int[] found = lowestTargets(x, y, z, dropoff, slope, infinite);
         for (int k = 0; k < count(found); k++) {
             int d = targetDirection(found, k);
@@ -707,8 +760,8 @@ public final class Flow {
         return made;
     }
 
-    /// Returns the changes of the liquid at `x` `y` `z` on its fluid
-    /// tick. Read the result with `count` and the `change` accessors.
+    /// Returns the changes of the liquid at x y z on its fluid tick. Read
+    /// the result with count and the change accessors.
     public static int[] changes(
             Tables t,
             ChunkIndex chunks,
@@ -722,8 +775,8 @@ public final class Flow {
         return new Flow(t, chunks).changes(x, y, z, dropoff, slope, infinite);
     }
 
-    /// Returns the block that the lava at `x` `y` `z` turns into, or -1
-    /// when it stays lava.
+    /// Returns the block that the lava at x y z turns into, or -1 when it
+    /// stays lava.
     public static int mixed(Tables t, ChunkIndex chunks, int x, int y, int z) {
         boolean inside = y >= Chunk.MIN_Y && y <= Chunk.MAX_Y;
         if (!inside || t.fluid()[Chunk.blockAt(chunks, x, y, z)] != LAVA) {
