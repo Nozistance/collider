@@ -244,6 +244,7 @@
   [ticks t saved]
   (let [base (- (count saved))]
     (reduce (fn [ticks [n [dt p ty priority]]]
-              (added ticks (+ (long t) (max 1 (long dt))) (cell/pack p)
-                     ty (or priority 0) (+ base (long n))))
+              (added ticks (+ (long t) (max 1 (long dt)))
+                     (cell/pack p) ty (or priority 0)
+                     (+ base (long n))))
             ticks (map-indexed vector saved))))

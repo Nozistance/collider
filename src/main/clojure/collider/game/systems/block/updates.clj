@@ -156,17 +156,19 @@
 (defn- crowded? [seen ^long size p]
   (some #(contains? seen (bucket size p %)) around))
 
+(defn- lone? [seen size [p _ priority]]
+  (and (zero? (long priority)) (not (crowded? seen size p))))
+
 (defn- lone-flags [^long r ticks]
   (let [size (+ r 2)]
     (loop [ts (seq ticks)
            flags (transient [])
            seen (transient (lm/long-set))]
       (if ts
-        (let [[p _ priority] (first ts)]
+        (let [tick (first ts)]
           (recur (next ts)
-                 (conj! flags (and (zero? (long priority))
-                                   (not (crowded? seen size p))))
-                 (conj! seen (bucket size p [0 0]))))
+                 (conj! flags (lone? seen size tick))
+                 (conj! seen (bucket size (tick 0) [0 0]))))
         flags))))
 
 (defn- first-runs [world ctx k ticks]
