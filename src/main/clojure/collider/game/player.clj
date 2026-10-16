@@ -498,7 +498,8 @@
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
       (-> w
-          (update-entity eid assoc :pos (v/v3 (:tp-target e)) :tp-target nil)
+          (update-entity eid assoc :pos (v/v3 (:tp-target e))
+                         :tp-target nil)
           (update-entity eid snap-turned (:yaw e 0.0) (:pitch e 0.0)))
       w)))
 
