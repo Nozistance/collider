@@ -217,10 +217,6 @@
                (not= :off (get-in e [:using :hand])))
           (assoc :using-item? false :using nil)))
 
-(defn- held-item-of [e]
-  (let [slot (+ slots/hotbar (long (or (:held-slot e) 0)))]
-    (get-in e [:inventory slot :item])))
-
 (defn snap-turned
   "Returns e turned to yaw cut to under a turn either way and pitch
   clamped to straight up or down. An angle that is not finite keeps
@@ -232,15 +228,6 @@
       (Double/isFinite y) (assoc :yaw y)
       (Double/isFinite x) (assoc :pitch x))))
 
-(defn- snapped [e rot]
-  (let [y (num/wrap-degrees (:yaw rot 0.0))
-        x (num/wrap-degrees (:pitch rot 0.0))]
-    (if (and rot (held-item-of e)
-             (not (and (== y (double (:yaw e 0.0)))
-                       (== x (double (:pitch e 0.0))))))
-      (snap-turned e y x)
-      e)))
-
 (defn hand-slot
   "Returns the inventory slot the hand holds."
   ^long [e hand]
@@ -251,6 +238,15 @@
 (defn hand-stack
   [e hand]
   (get-in e [:inventory (hand-slot e hand)]))
+
+(defn- snapped [e hand rot]
+  (let [y (num/wrap-degrees (:yaw rot 0.0))
+        x (num/wrap-degrees (:pitch rot 0.0))]
+    (if (and rot (:item (hand-stack e hand))
+             (not (and (== y (double (:yaw e 0.0)))
+                       (== x (double (:pitch e 0.0))))))
+      (snap-turned e y x)
+      e)))
 
 (defn equipment
   "Returns the stacks that player e wears and holds, by equipment
@@ -374,7 +370,7 @@
       :else e)))
 
 (defn- used [w eid hand rot]
-  (-> (update-entity w eid snapped rot)
+  (-> (update-entity w eid snapped hand rot)
       (update-entity eid start-use hand (long (:tick w)))))
 
 (defn use-item
@@ -390,7 +386,7 @@
   [w [_ eid _ face _ _ _ rot]]
   (if (= no-face (bit-and (long face) 0xFF))
     (used w eid :main rot)
-    (update-entity w eid snapped rot)))
+    (update-entity w eid snapped :main rot)))
 
 (defn- seen-slots [m slots]
   (reduce (fn [m [s st]] (if st (assoc m s st) (dissoc m s)))
@@ -547,11 +543,22 @@
                    (when client? (known-move vel))
                    (fall-changes e changes vel))))
 
+(defn- sent-back [w eid e changes]
+  (let [o (:pos e) p (some-> (:pos changes) clamped)]
+    (if (and p (> (v/dist-sq o p) 1.0))
+      (update-entity w eid assoc
+                     :tp-target [(v/x o) (v/y o) (v/z o)]
+                     :tp-id (next-teleport-id e) :tp-at (:tick w)
+                     :yaw (+ 0.0 (double (:yaw changes)))
+                     :pitch (+ 0.0 (double (:pitch changes))))
+      w)))
+
 (defn- apply-move [w eid changes client?]
   (let [e (get-in w [:entities eid])]
     (cond
       (:tp-target e)
       (update-entity w eid merge (dissoc changes :pos :on-ground))
+      (and (:sleeping e) client?) (sent-back w eid e changes)
       (:sleeping e) (update-entity w eid merge (dissoc changes :pos))
       :else (free-move w eid e changes client?))))
 
@@ -620,14 +627,19 @@
     6 (update-entity w eid glide/started)
     w))
 
+(defn move-turn
+  "Returns the yaw and pitch that move changes ask of player e, cut to
+  under a turn either way. An angle the move leaves out is e's own."
+  [e changes]
+  [(num/wrap-degrees (:yaw changes (:yaw e 0.0)))
+   (num/wrap-degrees (:pitch changes (:pitch e 0.0)))])
+
 (defn move
   "Returns w after the event [:move eid changes]."
   [w [_ eid changes]]
   (let [e (get-in w [:entities eid])
-        turn (snap-turned
-               (select-keys e [:yaw :pitch])
-               (num/wrap-degrees (:yaw changes (:yaw e 0.0)))
-               (num/wrap-degrees (:pitch changes (:pitch e 0.0))))]
+        [y x] (move-turn e changes)
+        turn (snap-turned (select-keys e [:yaw :pitch]) y x)]
     (apply-move (resent w eid) eid
                 (merge (dissoc changes :yaw :pitch) turn) true)))
 

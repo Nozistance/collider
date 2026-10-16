@@ -43,11 +43,13 @@
       (assoc e :eid eid))))
 
 (defn- resend-of
-  [w w' [tag eid]]
+  [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) e' (not= (:tp-id e) (:tp-id e')))
-      {:eid eid :pos (:tp-target e)
-       :yaw (:yaw e) :pitch (:pitch e)})))
+      (let [[y x] (if (:tp-target e)
+                    [(:yaw e) (:pitch e)]
+                    (player/move-turn e changes))]
+        {:eid eid :pos (:tp-target e') :yaw y :pitch x}))))
 
 (defn- release-of
   "Returns the use a release event lets go of, with its player.
