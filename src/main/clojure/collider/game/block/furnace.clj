@@ -53,7 +53,6 @@
 (defn burn-duration ^long [stack]
   (long (get (data/fuel) (:item stack) 0)))
 
-
 (defn- can-burn? [items result]
   (let [cur (nth items 2)]
     (cond

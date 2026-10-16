@@ -129,14 +129,15 @@
   [stack item]
   (assoc stack :item item))
 
+(def ^:private patch-keys [:components :removed :bundle-selected])
+
 (defn template
   "Returns the item, count and component patch of stack."
   [stack]
   (when stack
     (cond-> {:item (:item stack) :count (long (:count stack 1))}
       (or (:components stack) (:removed stack))
-      (assoc :patch (select-keys stack [:components :removed
-                                        :bundle-selected])))))
+      (assoc :patch (select-keys stack patch-keys)))))
 
 (defn of-template
   "Returns the stack template t describes."
