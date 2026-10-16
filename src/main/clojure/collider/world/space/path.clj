@@ -12,7 +12,7 @@
 (def ^:private ^:const max-visited-nodes 256)
 
 (def path-types
-  "The path types in the order the game declares them."
+  "The path types. The kind of a node is its index here."
   [:blocked :open :walkable :walkable-door :trapdoor :powder-snow
    :on-top-of-powder-snow :fence :lava :water :water-border :rail
    :unpassable-rail :fire-in-neighbor :fire :damaging-in-neighbor
@@ -335,8 +335,8 @@
 
 (defn find-path
   "Returns the path of a mob over level lv to the closest of the goal
-  cells. The path holds the nodes walked, whether a goal was reached
-  and how far its last node stays from the goal."
+  cells, nil when goals is empty. When it reaches no goal, the path
+  ends at the node that came nearest to one."
   [lv mob goals max-path-length reach-range multiplier]
   (search lv mob goals (double max-path-length)
           (long reach-range) (double multiplier)))

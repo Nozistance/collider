@@ -203,10 +203,9 @@
   (Exposure/frozen e))
 
 (defn exposed
-  "Returns the share, 0.0 to 1.0, of a body at p that the blast of e
-  reaches without a block in the way. The body is a box of half width
-  half and height height. The flags tell how it meets the blocks
-  whose shape depends on the body."
+  "Returns the share, 0.0 to 1.0, of a body box at p that the blast of
+  e reaches without a block in the way. The flags tell how it meets
+  the blocks whose shape depends on the body."
   ([e p half height] (exposed e p half height 0))
   ([^Exposure e [px py pz] half height flags]
    (.density e (double px) (double py) (double pz)

@@ -84,8 +84,8 @@ public final class Exposure {
         return true;
     }
 
-    /// Returns true when every column of the grid of e is present. No
-    /// read changes a frozen e, so its reads may run at once.
+    /// Returns true when no read of e can change it, so its reads may
+    /// run at once. A grid that reads no absent chunks is always frozen.
     public static boolean frozen(Exposure e) {
         if (e.rg.readAbsent() != null) {
             for (Object col : e.rg.cols()) {
@@ -395,9 +395,8 @@ public final class Exposure {
     }
 
     /// Returns the share from 0.0 to 1.0 of the sample points of a body
-    /// box at px, py, pz with half width half and height height that
-    /// see the blast. The flags tell how the body meets the blocks
-    /// whose shape depends on it.
+    /// box at px, py, pz that see the blast. The flags tell how the
+    /// body meets the blocks whose shape depends on it.
     public double density(
             double px,
             double py,

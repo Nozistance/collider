@@ -4,7 +4,6 @@ package collider.world.space;
 ///
 /// @param upStep How many blocks it steps up without a jump.
 /// @param maxFall How many blocks it may fall.
-/// @param floats True when it floats in water.
 /// @param ctx The collision flags of its body.
 public record PathMob(
         double x,

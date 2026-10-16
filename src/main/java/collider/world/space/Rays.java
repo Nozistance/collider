@@ -167,8 +167,8 @@ public final class Rays {
 
     /// Returns the cells of the W cube at ox, oy, oz that the rays of a
     /// blast of power at cx, cy, cz reach, 1 for air and 2 for a block.
-    /// Of the COUNT rays it casts those from from up to but not
-    /// including to. The seed varies the power of each ray. For each
+    /// It casts only the rays numbered from up to but not including to,
+    /// of COUNT in all. The seed varies the power of each ray. For each
     /// block state, resist holds its blast resistance, NaN for air.
     public static byte[] cast(
             Exposure seen,

@@ -12,7 +12,7 @@ public final class Path {
 
     private static final double EPS = 1.0E-7;
 
-    static final int BLOCKED = 0,
+    private static final int BLOCKED = 0,
             OPEN = 1,
             WALKABLE = 2,
             WALKABLE_DOOR = 3,
