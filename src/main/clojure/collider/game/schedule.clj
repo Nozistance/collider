@@ -95,7 +95,8 @@
              (lm/long-map) (due-rows ticks (long t))))
 
 (defn- row-entries [[at m]]
-  (for [[id tys] m [ty [priority order]] tys] [at priority order id ty]))
+  (for [[id tys] m [ty [priority order]] tys]
+    [at priority order id ty]))
 
 (defn- lane-order [[at priority order]] [at priority order])
 
@@ -123,13 +124,13 @@
   (compare [p1 o1 (chunk/block-id-chunk (long id1))]
            [p2 o2 (chunk/block-id-chunk (long id2))]))
 
+(defn- tys-into [acc at id tys]
+  (reduce-kv (fn [acc ty [priority order]]
+               (conj! acc [at priority order id ty]))
+             acc tys))
+
 (defn- due-into [acc [at m] runs?]
-  (let [kept (fn [acc id tys]
-               (if (runs? id)
-                 (reduce-kv (fn [acc ty [priority order]]
-                              (conj! acc [at priority order id ty]))
-                            acc tys)
-                 acc))]
+  (let [kept #(if (runs? %2) (tys-into %1 at %2 %3) %1)]
     (reduce-kv kept acc m)))
 
 (defn run-order
@@ -243,6 +244,6 @@
   [ticks t saved]
   (let [base (- (count saved))]
     (reduce (fn [ticks [n [dt p ty priority]]]
-              (added ticks (+ (long t) (max 1 (long dt)))
-                     (cell/pack p) ty (or priority 0) (+ base (long n))))
+              (added ticks (+ (long t) (max 1 (long dt))) (cell/pack p)
+                     ty (or priority 0) (+ base (long n))))
             ticks (map-indexed vector saved))))

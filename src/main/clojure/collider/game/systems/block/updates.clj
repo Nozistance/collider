@@ -194,6 +194,9 @@
           ty (keys tys)]
       [id ty])))
 
+(defn- at-cell [[id ty priority]]
+  [(cell/unpack id) ty priority])
+
 (defn- ticks-deltas [world k]
   (let [t (long (:tick world))
         ticks (get world k)
@@ -205,10 +208,7 @@
             gone (into order (unloaded world due))]
         (when (seq gone)
           (into [[:ticks-flushed k gone]]
-                (ticks-run world k
-                           (mapv (fn [[id ty priority]]
-                                   [(cell/unpack id) ty priority])
-                                 order))))))))
+                (ticks-run world k (mapv at-cell order))))))))
 
 (defn block-updates
   {:wake {:keys [[:block-ticks :queue]]}}
