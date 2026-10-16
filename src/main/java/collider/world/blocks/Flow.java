@@ -123,7 +123,7 @@ public final class Flow {
 
     private static final int[] UPDATES = {WEST, EAST, DOWN, UP, NORTH, SOUTH};
 
-    private static final double HALF_FULL = 0.44444445;
+    private static final float HALF_FULL = 0.44444445F;
 
     private static final int RAW = 0;
 
@@ -398,7 +398,7 @@ public final class Flow {
         return n > 0 ? 8 - n : -1;
     }
 
-    private boolean replaceable(int st, boolean down) {
+    private boolean replaceable(int st, int x, int y, int z, boolean down) {
         int f = t.fluid()[st];
         if (f == NONE) {
             return true;
@@ -406,7 +406,8 @@ public final class Flow {
         if (f == WATER) {
             return down && t.cls() != WATER;
         }
-        return t.cls() == WATER && amount(st) / 9.0 >= HALF_FULL;
+        return t.cls() == WATER
+                && (amount(st) / 9.0F >= HALF_FULL || t.fluid()[raw(x, y + 1, z)] == LAVA);
     }
 
     private boolean canMaybePassThrough(int src, int tgt, int d) {
@@ -562,7 +563,7 @@ public final class Flow {
                 continue;
             }
             open++;
-            fits[d] = replaceable(cellRaw(side(d), 0), false);
+            fits[d] = replaceable(cellRaw(side(d), 0), x + DX[d], y, z + DZ[d], false);
             if (fits[d]) {
                 fit++;
             }
@@ -676,7 +677,7 @@ public final class Flow {
             return -1;
         }
         int v = newLiquid(x, y - 1, z, dropoff, infinite);
-        return v >= 0 && replaceable(braw, true) && holds(braw, v) ? v : -1;
+        return v >= 0 && replaceable(braw, x, y - 1, z, true) && holds(braw, v) ? v : -1;
     }
 
     private boolean holeAt(int x, int y, int z) {

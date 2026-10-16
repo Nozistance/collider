@@ -118,7 +118,7 @@
   "Returns how high the fluid of st fills its cell. Given chunks and
   p, returns 1.0 under the same fluid and nil for a state without
   fluid."
-  (^double [st] (/ (double (amount st)) 9.0))
+  (^double [st] (num/f32 (/ (double (amount st)) 9.0)))
   ([chunks p st]
    (when-let [cls (liquid-class st)]
      (if (same? cls (above-at chunks p)) 1.0 (height st)))))
@@ -126,7 +126,7 @@
 (defn- own-at ^double [chunks cls p]
   (let [st (state-at chunks (p 0) (p 1) (p 2))]
     (if (and (pos? st) (= cls (liquid-class st)))
-      (num/f32 (height st))
+      (height st)
       0.0)))
 
 (defn- unit [v] (v/normalized v 1.0E-4))
@@ -187,7 +187,7 @@
           (unit [vx 0.0 vz]))))))
 
 (defn- height-in ^double [chunks [x y z :as c]]
-  (num/f32 (height chunks c (state-at chunks x y z))))
+  (height chunks c (state-at chunks x y z)))
 
 (defn surface
   "Returns the height of the top of liquid cls in cell c, or nil."
