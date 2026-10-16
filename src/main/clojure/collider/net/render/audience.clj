@@ -2,6 +2,7 @@
   "Who sees an effect of a tick."
   (:require [collider.data.long-map :as lm]
             [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.schema :as schema]
             [collider.game.team :as team]
             [collider.vec :as v]
@@ -27,14 +28,8 @@
         r (if (> v 1.0) (* 16.0 v) 16.0)]
     (* r r)))
 
-(defn- particle-range-sq ^double [force]
-  (let [r (if force 512.0 32.0)] (* r r)))
-
 (defn- near? [world r2 center eid]
   (within? r2 center (pos-of world eid)))
-
-(defn- near-cell? [world r2 center eid]
-  (within? r2 center (some-> (pos-of world eid) v/cell v/centre)))
 
 (defn- chunk-of-msg [m]
   (case (:msg m)
@@ -55,8 +50,8 @@
     (let [r2 (sound-range-sq (:volume m))]
       #(near? world r2 (:pos m) %))
     :particles
-    (let [r2 (particle-range-sq (:force m))]
-      #(near-cell? world r2 (:pos m) %))
+    #(when-let [p (pos-of world %)]
+       (player/sees-particles? p (:pos m) (:force m)))
     :explosion #(near? world level-range-sq (:center m) %)
     :destroy-stage #(near? world destroy-range-sq (:pos m) %)
     nil))

@@ -1,6 +1,7 @@
 (ns collider.game.systems.items
   "Dropped item motion, merging and pickup."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.random :as random]
@@ -295,14 +296,18 @@
     (changed e (cond-> m
                  (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))))
 
-(defn- step-item [world eid e]
+(defn- step-item
+  "Returns [d fx] of item eid, e, after its step: the delta that
+  moves or removes it and the effects of the blocks it met."
+  [world eid e]
   (let [age (inc (long (or (:age e) 0)))
         chunks (:chunks world)
         s (settled chunks (:dim world) e (long eid) age (:tick world)
                    (in-air? chunks (:pos e)))]
-    (if (gone? world e age)
-      [:remove-entity eid]
-      [:merge-entity eid (stepped e s age)])))
+    [(if (gone? world e age)
+       [:remove-entity eid]
+       [:merge-entity eid (stepped e s age)])
+     (changes/bubble-fx world eid (:pos s))]))
 
 (defn- mergeable? [ea eb]
   (let [pa (:pos ea) pb (:pos eb)
@@ -532,10 +537,10 @@
         (first (reduce take [[] (:inventory pe)] items))))))
 
 (defn- stepped-item [world [eid e]]
-  (let [d (step-item (overlay/seen world eid) eid e)]
+  (let [[d fx] (step-item (overlay/seen world eid) eid e)]
     (if (= :remove-entity (nth d 0))
-      [eid nil (:pos e) d]
-      [eid (entity/merged e (nth d 2)) (:pos e) d])))
+      [eid nil (:pos e) d fx]
+      [eid (entity/merged e (nth d 2)) (:pos e) d fx])))
 
 (defn- turn-of [world steps ^booleans fresh es i]
   (if (aget fresh (long i))
@@ -551,8 +556,8 @@
   index of the items by cell is made at the first merge, from the
   items as they stand at that turn, and kept up from there."
   [world steps [gone fresh] [es index out] i]
-  (let [[eid e from d] (turn-of world steps fresh es i)
-        out (conj! out d)]
+  (let [[eid e from d fx] (turn-of world steps fresh es i)
+        out (reduce conj! (conj! out d) fx)]
     (if (nil? e)
       (do (aset ^booleans gone (long i) true) [es index out])
       (let [es (assoc es i [eid e])

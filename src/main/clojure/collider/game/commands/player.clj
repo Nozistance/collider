@@ -14,6 +14,7 @@
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.game.stack :as stack]
             [collider.random :as random]
             [collider.vec :as v]))
@@ -361,22 +362,6 @@
         played (keep play (sound-listeners world eid s))]
     (playsound-result world eid s id played)))
 
-(def ^:private ^:const particle-near-sq (* 32.0 32.0))
-
-(def ^:private ^:const particle-far-sq (* 512.0 512.0))
-
-(defn- centre-sq ^double [e at]
-  (let [p (:pos e)
-        c [(v/x p) (v/y p) (v/z p)]
-        d #(- (+ (Math/floor (double %1)) 0.5) (double %2))]
-    (reduce + (map #(* (d %1 %2) (d %1 %2)) c at))))
-
-(defn- sees-particle?
-  "Returns true when the centre of the block player e stands in is
-  nearer to at than 32 blocks, or 512 when forced."
-  [e at force?]
-  (< (centre-sq e at) (if force? particle-far-sq particle-near-sq)))
-
 (defn- particle-id [p]
   (data/wire (data/entry-name "particle_type" (first p))))
 
@@ -387,7 +372,9 @@
 
 (defn- particle-viewers [world eid s at force?]
   (let [dim (targets/source-dim world)
-        near? (fn [[_ d e]] (and (= d dim) (sees-particle? e at force?)))]
+        near? (fn [[_ d e]]
+                (and (= d dim)
+                     (player/sees-particles? (:pos e) at force?)))]
     (filter near? (if s
                     (targets/player-selected world eid s)
                     (targets/player-entries world)))))

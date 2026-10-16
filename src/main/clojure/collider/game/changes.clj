@@ -15,6 +15,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.geyser :as geyser]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.env.attribute :as attribute]
             [collider.world.neighbors :as neighbors]))
@@ -114,6 +115,18 @@
     (let [at [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)]]
       [(out/all (out/sound kind at 1.0 1.0))
        (out/all (out/block-event pos 0 0))])))
+
+(defn bubble-fx
+  "Returns the splashes and bubbles over the open bubble column that
+  body eid at pos is in, none when it is in no such column."
+  [world eid pos]
+  (when-let [[x y z] (liquid/open-column (:chunks world) pos)]
+    (for [i (range 2)
+          [kind dy speed] [[:splash 0.0 1.0] [:bubble 0.01 0.2]]
+          :let [r #(random/of-key (:tick world) eid [:bubble i kind %])
+                at [(+ (double x) (r 0)) (+ (long y) 1.0)
+                    (+ (double z) (r 1))]]]
+      (out/all (out/particles kind nil at 1 speed [0.0 dy 0.0])))))
 
 (defn- countdown-reset [world pos]
   (when-let [e (be/at world pos)]

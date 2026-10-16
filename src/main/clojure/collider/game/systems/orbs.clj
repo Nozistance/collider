@@ -1,6 +1,7 @@
 (ns collider.game.systems.orbs
   "Experience orb motion and merging, and players taking orbs up."
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.game.changes :as changes]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.shove :as shove]
             [collider.game.experience :as xp]
@@ -70,7 +71,7 @@
         st (motion/stuck-speed chunks [[(:pos e) p vel]]
                                (orb/half) (orb/height))]
     {:pos p :vel (orb/slowed chunks p w og sup (v/y vel))
-     :on-ground og :follow pid
+     :on-ground og :follow pid :met p
      :needs-sync? sync? :stuck st
      :age (inc (long (:age e)))}))
 
@@ -88,11 +89,12 @@
 (def ^:private stepped-keys
   [:pos :vel :on-ground :follow :needs-sync? :stuck :age :count])
 
-(defn- orb-deltas [eid e' taken]
-  (into (mapv (fn [o] [:remove-entity o]) taken)
-        [(if (or (nil? e') (gone? e'))
-           [:remove-entity eid]
-           [:merge-entity eid (select-keys e' stepped-keys)])]))
+(defn- orb-deltas [world eid e' taken]
+  (-> (mapv (fn [o] [:remove-entity o]) taken)
+      (conj (if (or (nil? e') (gone? e'))
+              [:remove-entity eid]
+              [:merge-entity eid (select-keys e' stepped-keys)]))
+      (into (some->> (:met e') (changes/bubble-fx world eid)))))
 
 (defn- tick-all [world players start roll-for]
   (loop [ids (keys start) orbs start out []]
@@ -103,7 +105,7 @@
               [e' taken] (stepped w players orbs eid e roll)
               orbs (cond-> (apply dissoc orbs taken)
                      e' (assoc eid e') (nil? e') (dissoc eid))
-              out (into out (orb-deltas eid e' taken))]
+              out (into out (orb-deltas w eid e' taken))]
           (recur (next ids) orbs out))
         (recur (next ids) orbs out))
       out)))

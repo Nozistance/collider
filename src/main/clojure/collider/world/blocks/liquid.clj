@@ -563,6 +563,17 @@
                    vy)
       vy)))
 
+(defn open-column
+  "Returns the cell of the bubble column a body at pos is in, when it
+  is open above."
+  [chunks pos]
+  (let [x (num/floor (v/x pos))
+        y (num/floor (v/y pos))
+        z (num/floor (v/z pos))]
+    (when (and (bubble-column? (raw-at chunks x y z))
+               (open-above? (raw-at chunks x (inc y) z)))
+      [x y z])))
+
 (def ^:private conversion-rule
   {:water :water-source-conversion :lava :lava-source-conversion})
 

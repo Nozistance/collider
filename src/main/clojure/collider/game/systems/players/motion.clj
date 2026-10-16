@@ -2,7 +2,8 @@
   "The speed the server keeps for a player, which the client does not
   send. Every tick it moves on as the speed of a body with no input,
   while the body stays where the client says it is."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.changes :as changes]
+            [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
             [collider.game.input :as input]
             [collider.game.mob.mobs :as mobs]
@@ -89,5 +90,7 @@
              (assoc :fall 0.0)
              (not= snowed? (boolean (:in-powder-snow e)))
              (assoc :in-powder-snow (when snowed? true)))]
-          (when (and (= :glide flight) hit?)
-            (wall-deltas world eid e pos vel vel')))))
+          (concat (when (and (= :glide flight) hit?)
+                    (wall-deltas world eid e pos vel vel'))
+                  (when (and (not (:flying e)) (entity/alive? e))
+                    (changes/bubble-fx world eid (:pos e)))))))

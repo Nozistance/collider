@@ -1,5 +1,5 @@
 (ns collider.world.blocks.lightning-rod
-  "Lightning rod, powered for a while by the bolt that strikes it."
+  "Lightning rod, powered for a while when struck or set powered."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as direction]))
@@ -7,7 +7,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const powered-ticks
-  "The ticks a struck rod stays powered."
+  "The ticks a rod stays powered."
   8)
 
 (defn rod?
@@ -24,11 +24,18 @@
   ^long [^long st]
   ({:x 0 :y 1 :z 2} (direction/axis (:facing (block/props-of st)))))
 
+(defn- wake [chunks _dim tick p old side]
+  (let [st (chunk/at chunks p)]
+    (when (and (nil? side)
+               (not= (block/block-of st) (block/block-of old))
+               (= :true (:powered (block/props-of st))))
+      (+ (long tick) powered-ticks))))
+
 (def rule
-  "The block rule that ends the power of a struck rod."
+  "The block rule that ends the power of a rod set powered or struck."
   {:name   :lightning-rod
    :match? (fn [_chunks st _p] (rod? st))
-   :wake   (fn [_chunks _dim _tick _p _old _side] nil)
+   :wake   wake
    :due    (fn [chunks p _ctx]
              (let [st (chunk/at chunks p)]
                (when (rod? st) [[p (powered st false)]])))})

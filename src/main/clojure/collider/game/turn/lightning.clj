@@ -110,7 +110,7 @@
 
 (defn- struck-deltas [world eid p]
   (let [[cur fx] (copper world eid p (rod world p))]
-    (concat (when (seq cur) (changes/change-deltas world (vec cur)))
+    (concat (when (seq cur) (changes/set-deltas world (vec cur)))
             fx)))
 
 (defn- struck-cell [[x y z]]

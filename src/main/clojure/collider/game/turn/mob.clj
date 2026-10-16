@@ -5,6 +5,7 @@
             [collider.data.long-map :as lm]
             [collider.game.areas :as areas]
             [collider.game.attribute :as attribute]
+            [collider.game.changes :as changes]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.damage :as damage]
@@ -255,8 +256,11 @@
                    (f eid e2 t)
                    [e2 nil])
         e2 (overlay/took t e2 later)
-        ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
-    [e2 (joined-into ds own) shoves hit? ls moves]))
+        ds (stepped-deltas world eid e e2 [pre ds say-ds] t)
+        fx (when (entity/alive? e1)
+             (changes/bubble-fx world eid (nth (nth moves 0) 1)))]
+    [e2 (-> ds (joined-into fx) (joined-into own)) shoves hit? ls
+     moves]))
 
 (defn- hand
   "Returns the delta that adds the shove sh to the speed of mob e in

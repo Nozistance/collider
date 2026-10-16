@@ -35,6 +35,13 @@
     (UUID/nameUUIDFromBytes
      (String/.getBytes s StandardCharsets/UTF_8))))
 
+(defn sees-particles?
+  "Returns true when the centre of the block a player at pos stands in
+  is nearer to at than 32 blocks, or 512 when forced."
+  [pos at force?]
+  (let [r (if force? 512.0 32.0)]
+    (< (v/dist-sq (v/centre (v/cell pos)) at) (* r r))))
+
 (defn- spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
