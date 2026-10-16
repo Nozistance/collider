@@ -662,11 +662,11 @@
     [[:damage eid 1.0 {:type :cactus}]]))
 
 (defn item-deltas
-  "Returns the deltas of the fire, lava and cactus item or orb eid lies
-  in. It goes once its hurts of the tick take all its health."
+  "Returns the deltas of the fire, lava and cactus item or orb eid
+  lies in. It goes once its hurts of the tick take all its health."
   [world eid e]
-  (let [ds (concat (burnt world eid e) (pricked world eid e))
-        ds (cond->> ds (= :item (:type e)) (heard e))]
+  (let [ds (cond->> (concat (burnt world eid e) (pricked world eid e))
+             (= :item (:type e)) (heard e))]
     (concat ds
             (when (>= (damage-sum ds) (double (:health e)))
               (gone-deltas world eid e)))))

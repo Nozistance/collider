@@ -165,8 +165,8 @@
   (sort-by (comp id-of key) effects))
 
 (defn- argb ^long [^long alpha ^long rgb]
-  (unchecked-int (bit-or (bit-shift-left alpha 24)
-                         (bit-and rgb 0xFFFFFF))))
+  (let [a (bit-shift-left alpha 24)]
+    (unchecked-int (bit-or a (bit-and rgb 0xFFFFFF)))))
 
 (def ^:private ^:const ambient-alpha 38)
 

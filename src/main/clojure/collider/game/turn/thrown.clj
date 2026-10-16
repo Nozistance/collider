@@ -331,12 +331,11 @@
     (concat (when (and water? (= :block (:kind hit)))
               (dowse-deltas world hit))
             (when water? (doused-deltas world e at))
-            (when (and (not water?) (potion/has-effects? stack)
-                       (= :splash-potion (:type e)))
-              (splash-deltas world eid e d at))
-            (when (and (not water?) (potion/has-effects? stack)
-                       (= :lingering-potion (:type e)))
-              [[:spawn-entity (cloud-spec e at)]])
+            (when (and (not water?) (potion/has-effects? stack))
+              (case (:type e)
+                :splash-potion (splash-deltas world eid e d at)
+                :lingering-potion [[:spawn-entity (cloud-spec e at)]]
+                nil))
             [(out/all (out/level-event
                         (break-event stack)
                         (floored at)
