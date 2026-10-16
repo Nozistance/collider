@@ -88,7 +88,8 @@
 (defn- countdown-deltas [world pos st e depth]
   (when (zero? (rem (long (:tick world)) countdown-period))
     (let [ph (geyser/phase st)
-          c (geyser/counted pos ph depth (:countdown e))]
+          c (geyser/counted (:seed world) pos ph depth
+                            (:countdown e))]
       (concat (when (not= c (:countdown e))
                 [[:set-block-entity pos (assoc e :countdown c)]])
               (when (zero? c) (turn-deltas world pos st))))))

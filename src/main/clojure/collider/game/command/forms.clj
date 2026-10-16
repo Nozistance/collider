@@ -412,7 +412,7 @@
   #{"port" "motd" "max-players" "max-connections" "view-distance"
     "simulation-distance" "compression-threshold" "encryption"
     "save-dir" "commit-period-ms" "pause-when-empty-seconds"
-    "game-mode" "force-game-mode"})
+    "game-mode" "force-game-mode" "level-seed"})
 
 (def ^:private collider-form
   [:collider "the tools of this server"
@@ -495,6 +495,7 @@
     [:world :fill-where]]
    clone-form
    [:reload "reread config.edn" [] [:world :reload]]
+   [:seed "show the seed of the world" [] [:world :seed]]
    [:gamemode "set the game mode of players (default: yours)"
     [[:gamemode [:game-mode {}]]
      [:target [:targets {:players? true :default :self}]]]

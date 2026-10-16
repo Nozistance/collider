@@ -25,7 +25,8 @@
    :commit-period-ms         10000
    :pause-when-empty-seconds 60
    :game-mode                :creative
-   :force-game-mode          false})
+   :force-game-mode          false
+   :level-seed               ""})
 
 (def ^:private Settings
   [:map {:closed true}
@@ -44,6 +45,7 @@
    [:game-mode {:optional true}
     [:enum :survival :creative :adventure :spectator]]
    [:force-game-mode {:optional true} :boolean]
+   [:level-seed {:optional true} [:or :int :string]]
    [:plugins {:optional true} [:map-of :keyword :any]]])
 
 (defn- complaint [v [k msgs]]
@@ -71,6 +73,24 @@
    (merge defaults
           (when (.exists (io/file (str path)))
             (checked path (edn/read-string (slurp (str path))))))))
+
+(defn parsed-seed
+  "Returns the seed that level-seed v names, a whole number as it is
+  and text as the game reads it, or nil when v is blank."
+  [v]
+  (if (int? v)
+    v
+    (let [s (.trim ^String v)]
+      (when-not (.isEmpty s)
+        (try (Long/parseLong s)
+             (catch NumberFormatException _ (long (.hashCode s))))))))
+
+(defn level-seed
+  "Returns the seed of a new world under settings cfg, a random one
+  when its level-seed is blank."
+  ^long [cfg]
+  (or (parsed-seed (:level-seed cfg ""))
+      (.nextLong (java.util.Random.))))
 
 (def world-keys
   "The settings that the world holds for the tick."
@@ -112,7 +132,7 @@
   (into [] (comp (map first) (remove #{:plugins}))
         (rest (rest Settings))))
 
-(def ^:private text-keys #{:motd :save-dir})
+(def ^:private text-keys #{:motd :save-dir :level-seed})
 
 (defn value-of
   "Returns the value of setting k that text spells."

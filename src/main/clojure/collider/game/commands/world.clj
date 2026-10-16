@@ -224,8 +224,20 @@
   (cons (out/to eid (out/reload))
         (say eid "commands.reload.success")))
 
+(defn- copied [^String s]
+  {:translate "chat.square_brackets"
+   :with [{:text s :color "green" :insertion s
+           :click {:action :copy-to-clipboard :value s}
+           :hover {:action :show-text
+                   :value {:translate "chat.copy.click"}}}]})
+
+(defn- seed-deltas [world eid _args]
+  (answer (say eid "commands.seed.success"
+               (copied (str (long (:seed world 0)))))))
+
 (def handlers
   (into {:gamerule gamerule-deltas
+         :seed seed-deltas
          :weather-clear (weather-deltas :clear)
          :weather-rain (weather-deltas :rain)
          :weather-thunder (weather-deltas :thunder)

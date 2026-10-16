@@ -16,14 +16,29 @@
             [collider.net.render.view :as view]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
-            [collider.world.env.biome :as biome]))
+            [collider.world.env.biome :as biome])
+  (:import (java.nio ByteBuffer ByteOrder)
+           (java.security MessageDigest)))
 
 (set! *warn-on-reflection* true)
+
+(defn- little-endian ^ByteBuffer [^bytes b]
+  (.order (ByteBuffer/wrap b) ByteOrder/LITTLE_ENDIAN))
+
+(defn hashed-seed
+  "Returns the seed the client gets for the world seed, the first
+  eight bytes of its SHA-256."
+  ^long [^long seed]
+  (let [b (.array (.putLong (little-endian (byte-array 8)) seed))]
+    (.getLong (little-endian (.digest (MessageDigest/getInstance
+                                        "SHA-256")
+                                      b)))))
 
 (defn- spawn-info [lv e]
   (let [dim (:dim lv :overworld)]
     {:dimension-type (data/datapack-id "dimension_type" dim)
      :dimension dim :sea-level (biome/sea-level-of dim)
+     :seed (hashed-seed (:seed lv 0))
      :gamemode (game-mode/id (:game-mode e))
      :last-gamemode (game-mode/id (:previous-game-mode e))
      :death (:last-death e)}))

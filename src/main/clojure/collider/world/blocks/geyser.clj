@@ -1,6 +1,6 @@
 (ns collider.world.blocks.geyser
   "The geyser of potent sulfur under water and its countdown."
-  (:require [collider.random :as random]
+  (:require [collider.random.xoroshiro :as xoroshiro]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -55,20 +55,24 @@
         (passable? (at i)) (recur (inc i))
         :else i))))
 
-(defn- drawn ^long [pos k ^long lo ^long hi]
-  (random/between (random/of-key pos :geyser k) lo hi))
+(def ^:private ^:const salt -904011478)
 
-(defn- countdown-from ^long [pos ph ^long depth]
-  (if (= :dormant ph)
-    (+ (* 10 (dec depth)) (drawn pos 0 15 30))
-    (+ (dec depth) (drawn pos 1 1 2))))
+(defn- drawn ^long [xs lo hi]
+  (first (xoroshiro/int-between xs lo hi)))
+
+(defn- countdown-from ^long [^long seed pos ph ^long depth]
+  (let [xs (xoroshiro/positional (bit-xor seed salt) pos)]
+    (if (= :dormant ph)
+      (+ (* 10 (dec depth)) (drawn xs 15 30))
+      (+ (dec depth) (drawn (rest xs) 1 2)))))
 
 (defn counted
-  "Returns the countdown of the geyser at pos after its step."
-  ^long [pos ph ^long depth ^long countdown]
-  (let [c (if (<= countdown 0)
-            (countdown-from pos ph depth)
-            countdown)]
+  "Returns the countdown of the geyser at pos after its step in the
+  world of seed."
+  [seed pos ph depth countdown]
+  (let [c (long (if (<= (long countdown) 0)
+                  (countdown-from seed pos ph depth)
+                  countdown))]
     (if (pos? c) (dec c) c)))
 
 (defn turned

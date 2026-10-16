@@ -137,7 +137,7 @@
 (def ^:private spawn-info
   [[:dimension-type wire/varint]
    [:dimension wire/id]
-   [:seed {:optional true} [:= {:wire wire/long} 0]]
+   [:seed wire/long]
    [:gamemode wire/byte]
    [:last-gamemode wire/byte]
    [:debug? {:optional true} [:= {:wire wire/boolean} false]]

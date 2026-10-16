@@ -155,6 +155,9 @@
   {:tick               {:default 0 :store store-long
                         :load load-long :schema :int
                         :scope :shared}
+   :seed               {:default 0 :store store-long
+                        :load load-long :schema :int
+                        :scope :shared}
    :time-ms            {:default 0 :scope :shared}
    :crossbow-sounds    {:default #{} :scope :shared}
    :started            {:default 0 :scope :shared}

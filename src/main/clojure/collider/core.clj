@@ -165,7 +165,8 @@
 (defn- open-world [opts cfg l]
   (let [store (open-store opts cfg)
         saved (when store (store/load-world store))
-        init (merge schema/initial-world saved)
+        init (merge schema/initial-world
+                    {:seed (config/level-seed cfg)} saved)
         world (atom (assoc init :config (world-config cfg store)
                                 :started (:tick init 0)))
         saver (when store (saver/start))
