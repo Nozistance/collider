@@ -6,6 +6,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.changes :as changes]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.entity.size :as size]
             [collider.game.mob.spec :as spec]
             [collider.game.out :as out]
@@ -106,7 +107,7 @@
          (< (- (double z) h) (+ (double bz) reach))
          (> (+ (double z) h) (- (double bz) reach)))))
 
-(defn- thunder-hit [eid e bid]
+(defn- thunder-hit [world eid e bid]
   (if-let [f (:thunder-hit (spec/of (:type e)))]
     (f eid e bid)
     (when-not (contains? unhurt (:type e))
@@ -114,14 +115,15 @@
             lit (if (zero? f)
                   {:fire lit-ticks :ticks-frozen 0}
                   {:fire f})]
-        [[:merge-entity eid lit]
-         [:damage eid damage {:type :lightning-bolt}]]))))
+        (cons [:merge-entity eid lit]
+              (hurt/damage-deltas world eid e damage
+                                  {:type :lightning-bolt}))))))
 
 (defn- hits [world bid b]
   (for [[eid e] (:entities world)
         :when (and (not= eid bid) (entity/alive? e)
                    (not (entity/removed? e)) (in-box? (:pos b) e))
-        d (thunder-hit eid e bid)]
+        d (thunder-hit world eid e bid)]
     d))
 
 (defn- next-life [world eid life flashes]
