@@ -151,6 +151,10 @@
   (buf/write-boolean! buf (some? v))
   (when (some? v) (write buf v)))
 
+(defn- write-particles! [^Buf buf ps]
+  (c/write-varint buf (count ps))
+  (run! #(comps/write-particle buf %) ps))
+
 (defn- write-data-value [^Buf buf type v]
   (case type
     :byte (buf/write-byte! buf (int v))
@@ -161,8 +165,7 @@
     :block-pos (write-data-pos buf v)
     :optional-block-pos (write-optional! buf v write-data-pos)
     :particle (comps/write-particle buf v)
-    :particles (do (c/write-varint buf (count v))
-                   (run! #(comps/write-particle buf %) v))
+    :particles (write-particles! buf v)
     :painting-variant (comps/write-painting-variant buf v)
     :optional-unsigned-int
     (c/write-varint buf (if v (unchecked-inc-int (int v)) 0))
@@ -191,6 +194,9 @@
 (defn- read-optional-text [^Buf buf]
   (when (buf/read-boolean buf) (nbt/read-nbt buf)))
 
+(defn- read-particles [^Buf buf]
+  (vec (repeatedly (c/read-varint buf) #(comps/read-particle buf))))
+
 (defn- read-data-value [^Buf buf type]
   (case type
     :byte (buf/read-byte buf)
@@ -201,8 +207,7 @@
     :block-pos (c/read-block-pos buf)
     :optional-block-pos (read-optional-pos buf)
     :particle (comps/read-particle buf)
-    :particles (vec (repeatedly (c/read-varint buf)
-                                #(comps/read-particle buf)))
+    :particles (read-particles buf)
     :painting-variant (comps/read-painting-variant buf)
     :optional-unsigned-int (let [n (unchecked-int (c/read-varint buf))]
                              (when-not (zero? n)

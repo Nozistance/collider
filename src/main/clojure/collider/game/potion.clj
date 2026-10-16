@@ -59,8 +59,7 @@
   "Returns true when the potion in stack carries any effect, its own
   or a custom one."
   [stack]
-  (let [c (contents stack)]
-    (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
+  (boolean (seq (effects (contents stack)))))
 
 (defn instant?
   "Returns true when effect k acts at once."

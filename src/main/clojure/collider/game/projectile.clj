@@ -205,8 +205,7 @@
   [b from to]
   (let [from [(v/x from) (v/y from) (v/z from)]
         d (mapv - [(v/x to) (v/y to) (v/z to)] from)]
-    (when-let [t (entry b from d)]
-      (mapv (fn [f x] (+ (double f) (* (double t) (double x)))) from d))))
+    (some->> (entry b from d) (point from d))))
 
 (defn margin
   "Returns how far beyond its box projectile e meets a body, growing
@@ -220,9 +219,9 @@
     (reduce (fn [best [oid o]]
               (if (skip? eid e oid o)
                 best
-                (let [box (inflated (target-box o) m m m)]
-                  (nearer best (some-> (entry box from d) (vector nil))
-                          [oid]))))
+                (let [box (inflated (target-box o) m m m)
+                      hit (some-> (entry box from d) (vector nil))]
+                  (nearer best hit [oid]))))
             nil (par/keyed (:entities world)))))
 
 (defn- cut

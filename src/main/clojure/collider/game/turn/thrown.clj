@@ -490,7 +490,7 @@
                 (account/potion-laid (:stack e) 0.5 src))]
     (reported world oid o (account/deltas acc o))))
 
-(defn- out-of? [e r vs [oid o]]
+(defn- out-of? [e r vs oid o]
   (or (contains? vs oid)
       (> (v/dist-xz-sq (:pos e) (:pos o)) (* (double r) (double r)))))
 
@@ -500,8 +500,8 @@
 (defn- used
   "Returns [radius victims deltas] after the cloud lays its potion on
   entity o, or reduced once it has shrunk away."
-  [world eid e age [r vs ds :as acc] [oid o :as t]]
-  (if (out-of? e r vs t)
+  [world eid e age [r vs ds :as acc] [oid o]]
+  (if (out-of? e r vs oid o)
     acc
     (let [r (shrunk e r)
           acc [r (assoc vs oid (+ (long age) cloud-reapply))

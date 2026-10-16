@@ -200,12 +200,12 @@
     (let [st (:stack e) s (potion/duration-scale st)]
       (for [[k i] (potion/instances st)] [k (effect/scaled i s)]))))
 
-(defn- landed [acc [k i]] (account/land acc k i))
-
 (defn- effect-deltas [e oid o]
   (let [fx (laid e)]
     (when (and (seq fx) (account/living? o))
-      (account/deltas (reduce landed (account/account oid o) fx) o))))
+      (let [land (fn [acc [k i]] (account/land acc k i))
+            acc (reduce land (account/account oid o) fx)]
+        (account/deltas acc o)))))
 
 (defn- hit-deltas [world eid e oid o n src]
   (let [ds (hurt/damage-deltas world oid o n src)]
