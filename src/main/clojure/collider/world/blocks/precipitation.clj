@@ -1,6 +1,7 @@
 (ns collider.world.blocks.precipitation
   "Rain and snow at the top of a column."
   (:require [collider.world.block :as block]
+            [collider.world.blocks.cauldron :as cauldron]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -70,13 +71,10 @@
     :snow (block/state :powder-snow-cauldron)
     nil))
 
-(def ^:private filled-by
-  {:water-cauldron :rain :powder-snow-cauldron :snow})
-
 (defn- layered-fill [^long st precipitation]
   (let [level (block/prop-long st :level)]
     (when (and (not= 3 level)
-               (= (filled-by (block/block-of st)) precipitation))
+               (= (cauldron/precipitation (block/block-of st)) precipitation))
       (block/with-long st :level (inc level)))))
 
 (defn- cauldron-fill [^long st precipitation]

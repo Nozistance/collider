@@ -1,6 +1,7 @@
 (ns collider.game.systems.damage
   "The hurts of players and items each tick."
-  (:require [collider.game.areas :as areas]
+  (:require [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
             [collider.game.block.screen :as screen]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -80,14 +81,30 @@
 (defn- ticking? [active e]
   (or (entity/player? e) (areas/active-at? active (:pos e))))
 
-(defn- bodies [world]
-  (let [active (areas/active-chunks world)
-        due? (fn [[_ e :as entry]]
-               (and (ticking? active e)
-                    (contains? loose-types (:type e))
-                    (live? world entry)))]
-    (comp (filter due?)
-          (mapcat (fn [[eid e]] (body-deltas world eid e))))))
+(defn- due [world]
+  (let [active (areas/active-chunks world)]
+    (fn [[_ e :as entry]]
+      (and (ticking? active e)
+           (contains? loose-types (:type e))
+           (live? world entry)))))
+
+(defn- bodies [world due?]
+  (comp (filter due?)
+        (remove (fn [[_ e]] (hurt/by-pot? world e)))
+        (mapcat (fn [[eid e]] (body-deltas world eid e)))))
+
+(defn- in-turn
+  "Returns the deltas of the items and orbs in cauldrons of water or
+  snow, each on the world the ones before it left."
+  [world due?]
+  (first
+    (reduce (fn [[ds w] [eid e]]
+              (let [d (vec (body-deltas w eid e))]
+                [(into ds d) (if (seq d) (first (apply/applied w d)) w)]))
+            [[] world]
+            (filter (fn [[_ e :as entry]]
+                      (and (due? entry) (hurt/by-pot? world e)))
+                    (:entities world)))))
 
 (def ^:private ^:const bodies-leaf 64)
 
@@ -108,5 +125,7 @@
   its own in its turn, a player in its tick after the level."
   {:wake {:keys [:entities]}}
   [world _d]
-  (deltas/of-vec
-    (par/select (bodies world) (:entities world) bodies-leaf)))
+  (let [due? (due world)]
+    (deltas/of-vec
+      (into (par/select (bodies world due?) (:entities world) bodies-leaf)
+            (in-turn world due?)))))

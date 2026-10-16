@@ -3,6 +3,7 @@
   (:require [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.cauldron :as cauldron]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys]
@@ -33,30 +34,53 @@
        (>= (double y) (double y0)) (< (double y) (double y1))
        (>= (double z) (double z0)) (< (double z) (double z1))))
 
-(defn- in-fluid?
+(defn- touches?
   "Returns true when the box of a body passing from point from to
-  point to meets fluid cls of cell c."
-  [chunks cls [x y z :as c] from to half height]
-  (let [top (double (liquid/surface chunks cls c))
-        [b0 b1 b2 b3 b4 b5] (box-at from half height 0.0)
-        sx (- (* (- (double b3) (double b0)) 0.5) slack)
-        sy (- (* (- (double b4) (double b1)) 0.5) slack)
-        sz (- (* (- (double b5) (double b2)) 0.5) slack)
-        x (double x) y (double y) z (double z)
-        grown [(- x sx) (- y sy) (- z sz)
-               (+ (+ x 1.0) sx) (+ top sy) (+ (+ z 1.0) sz)]
-        mid [(+ (double b0) (* 0.5 (- (double b3) (double b0))))
-             (+ (double b1) (* 0.5 (- (double b4) (double b1))))
-             (+ (double b2) (* 0.5 (- (double b5) (double b2))))]
+  point to meets box b."
+  [[b0 b1 b2 b3 b4 b5] from to half height]
+  (let [[a0 a1 a2 a3 a4 a5] (box-at from half height 0.0)
+        hx (* (- (double a3) (double a0)) 0.5)
+        hy (* (- (double a4) (double a1)) 0.5)
+        hz (* (- (double a5) (double a2)) 0.5)
+        sx (- hx slack) sy (- hy slack) sz (- hz slack)
+        grown [(- (double b0) sx) (- (double b1) sy) (- (double b2) sz)
+               (+ (double b3) sx) (+ (double b4) sy) (+ (double b5) sz)]
+        mid [(+ (double a0) hx) (+ (double a1) hy) (+ (double a2) hz)]
         end (mapv + mid (mapv - to from))]
     (boolean (or (contains-point? grown end) (contains-point? grown mid)
                  (crossed/box-clip grown mid end)))))
 
+(defn- in-fluid?
+  "Returns true when the box of a body passing from point from to
+  point to meets fluid cls of cell c."
+  [chunks cls [x y z :as c] from to half height]
+  (let [x (double x) z (double z)]
+    (touches? [x (double y) z (+ x 1.0) (liquid/surface chunks cls c)
+               (+ z 1.0)]
+              from to half height)))
+
+(defn- in-block?
+  "Returns true when the box of a body passing from point from to
+  point to is inside state st of cell c."
+  [st [x y z] from to half height]
+  (if-let [bs (cauldron/inside-boxes st)]
+    (some (fn [[b0 b1 b2 b3 b4 b5]]
+            (touches? [(+ (long x) (/ (double b0) 16.0))
+                       (+ (long y) (/ (double b1) 16.0))
+                       (+ (long z) (/ (double b2) 16.0))
+                       (+ (long x) (/ (double b3) 16.0))
+                       (+ (long y) (/ (double b4) 16.0))
+                       (+ (long z) (/ (double b5) 16.0))]
+                      from to half height))
+          bs)
+    true))
+
 (defn- walked
   "Returns acc after the box of a body passes from point from to point
   to, meeting no more than steps cells, and the steps it took. Each
-  block it is in joins acc once a tick, with the step it met it on
-  and the fluid it was in there, nil for none."
+  block whose inside or fluid the box touches joins acc once a tick,
+  with the step it met it on and the fluid it was in there, nil for
+  none. A block crossed untouched may join on a later move."
   [chunks acc from to half height steps]
   (let [cs (take-while #(< (long (nth % 3)) (long steps))
                        (crossed/cells from to
@@ -71,8 +95,10 @@
                           wet (when (and cls (in-fluid? chunks cls k from
                                                         to half height))
                                 cls)]
-                      {:seen (conj seen k)
-                       :met (conj (:met acc) [x y z st s wet])}))))
+                      (if (or wet (in-block? st k from to half height))
+                        {:seen (conj seen k)
+                         :met (conj (:met acc) [x y z st s wet])}
+                        acc)))))
               acc cs)]
     [acc (inc (long (if-let [c (last cs)] (nth c 3) 0)))]))
 

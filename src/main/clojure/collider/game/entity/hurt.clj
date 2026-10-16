@@ -23,6 +23,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.cauldron :as cauldron]
             [collider.world.blocks.inside :as inside]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -309,21 +310,26 @@
 (def ^:private ^:table burners
   (delay (block/state-table
            :boolean #(or (some? (fire-cell-damage %))
-                         (some? (block/liquid-class %))))))
+                         (some? (block/liquid-class %))
+                         (cauldron/layered? %) (cauldron/lava? %)))))
 
 (defn- fire-lit ^long [^long r]
   (let [r (if (neg? r) (inc r) r)]
     (if (neg? r) r (max r (* ticks-per-second fire-seconds)))))
 
 (defn- stepped-fire
-  "Returns the fn that takes fire r of a body and its hurts on to
-  after the blocks met of one step of its move, in the order a step
-  applies them. Fn lit lights a fire r, cap caps one, and water puts
-  it out unless dry? is true."
-  [lit cap dry?]
-  (fn [[r hurts] met]
+  "Returns the fn that takes fire r of a body, its hurts, the changes
+  of the cauldrons it lowers and whether it thawed on to after the
+  blocks met of one step of its move, in the order a step applies
+  them. Fn lit lights a fire r and cap caps one. Water puts it out
+  when water? is true, a cauldron of water or snow when pots? is,
+  lowered first when r still burns."
+  [lit cap water? pots?]
+  (fn [[r hurts lows thawed?] met]
     (let [fires (keep #(fire-cell-damage (nth % 3)) met)
-          lavas (filter #(= :lava (nth % 5)) met)
+          lavas (filter #(or (= :lava (nth % 5)) (cauldron/lava? (nth % 3)))
+                        met)
+          pots (when pots? (filter #(cauldron/layered? (nth % 3)) met))
           r (long r)
           r (if (seq fires) (long (lit r)) r)
           hurts (into hurts (map (fn [d] [d in-fire])) fires)
@@ -331,10 +337,23 @@
               (long (cap (max r (* ticks-per-second lava-seconds))))
               r)
           hurts (into hurts (map (fn [_] [lava-damage in-lava])) lavas)
-          r (if (and (not dry?) (some #(= :water (nth % 5)) met))
+          lows (if (pos? r)
+                 (into lows (map (fn [[x y z st]]
+                                   [[x y z] (cauldron/doused st)]))
+                       pots)
+                 lows)
+          r (if (or (seq pots)
+                    (and water? (some #(= :water (nth % 5)) met)))
               (min 0 r)
               r)]
-      [r hurts])))
+      [r hurts lows (boolean (or thawed? (seq fires) (seq lavas)))])))
+
+(defn- lowered-deltas
+  "Returns the deltas of the cauldrons body eid, e, lowered."
+  [world eid e lows]
+  (when (seq lows)
+    (delta/authored (changes/change-deltas world lows)
+                    (delta/entity-author eid e))))
 
 (defn- hurt-deltas
   "Returns the deltas of hurts [amount source] of entity eid, e."
@@ -359,8 +378,8 @@
   (let [[half height] (box-of e)
         met (inside/met (:chunks world) moves half height @burners)
         steps (partition-by #(nth % 4) met)
-        r (long (first (reduce (stepped-fire fire-lit identity false)
-                               [r0 []] steps)))
+        r (long (first (reduce (stepped-fire fire-lit identity true true)
+                               [r0 [] [] false] steps)))
         r (if (rained-on? world e) (min 0 r) r)]
     (if (and (<= r 0) (<= r (long r0))) 0 r)))
 
@@ -376,12 +395,14 @@
         lit #(fire-touched cap % added)
         f0 (long (or (:fire e) 0))
         f1 (if (pos? f0) (long (cap (dec f0))) f0)
-        [f hurts] (reduce (stepped-fire lit cap false) [f1 []] groups)
-        lit (long (first (reduce (stepped-fire lit cap true) [f1 []]
-                                 groups)))
+        [f hurts lows thawed?] (reduce (stepped-fire lit cap true true)
+                                       [f1 [] [] false] groups)
+        lit (long (first (reduce (stepped-fire lit cap false false)
+                                 [f1 [] [] false] groups)))
         wet? (or (seq snow) (rained-on? world e))
         f (if wet? (min 0 (long f)) (long f))]
-    [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f) hurts]))
+    [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f) hurts lows
+     thawed?]))
 
 (defn- melt-effect [chunks c]
   (out/all (out/break-effect c (cell-state chunks c))))
@@ -431,13 +452,14 @@
 
 (defn- freeze-deltas
   "Returns the deltas of the frost of entity eid after a tick in or
-  out of powder snow."
-  [world eid e snow?]
+  out of powder snow, from none when thawed? is true."
+  [world eid e snow? thawed?]
   (let [f (long (or (:ticks-frozen e) 0))
+        f0 (if thawed? 0 f)
         can? (can-freeze? e)
         f' (if (and snow? can?)
-             (min freeze-ticks (inc f))
-             (max 0 (- f 2)))
+             (min freeze-ticks (inc f0))
+             (max 0 (- f0 2)))
         lived (entity/tick-count world e)
         frost (frost-of world e f')
         changes (cond-> {}
@@ -455,8 +477,10 @@
 (defn- player-fire-deltas [world eid e]
   (let [snow (snow-cells world e)
         groups (met-by world e (player-moves world eid e))
-        [f0 f1 lit f hurts] (player-fire world eid e snow groups)]
+        [f0 f1 lit f hurts lows thawed?]
+        (player-fire world eid e snow groups)]
     (concat (hurt-deltas world eid e hurts)
+            (lowered-deltas world eid e lows)
             (burning-flag eid e f1)
             (when (not= f f0) [[:merge-entity eid {:fire f}]])
             (when (pos? (long lit))
@@ -465,23 +489,26 @@
                 (delta/entity-author eid e)))
             (when (and (pos? (long f1)) (<= (long f) 0))
               [(put-out-sound world eid e)])
-            (freeze-deltas world eid e (boolean (seq snow))))))
+            (freeze-deltas world eid e (boolean (seq snow)) thawed?))))
 
 (defn- met-fire-deltas
   "Returns the deltas of the fire, lava and water mob eid, e, met on
-  its moves this tick, step by step. With no moves it stays where it
-  is."
+  its moves this tick, step by step, and whether it thawed. With no
+  moves it stays where it is."
   [world eid e moves]
   (let [r0 (long (or (:fire e) 0))
         moves (or (seq moves) [[(:pos e) (:pos e) nil]])
-        [r hurts] (reduce (stepped-fire fire-lit identity false) [r0 []]
-                          (met-by world e moves))
+        [r hurts lows thawed?]
+        (reduce (stepped-fire fire-lit identity true true) [r0 [] [] false]
+                (met-by world e moves))
         r (if (rained-on? world e) (min 0 (long r)) (long r))
         r (if (and (<= r 0) (<= r r0)) 0 r)]
-    (concat (burning-flag eid e r0)
-            (hurt-deltas world eid e hurts)
-            (when (not= r r0) [[:merge-entity eid {:fire r}]])
-            (when (and (pos? r0) (<= r 0)) [(put-out-sound world eid e)]))))
+    [(concat (burning-flag eid e r0)
+             (hurt-deltas world eid e hurts)
+             (lowered-deltas world eid e lows)
+             (when (not= r r0) [[:merge-entity eid {:fire r}]])
+             (when (and (pos? r0) (<= r 0)) [(put-out-sound world eid e)]))
+     thawed?]))
 
 (defn fire-deltas
   "Returns the deltas of the fire, lava and frost entity eid touches.
@@ -490,9 +517,11 @@
   ([world eid e moves]
    (if (entity/player? e)
      (player-fire-deltas world eid e)
-     (concat (met-fire-deltas world eid e moves)
-             (freeze-deltas world eid e
-                            (some-inside? (:chunks world) e @snowy))))))
+     (let [[ds thawed?] (met-fire-deltas world eid e moves)]
+       (concat ds
+               (freeze-deltas world eid e
+                              (some-inside? (:chunks world) e @snowy)
+                              thawed?))))))
 
 (def ^:private ^:const burn-volume 0.4)
 
@@ -574,12 +603,22 @@
 (def ^:private ^:table loose-harm
   (delay (block/state-table
            :boolean
-           #(or (burns? %) (= :cactus (block/type-of %))))))
+           #(or (burns? %) (cauldron/lava? %)
+                (= :cactus (block/type-of %))))))
 
 (defn stirred?
   "Returns true when item or orb e lies in fire, lava or a cactus."
   [world e]
   (boolean (some-inside? (:chunks world) e @loose-harm)))
+
+(def ^:private ^:table pots
+  (delay (block/state-table :boolean cauldron/layered?)))
+
+(defn by-pot?
+  "Returns true when item or orb e lies in a cauldron of water or
+  snow."
+  [world e]
+  (boolean (some-inside? (:chunks world) e @pots)))
 
 (def ^:private cactus {:type :cactus})
 
@@ -594,16 +633,16 @@
 
 (defn- item-hurts
   "Returns the fire of item e once the tick burns it down and the
-  blocks met light it, and its hurts [amount source] in the order it
-  takes them."
+  blocks met light it, its hurts [amount source] in the order it
+  takes them and the changes of the cauldrons it lowers."
   [world e wet? met]
   (let [fire (long (or (:fire e) 0))
         due? (and (pos? fire) (not wet?)
                   (zero? (rem fire fire-damage-period))
                   (not (in-lava? world e)))
-        [r hurts] ((stepped-fire fire-lit identity true)
-                   [(burnt-down fire wet?) []] met)]
-    [r (concat (when due? [[1.0 on-fire]]) (pricks world e) hurts)]))
+        [r hurts lows] ((stepped-fire fire-lit identity false true)
+                        [(burnt-down fire wet?) [] [] false] met)]
+    [r (concat (when due? [[1.0 on-fire]]) (pricks world e) hurts) lows]))
 
 (defn- item-fire
   "Returns the deltas of the fire of item e, eid, and its hurts."
@@ -615,10 +654,13 @@
                         @burners)
         wet? (and (or (pos? fire) (boolean (seq met)))
                   (item-wet? world e))
-        [r hurts] (item-hurts world e wet? met)]
+        [r hurts lows] (item-hurts world e wet? met)]
     [(concat (burning-flag eid e (burnt-down fire wet?))
+             (lowered-deltas world eid e lows)
              (when (and (not wet?) (not= r fire))
                [[:merge-entity eid {:fire r}]])
+             (when (and (pos? (burnt-down fire wet?)) (<= (long r) 0))
+               [(put-out-sound world eid e)])
              (douse-deltas eid e fire wet?))
      hurts]))
 
