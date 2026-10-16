@@ -17,7 +17,7 @@
                      hidden-field key-of registry static-field]]
             [collider.tables.value
              :refer [kw flt sorted-vals unknown]])
-  (:import (clojure.lang Reflector)
+  (:import (clojure.lang ExceptionInfo Reflector)
            (java.io File)
            (java.lang.reflect Field InvocationHandler Proxy)
            (java.net URI URL URLClassLoader URLConnection)
@@ -82,9 +82,34 @@
   ["blocksMotion" "ignitedByLava"
    "isRandomlyTicking" "isSolidRender"])
 
+(defn- no-level []
+  (Proxy/newProxyInstance
+    *loader* (into-array Class [(cls "world.level.BlockGetter")])
+    (reify InvocationHandler
+      (invoke [_ _ _ _]
+        (throw (ex-info "reads the level" {::reads-level true}))))))
+
+(defn- asked
+  "Returns what f gives with no level, or -1 when f reads it."
+  [f]
+  (try (f)
+       (catch ExceptionInfo e
+         (if (::reads-level (ex-data e)) -1 (throw e)))))
+
+(def ^:private no-signal (vec (repeat 12 0)))
+
+(defn- state-signals
+  "Returns the signals of st on the six sides, the direct ones last."
+  [{:keys [zero dirs no-level]} st]
+  (let [side (fn [m d] (asked #(call st m no-level zero d)))
+        sides (fn [m] (mapv #(side m %) dirs))
+        both (into (sides "getSignal") (sides "getDirectSignal"))]
+    (unless-default no-signal both)))
+
 (defn- shape-env []
   {:air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
    :zero (static-field "core.BlockPos" "ZERO")
+   :no-level (no-level)
    :dirs (vec (call-static "core.Direction" "values"))
    :up (static-field "core.Direction" "UP")
    :center (static-field "world.level.block.SupportType" "CENTER")
@@ -107,7 +132,9 @@
   (let [flags (conj (mapv #(call st %) flag-methods)
                     (full-top? env st)
                     (call st "isSignalSource") (call st "isSolid")
-                    (call st "isSuffocating" air zero))]
+                    (call st "isSuffocating" air zero)
+                    (call st "isRedstoneConductor" air zero)
+                    (call st "hasAnalogOutputSignal"))]
     (unless-default 0 (mask flags))))
 
 (defn- state-sturdy [{:keys [air zero dirs]} st & more]
@@ -225,6 +252,7 @@
      :collision-ys (collision-ys env each)
      :outlines (each #(partial-box (outline-shape env %)))
      :flags (each #(state-flags env %))
+     :signals (each #(state-signals env %))
      :sturdy {:full (sturdy)
               :center (sturdy (:center env))
               :rigid (sturdy (:rigid env))}}))

@@ -71,8 +71,20 @@
   (delay (update-vals (data/read-edn "sturdy.edn")
                       #(byte-table % 63))))
 
+(def ^:private ^:table flag-runs
+  (delay (data/read-edn "flags.edn")))
+
 (def ^:private ^:table flag-table
-  (delay (byte-table (data/read-edn "flags.edn") 0)))
+  (delay (byte-table @flag-runs 0)))
+
+(def ^:private ^:table signal-table
+  (delay
+    (let [a (byte-array (* 12 (data/block-state-count)))]
+      (each-run! (data/read-edn "signals.edn")
+                 (fn [^long id v]
+                   (dotimes [i 12]
+                     (aset a (+ (* 12 id) i) (byte (nth v i))))))
+      a)))
 
 (defn shapes
   "Returns the collision boxes of every state, by id.
@@ -104,6 +116,22 @@
 (defn flags
   ^bytes []
   @flag-table)
+
+(defn flag-states
+  "Returns which states have bit set in their flags, past the byte
+  that flags keeps."
+  ^booleans [^long bit]
+  (let [a (boolean-array (data/block-state-count))]
+    (each-run! @flag-runs
+               (fn [id ^long v]
+                 (aset a (int id) (pos? (bit-and v bit)))))
+    a))
+
+(defn signals
+  "Returns the signals of every state on the six sides, the direct
+  ones last, twelve bytes a state, -1 where it reads the level."
+  ^bytes []
+  @signal-table)
 
 (defn- default-of [b]
   (decode-props b (- (long (:default b)) (long (:first b)))))

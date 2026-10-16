@@ -76,15 +76,10 @@
     (assoc facts :floor (index-of floors floor)
            :danger (index-of dangers danger))))
 
-(defn- conductors [states]
-  (let [air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
-        zero (static-field "core.BlockPos" "ZERO")]
-    (ids-where states #(call % "isRedstoneConductor" air zero))))
-
 (defn spawns
   "Returns the mob categories in their order, the spawn facts of each
   entity type that is no misc, the states each type may stand on and
-  the ones that hurt it, and the states that conduct redstone."
+  the ones that hurt it."
   []
   (let [reg (registry "ENTITY_TYPE")
         placements (placement-names)
@@ -96,5 +91,4 @@
                     (for [t (elements reg) :when (spawnable? t)]
                       [(key-of reg t) (facts t)]))]
     {:categories (categories) :types types
-     :floors @floors :dangers @dangers
-     :conductors (conductors st)}))
+     :floors @floors :dangers @dangers}))

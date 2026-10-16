@@ -732,19 +732,40 @@
   [^long st tag]
   (contains? (tag-set tag) (block-of st)))
 
+(def ^:private ^:const conductor-bit 256)
+
+(def ^:private ^:const analog-bit 512)
+
 (def ^:private ^:table conductor-arr
-  (delay
-    (let [a (boolean-array (data/block-state-count))
-          top (dec (alength a))]
-      (doseq [[lo hi] (:conductors (data/spawns))
-              id (range lo (inc (min (long hi) top)))]
-        (aset a (int id) true))
-      a)))
+  (delay (states/flag-states conductor-bit)))
+
+(def ^:private ^:table analog-arr
+  (delay (states/flag-states analog-bit)))
 
 (defn conductor?
   "Returns true when st conducts redstone."
   [^long st]
   (aget ^booleans @conductor-arr st))
+
+(defn analog-output?
+  "Returns true when st gives a comparator a value of its own."
+  [^long st]
+  (aget ^booleans @analog-arr st))
+
+(defn- signal-at ^long [^long st face ^long from]
+  (+ (* 12 st) from (long (dir/index face))))
+
+(defn signal
+  "Returns the signal st gives to the neighbor that looks at it toward
+  face, -1 when the level decides."
+  ^long [^long st face]
+  (long (aget (states/signals) (signal-at st face 0))))
+
+(defn direct-signal
+  "Returns the signal st gives through the neighbor that looks at it
+  toward face, -1 when the level decides."
+  ^long [^long st face]
+  (long (aget (states/signals) (signal-at st face 6))))
 
 (def face-props [:up :north :south :west :east :down])
 
