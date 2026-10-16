@@ -152,9 +152,9 @@ public final class Block {
         return seals(face(t, from, (int) d), face(t, to, (int) d ^ 1));
     }
 
-    /// Returns the light cost of crossing from from into to along d.
-    /// The cost is 16 when the faces that the shapes touch seal and
-    /// simple otherwise.
+    /// Returns the light cost of passing from state from into state to
+    /// along d. The cost is 16 when the faces that the shapes touch
+    /// seal and simple otherwise.
     public static long dampeningInto(
             BlockTables t,
             long from,

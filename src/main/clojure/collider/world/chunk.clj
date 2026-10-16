@@ -7,17 +7,17 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const min-y -64)
+(def ^:const min-y (long Chunk/MIN_Y))
 
-(def ^:const max-y 319)
+(def ^:const max-y (long Chunk/MAX_Y))
 
 (def ^:const world-border
   "How far from the centre the world border stands, in blocks."
   29999984)
 
-(def ^:const section-count 24)
+(def ^:const section-count (long Chunk/COUNT))
 
-(def ^:const section-offset 4)
+(def ^:const section-offset (long Chunk/OFFSET))
 
 (defn in-range?
   "Returns true when block y is inside the world height."
@@ -97,8 +97,8 @@
   (.section chunk (int si)))
 
 (defn edge-light
-  "Returns the light of channel ch, Light/BLOCK or Light/SKY, in
-  section si just below or above chunk, or nil where it is dark."
+  "Returns the block or sky light of channel ch in section si just
+  below or above chunk, or nil where it is dark."
   ^bytes [^Chunk chunk ^long si ^long ch]
   (.edgeLight chunk (int si) (int ch)))
 

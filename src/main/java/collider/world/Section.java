@@ -594,7 +594,8 @@ public final class Section {
             return (long) SIZE << 16;
         }
         int[] counts = counts();
-        long nonAir = 0, fl = 0;
+        long nonAir = 0;
+        long fl = 0;
         for (int q = 0; q < counts.length; q++) {
             int v = pal == null ? q : pal[q];
             if (v != 0) {

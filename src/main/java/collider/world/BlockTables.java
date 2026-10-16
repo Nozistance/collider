@@ -3,12 +3,7 @@ package collider.world;
 /// The tables of the block states, each indexed by state id.
 ///
 /// @param types The block type of each state, or null.
-/// @param names The block of each state.
 /// @param shapes The shape kind of each state, or null.
-/// @param needsSupport True for a state that breaks without support.
-/// @param attached True for a state that hangs on a neighbour.
-/// @param falls True for a state that falls without a block under it.
-/// @param canBeReplaced True for a state in the replaceable tag.
 /// @param solid True for a state that stops a body.
 /// @param fullCube True for a state whose collision is a full cube.
 /// @param useShape True for a state that occludes light by shape.
@@ -17,9 +12,11 @@ package collider.world;
 /// @param touch The faces, one bit each, that the shape touches.
 /// @param faces The six occlusion faces of each state, as four
 ///        longs of 16 by 16 bits, or null.
+/// @param flags The bits of each state. 1 blocks motion, 2 catches
+///        fire from lava, 4 ticks at random, 8 renders solid, 16 has a
+///        full top face, 32 gives a signal, 64 is solid by old rules,
+///        128 suffocates.
 /// @param sturdy The faces, one bit each, that hold things.
-/// @param sturdyRigid The faces that hold things rigidly.
-/// @param sturdyCenter The faces that hold things at the center.
 public record BlockTables(
         Object[] types,
         Object[] names,

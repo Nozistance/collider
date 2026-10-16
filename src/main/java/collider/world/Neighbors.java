@@ -137,7 +137,8 @@ public final class Neighbors {
     /// Returns true when each record has its own sent cell, in order.
     private static boolean paired(Object records, Object sent) {
         Indexed s = (Indexed) sent;
-        int m = RT.count(sent), j = 0;
+        int m = RT.count(sent);
+        int j = 0;
         for (Object r : (Iterable<?>) records) {
             if (j == m || !Util.equiv(RT.nth(r, 0), s.nth(j))) {
                 return false;
@@ -264,7 +265,8 @@ public final class Neighbors {
                 continue;
             }
             Object p = RT.nth(c, 0);
-            int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
+            int x = RT.intCast(RT.nth(p, 0));
+            int y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             Object rec = RT.count(c) == 2 && RT.nth(c, 1) instanceof Long ? c : null;
             long old = put(p, rec, x, y, z, st, flags, minY, maxY);
@@ -400,7 +402,9 @@ public final class Neighbors {
         Object step(Neighbors s) {
             while (i < 6) {
                 int d = i++;
-                long nx = x + DX[d], ny = y + dy[d], nz = z + dz[d];
+                long nx = x + DX[d];
+                long ny = y + dy[d];
+                long nz = z + dz[d];
                 int st = stateAt(s.chunks, nx, ny, nz, minY, maxY);
                 if (deaf[st]) {
                     continue;

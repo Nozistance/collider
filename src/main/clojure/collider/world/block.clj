@@ -118,7 +118,7 @@
   #{:ladder :wall-sign :wall-hanging-sign :wall-banner
     :coral-wall-fan :base-coral-wall-fan})
 
-(def ground-types
+(def ^:private ground-types
   #{:sapling :powered-rail :detector-rail :rail :tall-grass
     :double-plant :dry-vegetation :short-dry-grass :tall-dry-grass
     :flower :mushroom :fire :soul-fire :redstone-wire :crop
@@ -132,7 +132,7 @@
 (def water-holder-types
   #{:kelp :kelp-plant :seagrass :tall-seagrass :bubble-column})
 
-(def falling-types
+(def ^:private falling-types
   #{:sand :colored-falling :concrete-powder :anvil :scaffolding
     :pointed-dripstone :sulfur-spike :dragon-egg})
 
@@ -161,7 +161,7 @@
 
 (def growing-plant-types (set (keys growing-plant)))
 
-(def needs-support-types
+(def ^:private needs-support-types
   (into ground-types
         (concat torch-types
                 wall-torch-types
@@ -175,7 +175,7 @@
                 multiface-types
                 growing-plant-types)))
 
-(def attached-types
+(def ^:private attached-types
   #{:lantern :weathering-lantern :bell :farmland :dirt-path
     :candle :sea-pickle :cocoa :cake :candle-cake :button :lever
     :amethyst-cluster :hanging-moss :big-dripleaf
@@ -724,7 +724,7 @@
 (def ^:private ^:table tag-sets
   (delay (update-vals (get (data/tags) "block") set)))
 
-(defn tag-set
+(defn- tag-set
   "Returns the blocks of block tag, an empty set when absent."
   [tag] (get @tag-sets tag #{}))
 

@@ -48,9 +48,13 @@ public final class ChunkIndex extends APersistentMap
             new ChunkIndex(null, LEAF_BITS, -1, -1, 0, null, new Object(), null);
 
     final Object[] root;
-    final int span, prefixU, prefixV, count;
+    final int span;
+    final int prefixU;
+    final int prefixV;
+    final int count;
     final IPersistentMap meta;
-    final Object shape, token;
+    final Object shape;
+    final Object token;
 
     ChunkIndex(
             Object[] root,
@@ -73,8 +77,8 @@ public final class ChunkIndex extends APersistentMap
     }
 
     /// Returns this index with a fresh owner token. Edits of the
-    /// result and of their results copy each node once and then write
-    /// it in place until frozen.
+    /// result keep that token until frozen and leave this index as it
+    /// was.
     public ChunkIndex editable() {
         Object fresh = new Object();
         return new ChunkIndex(root, span, prefixU, prefixV, count, meta, shape, fresh);
@@ -100,7 +104,9 @@ public final class ChunkIndex extends APersistentMap
     }
 
     static Object find(Object[] n, int span, int prefixU, int prefixV, int cx, int cz) {
-        int u = cx + BIAS, v = cz + BIAS, s = span;
+        int u = cx + BIAS;
+        int v = cz + BIAS;
+        int s = span;
         if ((u >>> s) != prefixU || (v >>> s) != prefixV) {
             return null;
         }
@@ -360,7 +366,8 @@ public final class ChunkIndex extends APersistentMap
             int m = 0;
             for (int i = 0; i < size[d]; i++) {
                 Object[] n = nodes[d][i];
-                int row = ud << INNER_BITS, vp = vps[d][i] << INNER_BITS;
+                int row = ud << INNER_BITS;
+                int vp = vps[d][i] << INNER_BITS;
                 for (int vd = 0; vd <= INNER_MASK; vd++) {
                     Object kid = n[row | vd];
                     if (kid != null) {
@@ -418,11 +425,15 @@ public final class ChunkIndex extends APersistentMap
     }
 
     static final class Edit {
-        final Object token, keep;
+        final Object token;
+        final Object keep;
         final Object[][] path = new Object[4][];
         final int[] at = new int[4];
         Object[] root;
-        int span, prefixU, prefixV, count;
+        int span;
+        int prefixU;
+        int prefixV;
+        int count;
         Object shape;
 
         Edit(ChunkIndex x) {
@@ -500,7 +511,8 @@ public final class ChunkIndex extends APersistentMap
         }
 
         void put(long id, Object o) {
-            int u = x(id) + BIAS, v = z(id) + BIAS;
+            int u = x(id) + BIAS;
+            int v = z(id) + BIAS;
             if (o == null || ((u | v) >>> KEY_BITS) != 0) {
                 throw bad(id, o);
             }

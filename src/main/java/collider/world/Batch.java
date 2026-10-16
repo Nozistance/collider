@@ -43,7 +43,8 @@ public final class Batch {
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
-            int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
+            int x = RT.intCast(RT.nth(p, 0));
+            int y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             Object given = RT.nth(c, 1);
             long st = RT.intCast(given);
@@ -70,7 +71,8 @@ public final class Batch {
         Scratch<Batch[]> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
-            int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
+            int x = RT.intCast(RT.nth(p, 0));
+            int y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             long id = ChunkIndex.id(x >> 4, z >> 4);
             Batch[] bs = m.get(id);
@@ -139,7 +141,8 @@ public final class Batch {
     /// chunk, in the order it first comes, st being its block in
     /// chunks.
     public static Object statesAt(ChunkIndex chunks, Object cells) {
-        int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+        int lo = Integer.MAX_VALUE;
+        int hi = Integer.MIN_VALUE;
         for (Object p : (Iterable<?>) cells) {
             int y = RT.intCast(RT.nth(p, 1));
             lo = Math.min(lo, y);
@@ -148,7 +151,8 @@ public final class Batch {
         long[] seen = new long[lo > hi ? 0 : (hi - lo + 1) * 4];
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object p : (Iterable<?>) cells) {
-            int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
+            int x = RT.intCast(RT.nth(p, 0));
+            int y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             int i = (y - lo) * 256 + (z & 15) * 16 + (x & 15);
             if ((seen[i >> 6] & (1L << i)) != 0) {
