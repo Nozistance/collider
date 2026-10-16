@@ -179,7 +179,8 @@
 (defn shoves-at
   "Returns the shoves between body eid at pos and each body it
   overlaps, as [id dx dz] in the order the bodies meet. Body eid
-  takes dx dz and body id the opposite."
+  takes dx dz and body id the opposite. A body whose center lies
+  within 0.01 of pos along both x and z gives no shove."
   [index eid pos half height]
   (scan index eid pos half height Long/MAX_VALUE))
 

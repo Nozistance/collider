@@ -11,6 +11,8 @@ import java.util.Arrays;
 /// bodies move, so one island steps with one grid. Many readers may
 /// share it while no body moves. A body meets the others by entity
 /// section, and in each section in the order they came into it.
+/// Sections go by x, then by z, then by y, and below zero z and y
+/// come after all others.
 /// Shoves from the bodies that stepped before come in the order they
 /// stepped, by id.
 public final class PushGrid {
@@ -32,7 +34,7 @@ public final class PushGrid {
     private byte[] rules;
     private int[] teams;
 
-    /// The ids eids ascend. Every other array holds the body of
+    /// The ids eids ascend, and each other argument holds the body of
     /// eids at the same index.
     PushGrid(
             long[] eids,
@@ -67,7 +69,8 @@ public final class PushGrid {
         return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
     }
 
-    /// Returns the push cell of four columns that holds coordinate c.
+    /// Returns the coordinate along one axis of the push cell, four
+    /// blocks wide, that holds c.
     static long cell(double c) {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
@@ -269,7 +272,8 @@ public final class PushGrid {
     /// whose id is below hi. Below a bound hi, only the bodies
     /// that step this tick count. Each shove [id dx dz] moves this
     /// body by dx dz and the other body the opposite way. The shoves
-    /// are not summed.
+    /// are not summed. A body whose center lies within 0.01 of this
+    /// one along both x and z gives no shove.
     public static Object shoves(
             PushGrid g,
             double x,

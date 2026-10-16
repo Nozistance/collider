@@ -12,9 +12,14 @@ public final class Bodies {
     private static final int START = 64;
 
     private Object[] entries = new Object[START];
-    private long[] eids = new long[START], came = new long[START], ranks = new long[START];
-    private double[] halfs = new double[START], heights = new double[START];
-    private double[] xs = new double[START], ys = new double[START], zs = new double[START];
+    private long[] eids = new long[START];
+    private long[] came = new long[START];
+    private long[] ranks = new long[START];
+    private double[] halfs = new double[START];
+    private double[] heights = new double[START];
+    private double[] xs = new double[START];
+    private double[] ys = new double[START];
+    private double[] zs = new double[START];
     private boolean[] ticking = new boolean[START];
     private int n;
     private ArrayList<Bodies> rest;
