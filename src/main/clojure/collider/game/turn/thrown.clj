@@ -285,6 +285,7 @@
 
 (defn- affected-in? [box o]
   (and (account/living? o) (pos? (double (:health o 0.0)))
+       (not (game-mode/spectator? o))
        (projectile/overlaps? box (projectile/target-box o))))
 
 (defn- reported [world oid o ds]

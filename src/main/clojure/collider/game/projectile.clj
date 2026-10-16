@@ -186,21 +186,27 @@
       s
       t)))
 
-(defn box-clip
-  "Returns the point where a ray from to to enters box b through a
-  face it faces, or nil."
-  [b from to]
-  (let [from [(v/x from) (v/y from) (v/z from)]
-        d (mapv - [(v/x to) (v/y to) (v/z to)] from)
-        hit (fn [^double t a]
+(defn- entry
+  "Returns the fraction of ray from along d where it enters box b
+  through a face it faces, or nil."
+  [b from d]
+  (let [hit (fn [^double t a]
               (let [da (double (d a))]
                 (cond (> da face-slack) (face-hit b from d a a t)
                       (< da (- face-slack))
                       (face-hit b from d a (+ a 3) t)
                       :else t)))
         t (double (reduce hit 1.0 [0 1 2]))]
-    (when (< t 1.0)
-      (mapv (fn [f x] (+ (double f) (* t (double x)))) from d))))
+    (when (< t 1.0) t)))
+
+(defn box-clip
+  "Returns the point where a ray from to to enters box b through a
+  face it faces, or nil."
+  [b from to]
+  (let [from [(v/x from) (v/y from) (v/z from)]
+        d (mapv - [(v/x to) (v/y to) (v/z to)] from)]
+    (when-let [t (entry b from d)]
+      (mapv (fn [f x] (+ (double f) (* (double t) (double x)))) from d))))
 
 (defn margin
   "Returns how far beyond its box projectile e meets a body, growing
@@ -210,12 +216,13 @@
     (max 0.0 (min (num/f32 0.3) (num/f32 (/ (num/f32 lived) 20.0))))))
 
 (defn- entity-clip [world eid e from d]
-  (let [m (margin e)]
+  (let [m (margin e) from [(v/x from) (v/y from) (v/z from)]]
     (reduce (fn [best [oid o]]
               (if (skip? eid e oid o)
                 best
                 (let [box (inflated (target-box o) m m m)]
-                  (nearer best (reach/box-entry from d box) [oid]))))
+                  (nearer best (some-> (entry box from d) (vector nil))
+                          [oid]))))
             nil (par/keyed (:entities world)))))
 
 (defn span
