@@ -157,9 +157,10 @@
   ^long [^Section s ^long c] (.word s (int c)))
 
 (defn tally
-  "Returns the number of blocks of s other than state 0 shifted left
-  by 16, plus the number of blocks that fluid marks."
-  ^long [^Section s ^booleans fluid] (.tally s fluid))
+  "Returns the number of blocks of s that block marks shifted left by
+  16, plus the number of those that fluid also marks."
+  ^long [^Section s ^booleans block ^booleans fluid]
+  (.tally s block fluid))
 
 (defn heights!
   "Fills the unset heightmap columns in out with the height above

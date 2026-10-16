@@ -578,34 +578,34 @@ public final class Section {
         return 0;
     }
 
-    private static boolean fluid(boolean[] fluid, int id) {
-        return id < fluid.length && fluid[id];
+    private static boolean has(boolean[] marks, int id) {
+        return id < marks.length && marks[id];
     }
 
-    /// Returns the number of blocks other than state 0 shifted left by
-    /// 16, plus the number of blocks that fluid marks.
-    public long tally(boolean[] fluid) {
+    /// Returns the number of blocks that block marks shifted left by 16,
+    /// plus the number of those that fluid also marks.
+    public long tally(boolean[] block, boolean[] fluid) {
         if (bits == 0) {
             int v = pal[0];
-            long air = v == 0 ? 0 : SIZE;
-            return (air << 16) | (fluid(fluid, v) ? SIZE : 0);
+            long n = has(block, v) ? SIZE : 0;
+            return (n << 16) | (has(fluid, v) ? n : 0);
         }
-        if (pal != null && !marked(fluid)) {
+        if (pal != null && !marked(block, fluid)) {
             return (long) SIZE << 16;
         }
         int[] counts = counts();
-        long nonAir = 0;
+        long n = 0;
         long fl = 0;
         for (int q = 0; q < counts.length; q++) {
             int v = pal == null ? q : pal[q];
-            if (v != 0) {
-                nonAir += counts[q];
-            }
-            if (fluid(fluid, v)) {
-                fl += counts[q];
+            if (has(block, v)) {
+                n += counts[q];
+                if (has(fluid, v)) {
+                    fl += counts[q];
+                }
             }
         }
-        return (nonAir << 16) | fl;
+        return (n << 16) | fl;
     }
 
     private int[] counts() {
@@ -621,9 +621,9 @@ public final class Section {
         return counts;
     }
 
-    private boolean marked(boolean[] fluid) {
+    private boolean marked(boolean[] block, boolean[] fluid) {
         for (int id : pal) {
-            if (id == 0 || fluid(fluid, id)) {
+            if (!has(block, id) || has(fluid, id)) {
                 return true;
             }
         }

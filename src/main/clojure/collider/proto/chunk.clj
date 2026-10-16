@@ -68,7 +68,7 @@
       (dotimes [k n] (c/write-varint buf (chunk/palette-id s k))))))
 
 (defn- write-section! [buf s ^long biome]
-  (let [t (chunk/tally s @fluid-arr)]
+  (let [t (chunk/tally s @non-air-arr @fluid-arr)]
     (buf/write-short! buf (unsigned-bit-shift-right t 16))
     (buf/write-short! buf (bit-and t 0xFFFF))
     (buf/write-byte! buf (chunk/section-bits s))
