@@ -542,10 +542,11 @@
 
 (defn- own-vel [world index eid e half height f]
   (let [es (:entities world)
+        took (fn [v s]
+               (if (mobs/flag? (get es (nth s 0)) :aloof?) v (taken v s)))
         shoves (when (push/pushable? (:chunks world) e)
-                 (remove #(mobs/flag? (get es (nth % 0)) :aloof?)
-                         (push/before index eid e half height)))]
-    (pushed (reduce taken (:vel e) shoves) (:push f))))
+                 (push/before index eid e half height))]
+    (pushed (reduce took (:vel e) shoves) (:push f))))
 
 (defn- walked-to ^double [e pos]
   (+ (double (or (:walked e) 0.0))

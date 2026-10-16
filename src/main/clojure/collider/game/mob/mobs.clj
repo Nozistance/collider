@@ -183,7 +183,7 @@
 (defn flag?
   "Returns true when the kind of mob e has flag k."
   [e k]
-  (boolean (get-in types [(:type e) k])))
+  (boolean (get (get types (:type e)) k)))
 
 (defn eating-sound
   "Returns the sound mob e eats with, or nil for a breed that eats
