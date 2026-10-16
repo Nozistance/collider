@@ -13,17 +13,17 @@ import java.util.NoSuchElementException;
 
 /// A node of the radix trie under LongMap and LongSet.
 ///
-/// Keys enter as `u = k ^ Long.MIN_VALUE`, so unsigned order on `u`
-/// is signed order on `k`. A node at `shift` covers the keys whose
-/// bits above `shift + BITS` equal those of `base`. A leaf has shift 0
-/// and one bit per key. A branch has one bit per child slot. A set
-/// node has no values. The shape depends on the key set alone.
+/// Keys enter as u = k ^ Long.MIN_VALUE, so unsigned order on u is
+/// signed order on k. A node at level shift covers the keys whose bits
+/// above shift + BITS equal those of its base. A leaf has shift 0 and
+/// one bit per key. A branch has one bit per child slot. A set node
+/// has no values. The shape depends on the key set alone.
 ///
-/// A node with a non-null `edit` belongs to one transient. Only that
+/// A node with a non-null edit belongs to one transient. Only that
 /// transient writes it in place, and only while it is open.
 final class Node {
 
-    /// Bits of key per trie level. A leaf holds `1 << BITS` keys.
+    /// Bits of key per trie level. A leaf holds 1 << BITS keys.
     static final int BITS = 6;
 
     static final int MASK = (1 << BITS) - 1;
@@ -46,8 +46,7 @@ final class Node {
             int count,
             long bits,
             Node[] kids,
-            Object[] vals
-    ) {
+            Object[] vals) {
         this.edit = edit;
         this.base = base;
         this.shift = shift;
@@ -69,12 +68,16 @@ final class Node {
     }
 
     static long key(Object k) {
-        if (integral(k)) return ((Number) k).longValue();
+        if (integral(k)) {
+            return ((Number) k).longValue();
+        }
         throw new IllegalArgumentException("Key is not an integer: " + k);
     }
 
     static Object value(Object v) {
-        if (v != null) return v;
+        if (v != null) {
+            return v;
+        }
         throw new IllegalArgumentException("Value is nil");
     }
 
@@ -114,8 +117,12 @@ final class Node {
     static Node leafOf(Node n, long u) {
         while (n != null && n.covers(u)) {
             long bit = n.bit(u);
-            if ((n.bits & bit) == 0) return null;
-            if (n.shift == 0) return n;
+            if ((n.bits & bit) == 0) {
+                return null;
+            }
+            if (n.shift == 0) {
+                return n;
+            }
             n = n.kids[index(n.bits, bit)];
         }
         return null;
@@ -126,12 +133,16 @@ final class Node {
     }
 
     Object at(long bit) {
-        if ((bits & bit) == 0) return null;
+        if ((bits & bit) == 0) {
+            return null;
+        }
         return vals == null ? Boolean.TRUE : vals[index(bits, bit)];
     }
 
     static Object valAt(Node root, Object k, Object nf) {
-        if (!integral(k)) return nf;
+        if (!integral(k)) {
+            return nf;
+        }
         long u = u(((Number) k).longValue());
         Node l = leafOf(root, u);
         return l == null ? nf : l.val(u);
@@ -163,7 +174,9 @@ final class Node {
         int c = count + (kid == null ? 1 : kid.count);
         Node[] ks = kid == null ? null : inserted(kids, i, kid);
         Object[] vs = vals == null ? null : inserted(vals, i, v);
-        if (!owned(e)) return new Node(e, base, shift, c, bits | bit, ks, vs);
+        if (!owned(e)) {
+            return new Node(e, base, shift, c, bits | bit, ks, vs);
+        }
         count = c;
         bits |= bit;
         kids = ks;
@@ -175,8 +188,11 @@ final class Node {
         Node n = owned(e)
                 ? this
                 : new Node(e, base, shift, count, bits, clone(kids), clone(vals));
-        if (kid != null) n.kids[i] = kid;
-        else n.vals[i] = v;
+        if (kid != null) {
+            n.kids[i] = kid;
+        } else {
+            n.vals[i] = v;
+        }
         n.count += delta;
         return n;
     }
@@ -184,7 +200,9 @@ final class Node {
     Node drop(long bit, int i, int gone, Object e) {
         Node[] ks = kids == null ? null : removed(kids, i);
         Object[] vs = vals == null ? null : removed(vals, i);
-        if (!owned(e)) return new Node(e, base, shift, count - gone, bits & ~bit, ks, vs);
+        if (!owned(e)) {
+            return new Node(e, base, shift, count - gone, bits & ~bit, ks, vs);
+        }
         count -= gone;
         bits &= ~bit;
         kids = ks;
@@ -197,8 +215,12 @@ final class Node {
     }
 
     static Node put(Node n, long u, Object v, Object e) {
-        if (n == null) return leaf(u, v, e);
-        if (!n.covers(u)) return join(n, leaf(u, v, e), e);
+        if (n == null) {
+            return leaf(u, v, e);
+        }
+        if (!n.covers(u)) {
+            return join(n, leaf(u, v, e), e);
+        }
         long bit = n.bit(u);
         int i = index(n.bits, bit);
         if ((n.bits & bit) == 0) {
@@ -214,16 +236,26 @@ final class Node {
     }
 
     static Node remove(Node n, long u, Object e) {
-        if (n == null || !n.covers(u)) return n;
+        if (n == null || !n.covers(u)) {
+            return n;
+        }
         long bit = n.bit(u);
-        if ((n.bits & bit) == 0) return n;
+        if ((n.bits & bit) == 0) {
+            return n;
+        }
         int i = index(n.bits, bit);
-        if (n.shift == 0) return n.bits == bit ? null : n.drop(bit, i, 1, e);
+        if (n.shift == 0) {
+            return n.bits == bit ? null : n.drop(bit, i, 1, e);
+        }
         Node k = n.kids[i];
         int c = k.count;
         Node k2 = remove(k, u, e);
-        if (k2 == k && k.count == c) return n;
-        if (k2 != null) return n.replace(i, k2, null, k2.count - c, e);
+        if (k2 == k && k.count == c) {
+            return n;
+        }
+        if (k2 != null) {
+            return n.replace(i, k2, null, k2.count - c, e);
+        }
         return Long.bitCount(n.bits) == 2 ? n.kids[1 - i] : n.drop(bit, i, c, e);
     }
 
@@ -238,19 +270,29 @@ final class Node {
     }
 
     static Node kid(Node n, int s, long ns, long bit) {
-        if ((ns & bit) == 0) return null;
+        if ((ns & bit) == 0) {
+            return null;
+        }
         return n.shift == s ? n.kids[index(ns, bit)] : n;
     }
 
     static Node combine(int op, Node a, Node b, IFn f) {
-        if (a == null) return op == UNION ? b : null;
-        if (b == null) return op == INTER ? null : a;
-        if (a == b && f == null) return op == DIFF ? null : a;
+        if (a == null) {
+            return op == UNION ? b : null;
+        }
+        if (b == null) {
+            return op == INTER ? null : a;
+        }
+        if (a == b && f == null) {
+            return op == DIFF ? null : a;
+        }
         Node top = a.shift >= b.shift ? a : b;
         if (apart(top, top == a ? b : a)) {
             return op == UNION ? join(a, b, null) : op == INTER ? null : a;
         }
-        if (top.shift == 0) return leaves(op, a, b, f);
+        if (top.shift == 0) {
+            return leaves(op, a, b, f);
+        }
         int s = top.shift;
         long as = slots(a, s), bs = slots(b, s), all = as | bs;
         Node[] ks = new Node[Long.bitCount(all)];
@@ -259,7 +301,9 @@ final class Node {
         for (long r = all; r != 0; r &= r - 1) {
             long bit = r & -r;
             Node k = combine(op, kid(a, s, as, bit), kid(b, s, bs, bit), f);
-            if (k == null) continue;
+            if (k == null) {
+                continue;
+            }
             ks[n++] = k;
             bm |= bit;
         }
@@ -267,11 +311,19 @@ final class Node {
     }
 
     static Node pack(long base, int s, long bm, Node[] ks, int n, Node a, Node b) {
-        if (n < 2) return n == 0 ? null : ks[0];
-        if (same(a, s, bm, ks, n)) return a;
-        if (same(b, s, bm, ks, n)) return b;
+        if (n < 2) {
+            return n == 0 ? null : ks[0];
+        }
+        if (same(a, s, bm, ks, n)) {
+            return a;
+        }
+        if (same(b, s, bm, ks, n)) {
+            return b;
+        }
         int c = 0;
-        for (int i = 0; i < n; i++) c += ks[i].count;
+        for (int i = 0; i < n; i++) {
+            c += ks[i].count;
+        }
         return new Node(null, base, s, c, bm, Arrays.copyOf(ks, n), null);
     }
 
@@ -288,7 +340,9 @@ final class Node {
             case INTER -> a.bits & b.bits;
             default -> a.bits & ~b.bits;
         };
-        if (bits == 0) return null;
+        if (bits == 0) {
+            return null;
+        }
         if (a.vals == null) {
             return bits == a.bits ? a : bits == b.bits ? b : a.restrict(bits);
         }
@@ -304,24 +358,38 @@ final class Node {
             sameB &= v == vb;
             vs[i] = v;
         }
-        if (sameA) return a;
-        if (sameB) return b;
+        if (sameA) {
+            return a;
+        }
+        if (sameB) {
+            return b;
+        }
         return new Node(null, a.base, 0, vs.length, bits, null, vs);
     }
 
     static Object merged(int op, Object va, Object vb, IFn f) {
-        if (va == null) return vb;
-        if (vb == null || op != UNION) return va;
+        if (va == null) {
+            return vb;
+        }
+        if (vb == null || op != UNION) {
+            return va;
+        }
         return f == null ? vb : value(f.invoke(va, vb));
     }
 
     Node restrict(long keep) {
-        if (keep == bits) return this;
-        if (keep == 0) return null;
+        if (keep == bits) {
+            return this;
+        }
+        if (keep == 0) {
+            return null;
+        }
         Object[] vs = vals == null ? null : new Object[Long.bitCount(keep)];
         int i = 0, j = 0;
         for (long r = bits; vs != null && r != 0; r &= r - 1, i++) {
-            if ((keep & r & -r) != 0) vs[j++] = vals[i];
+            if ((keep & r & -r) != 0) {
+                vs[j++] = vals[i];
+            }
         }
         return new Node(null, base, 0, Long.bitCount(keep), keep, null, vs);
     }
@@ -334,13 +402,17 @@ final class Node {
         if (Long.compareUnsigned(first, lo) >= 0 && Long.compareUnsigned(last, hi) <= 0) {
             return n;
         }
-        if (n.shift == 0) return n.restrict(n.bits & between(n, lo, hi));
+        if (n.shift == 0) {
+            return n.restrict(n.bits & between(n, lo, hi));
+        }
         Node[] ks = new Node[n.kids.length];
         long bm = 0;
         int c = 0;
         for (long r = n.bits; r != 0; r &= r - 1) {
             Node k = range(n.kids[index(n.bits, r & -r)], lo, hi);
-            if (k == null) continue;
+            if (k == null) {
+                continue;
+            }
             ks[c++] = k;
             bm |= r & -r;
         }
@@ -354,19 +426,17 @@ final class Node {
     }
 
     static long first(Node n) {
-        while (n.shift != 0) n = n.kids[0];
+        while (n.shift != 0) {
+            n = n.kids[0];
+        }
         return n.keyAt(n.bits & -n.bits);
     }
 
     static long last(Node n) {
-        while (n.shift != 0) n = n.kids[n.kids.length - 1];
+        while (n.shift != 0) {
+            n = n.kids[n.kids.length - 1];
+        }
         return n.keyAt(Long.highestOneBit(n.bits));
-    }
-
-    static Node withoutVals(Node n) {
-        Node[] ks = n.kids == null ? null : new Node[n.kids.length];
-        for (int i = 0; ks != null && i < ks.length; i++) ks[i] = withoutVals(n.kids[i]);
-        return new Node(null, n.base, n.shift, n.count, n.bits, ks, null);
     }
 
     static long[] keyArray(Node root) {
@@ -392,14 +462,18 @@ final class Node {
         if (n.shift != 0) {
             for (Node k : n.kids) {
                 acc = reduce(k, mode, f, acc);
-                if (RT.isReduced(acc)) return acc;
+                if (RT.isReduced(acc)) {
+                    return acc;
+                }
             }
             return acc;
         }
         int i = 0;
         for (long r = n.bits; r != 0; r &= r - 1, i++) {
             acc = step(mode, f, acc, n.keyAt(r & -r), n.vals == null ? null : n.vals[i]);
-            if (RT.isReduced(acc)) return acc;
+            if (RT.isReduced(acc)) {
+                return acc;
+            }
         }
         return acc;
     }
@@ -423,7 +497,9 @@ final class Node {
         if (n.shift != 0) {
             for (Node k : n.kids) {
                 acc = side(k, old, f, acc);
-                if (RT.isReduced(acc)) return acc;
+                if (RT.isReduced(acc)) {
+                    return acc;
+                }
             }
             return acc;
         }
@@ -432,28 +508,42 @@ final class Node {
         for (long r = n.bits; r != 0; r &= r - 1, i++) {
             Object v = set ? Boolean.TRUE : n.vals[i];
             acc = emit(f, acc, n.keyAt(r & -r), old ? v : null, old ? null : v, set);
-            if (RT.isReduced(acc)) return acc;
+            if (RT.isReduced(acc)) {
+                return acc;
+            }
         }
         return acc;
     }
 
     static Object diff(Node a, Node b, IFn f, Object acc) {
-        if (a == b) return acc;
-        if (a == null) return side(b, false, f, acc);
-        if (b == null) return side(a, true, f, acc);
+        if (a == b) {
+            return acc;
+        }
+        if (a == null) {
+            return side(b, false, f, acc);
+        }
+        if (b == null) {
+            return side(a, true, f, acc);
+        }
         Node top = a.shift >= b.shift ? a : b;
         if (apart(top, top == a ? b : a)) {
             boolean aFirst = Long.compareUnsigned(a.base, b.base) < 0;
             acc = diff(aFirst ? a : null, aFirst ? null : b, f, acc);
-            if (RT.isReduced(acc)) return acc;
+            if (RT.isReduced(acc)) {
+                return acc;
+            }
             return diff(aFirst ? null : a, aFirst ? b : null, f, acc);
         }
-        if (top.shift == 0) return diffLeaves(a, b, f, acc);
+        if (top.shift == 0) {
+            return diffLeaves(a, b, f, acc);
+        }
         int s = top.shift;
         long as = slots(a, s), bs = slots(b, s);
         for (long r = as | bs; r != 0; r &= r - 1) {
             acc = diff(kid(a, s, as, r & -r), kid(b, s, bs, r & -r), f, acc);
-            if (RT.isReduced(acc)) return acc;
+            if (RT.isReduced(acc)) {
+                return acc;
+            }
         }
         return acc;
     }
@@ -462,19 +552,25 @@ final class Node {
         for (long r = a.bits | b.bits; r != 0; r &= r - 1) {
             Object va = a.at(r & -r);
             Object vb = b.at(r & -r);
-            if (va == vb) continue;
+            if (va == vb) {
+                continue;
+            }
             acc = emit(f, acc, a.keyAt(r & -r), va, vb, a.vals == null);
-            if (RT.isReduced(acc)) return acc;
+            if (RT.isReduced(acc)) {
+                return acc;
+            }
         }
         return acc;
     }
 
-    /// The fork-join functions of `clojure.core.reducers`, in the order
-    /// `PersistentHashMap.fold` takes them.
+    /// The fork and join functions of clojure.core.reducers, in the
+    /// order PersistentHashMap.fold takes them.
     record Fork(IFn invoke, IFn task, IFn fork, IFn join) {}
 
     static Object fold(Node n, int leaf, IFn combinef, IFn reducef, int mode, Fork fj) {
-        if (n == null) return combinef.invoke();
+        if (n == null) {
+            return combinef.invoke();
+        }
         return fj.invoke.invoke(new AFn() {
             @Override
             public Object invoke() {
@@ -504,8 +600,6 @@ final class Node {
         return acc;
     }
 
-    /// The root of a transient. It writes in place only the nodes it
-    /// owns, and only until it is made persistent.
     abstract static class Transient extends AFn {
         Node root;
         Object edit = new Object();
@@ -527,7 +621,9 @@ final class Node {
 
         void remove(Object k) {
             Object e = edit();
-            if (integral(k)) root = Node.remove(root, u(((Number) k).longValue()), e);
+            if (integral(k)) {
+                root = Node.remove(root, u(((Number) k).longValue()), e);
+            }
         }
 
         Object find(Object k, Object nf) {
@@ -558,7 +654,9 @@ final class Node {
         Walk(Node root, int mode, boolean reverse) {
             this.mode = mode;
             this.reverse = reverse;
-            if (root != null) todo.push(root);
+            if (root != null) {
+                todo.push(root);
+            }
             advance();
         }
 
@@ -570,9 +668,13 @@ final class Node {
                     rest = n.bits;
                     i = reverse ? n.count - 1 : 0;
                 } else if (reverse) {
-                    for (Node k : n.kids) todo.push(k);
+                    for (Node k : n.kids) {
+                        todo.push(k);
+                    }
                 } else {
-                    for (int j = n.kids.length - 1; j >= 0; j--) todo.push(n.kids[j]);
+                    for (int j = n.kids.length - 1; j >= 0; j--) {
+                        todo.push(n.kids[j]);
+                    }
                 }
             }
         }
@@ -584,13 +686,17 @@ final class Node {
 
         @Override
         public Object next() {
-            if (rest == 0) throw new NoSuchElementException();
+            if (rest == 0) {
+                throw new NoSuchElementException();
+            }
             long bit = reverse ? Long.highestOneBit(rest) : rest & -rest;
             rest &= ~bit;
             long k = leaf.keyAt(bit);
             Object v = leaf.vals == null ? null : leaf.vals[i];
             i += reverse ? -1 : 1;
-            if (rest == 0) advance();
+            if (rest == 0) {
+                advance();
+            }
             return switch (mode) {
                 case ENTRIES -> MapEntry.create(k, v);
                 case VALS -> v;
@@ -640,6 +746,8 @@ final class Node {
     }
 
     static void need(boolean ok, String what) {
-        if (!ok) throw new IllegalStateException("Broken trie, " + what);
+        if (!ok) {
+            throw new IllegalStateException("Broken trie, " + what);
+        }
     }
 }

@@ -8,8 +8,8 @@
            (collider.data LongMap LongSet)))
 
 (defn long-map
-  "Returns a map of the alternating keys and values. Throws on a
-  nil value."
+  "Returns a long map with the alternating keys and values. Throws
+  on a nil value."
   (^LongMap [] LongMap/EMPTY)
   (^LongMap [k v] (.put LongMap/EMPTY (long k) v))
   (^LongMap [k v & kvs]
@@ -19,13 +19,12 @@
   (^LongSet [] LongSet/EMPTY)
   (^LongSet [coll] (into LongSet/EMPTY coll)))
 
+(defn long-map?
+  [x]
+  (instance? LongMap x))
+
 (defn get
   "Returns the value at k in map m, nf or nil when absent."
-  {:inline (fn
-             ([m k] `(.get ~(with-meta m {:tag `LongMap}) (long ~k)))
-             ([m k nf]
-              `(.get ~(with-meta m {:tag `LongMap}) (long ~k) ~nf)))
-   :inline-arities #{2 3}}
   ([^LongMap m ^long k] (.get m k))
   ([^LongMap m ^long k nf] (.get m k nf)))
 
@@ -42,26 +41,18 @@
 
 (defn assoc
   "Returns map m with v at k. Throws when v is nil."
-  {:inline (fn [m k v]
-             `(.put ~(with-meta m {:tag `LongMap}) (long ~k) ~v))}
   ^LongMap [^LongMap m ^long k v]
   (.put m k v))
 
 (defn dissoc
-  {:inline (fn [m k]
-             `(.remove ~(with-meta m {:tag `LongMap}) (long ~k)))}
   ^LongMap [^LongMap m ^long k]
   (.remove m k))
 
 (defn conj
-  {:inline (fn [s k]
-             `(.add ~(with-meta s {:tag `LongSet}) (long ~k)))}
   ^LongSet [^LongSet s ^long k]
   (.add s k))
 
 (defn disj
-  {:inline (fn [s k]
-             `(.remove ~(with-meta s {:tag `LongSet}) (long ~k)))}
   ^LongSet [^LongSet s ^long k]
   (.remove s k))
 
@@ -133,8 +124,8 @@
     (.keys ^LongSet x)))
 
 (defn from-sorted
-  "Returns the set of keys ks, or the map of ks to vs. Throws on a
-  nil value."
+  "Returns the set of keys ks, or the map from ks to vs. Throws on
+  a nil value."
   ([^longs ks] (LongSet/fromSorted ks))
   ([^longs ks ^objects vs] (LongMap/fromSorted ks vs)))
 

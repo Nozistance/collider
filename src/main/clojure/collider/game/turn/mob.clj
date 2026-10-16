@@ -2,6 +2,7 @@
   "Mob turns in a tick."
   (:require [clojure.core.reducers :as r]
             [collider.data :as data]
+            [collider.data.long-map :as lm]
             [collider.game.areas :as areas]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
@@ -29,8 +30,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.motion :as motion])
-  (:import (clojure.lang MapEntry)
-           (collider.data LongMap)))
+  (:import (clojure.lang MapEntry)))
 
 (set! *warn-on-reflection* true)
 
@@ -660,7 +660,7 @@
   "Returns the scan of each entry of map m by f, in key order. The
   parts of a long map scan in parallel."
   ^objects [f m]
-  (if (instance? LongMap m)
+  (if (lm/long-map? m)
     (r/fold scan-leaf scans-joined
             (fn [acc k v] (f acc (MapEntry/create k v))) m)
     (reduce f (scanned) m)))

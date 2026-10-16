@@ -3,7 +3,6 @@
   (:require [clojure.core.reducers :as r]
             [collider.data.long-map :as lm])
   (:import (clojure.lang MapEntry)
-           (collider.data LongMap)
            (java.util.concurrent ForkJoinPool ForkJoinTask)))
 
 (set! *warn-on-reflection* true)
@@ -60,7 +59,7 @@
   "Returns map m as a long map, which runs over its keys in ascending
   order and folds in parallel."
   [m]
-  (if (instance? LongMap m) m (into (lm/long-map) m)))
+  (if (lm/long-map? m) m (into (lm/long-map) m)))
 
 (defn select
   "Returns (into [] xf m) for a transducer xf that keeps no state.
@@ -68,7 +67,7 @@
   entries."
   ([xf m] (select xf m select-leaf))
   ([xf m leaf]
-   (if (instance? LongMap m)
+   (if (lm/long-map? m)
      (let [rf (xf conj)]
        (r/fold leaf joinedv #(rf %1 (MapEntry/create %2 %3)) m))
      (into [] xf m))))

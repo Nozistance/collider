@@ -48,11 +48,13 @@ public final class LongMap extends APersistentMap
     }
 
     LongMap with(Node n) {
-        if (n == root) return this;
+        if (n == root) {
+            return this;
+        }
         return new LongMap(n, meta);
     }
 
-    /// Returns the value at key `k`, or null when the key is absent.
+    /// Returns the value at key k, or null when k is absent.
     public Object get(long k) {
         long u = Node.u(k);
         Node l = Node.leafOf(root, u);
@@ -68,7 +70,7 @@ public final class LongMap extends APersistentMap
         return Node.leafOf(root, Node.u(k)) != null;
     }
 
-    /// Returns the map with `v` at key `k`. Throws when `v` is nil.
+    /// Returns the map with v at key k. Throws when v is nil.
     public LongMap put(long k, Object v) {
         return with(Node.put(root, Node.u(k), Node.value(v), null));
     }
@@ -79,48 +81,48 @@ public final class LongMap extends APersistentMap
 
     /// Returns the least key. Throws when the map is empty.
     public long first() {
-        if (root == null) throw new IllegalStateException("Empty map has no first key");
+        if (root == null) {
+            throw new IllegalStateException("Empty map has no first key");
+        }
         return Node.first(root);
     }
 
     /// Returns the greatest key. Throws when the map is empty.
     public long last() {
-        if (root == null) throw new IllegalStateException("Empty map has no last key");
+        if (root == null) {
+            throw new IllegalStateException("Empty map has no last key");
+        }
         return Node.last(root);
     }
 
-    /// Returns the entries with keys from `lo` to `hi`, both included.
+    /// Returns the entries with keys from lo to hi, both included.
     public LongMap range(long lo, long hi) {
         return with(root == null ? null : Node.range(root, Node.u(lo), Node.u(hi)));
     }
 
-    /// Returns the entries of both maps, values of `o` on shared keys.
+    /// Returns the entries of both maps, with the values of o on shared
+    /// keys.
     public LongMap merge(LongMap o) {
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
 
-    /// Returns the entries of both maps, `(f this-value o-value)` on
-    /// shared keys. Throws when `f` returns nil.
+    /// Returns the entries of both maps, with (f this-value o-value) on
+    /// shared keys. Throws when f returns nil.
     public LongMap merge(LongMap o, IFn f) {
         return with(Node.combine(Node.UNION, root, o.root, f));
     }
 
-    @Override
-    public LongSet keySet() {
-        return root == null ? LongSet.EMPTY : new LongSet(Node.withoutVals(root), null);
-    }
-
-    /// Reduces `(f acc k old new)` over the keys whose values differ
-    /// between this map and `o`, in key order. An absent value is nil.
+    /// Reduces (f acc k old new) over the keys whose values differ
+    /// between this map and o, in key order. An absent value is nil.
     /// Shared parts cost nothing.
     public Object diff(LongMap o, IFn f, Object init) {
         return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
-    /// Reduces the map in parts of at most `n` entries in parallel,
-    /// with `(reducef acc k v)`, and joins the parts in key order with
-    /// `combinef`, on the fork-join functions that
-    /// `PersistentHashMap.fold` takes.
+    /// Reduces the map with (reducef acc k v) in parallel parts of at
+    /// most n entries and joins the parts in key order with combinef.
+    /// The last four arguments are the fork and join functions of
+    /// clojure.core.reducers.
     public Object fold(
             int n,
             IFn combinef,
@@ -128,13 +130,12 @@ public final class LongMap extends APersistentMap
             IFn fjinvoke,
             IFn fjtask,
             IFn fjfork,
-            IFn fjjoin
-    ) {
+            IFn fjjoin) {
         Node.Fork fj = new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin);
         return Node.fold(root, n, combinef, reducef, Node.KV, fj);
     }
 
-    /// Returns the map of keys `ks` to values `vs`. Throws on a nil value.
+    /// Returns the map of keys ks to values vs. Throws on a nil value.
     public static LongMap fromSorted(long[] ks, Object[] vs) {
         return EMPTY.with(Node.fromSorted(ks, vs));
     }
@@ -142,14 +143,6 @@ public final class LongMap extends APersistentMap
     /// Returns the keys in ascending order.
     public long[] keys() {
         return Node.keyArray(root);
-    }
-
-    /// Returns the values in key order.
-    public Object[] vals() {
-        Object[] vs = new Object[count()];
-        int i = 0;
-        for (Iterator<Object> it = valIterator(); it.hasNext(); ) vs[i++] = it.next();
-        return vs;
     }
 
     /// Throws when the trie breaks one of its shape invariants.
@@ -190,7 +183,9 @@ public final class LongMap extends APersistentMap
 
     @Override
     public LongMap assocEx(Object k, Object v) {
-        if (containsKey(k)) throw Util.runtimeException("Key already present");
+        if (containsKey(k)) {
+            throw Util.runtimeException("Key already present");
+        }
         return assoc(k, v);
     }
 
@@ -259,7 +254,9 @@ public final class LongMap extends APersistentMap
 
     @Override
     public LongMap withMeta(IPersistentMap m) {
-        if (m == meta) return this;
+        if (m == meta) {
+            return this;
+        }
         return new LongMap(root, m);
     }
 
@@ -304,12 +301,13 @@ public final class LongMap extends APersistentMap
         @Override
         public ITransientCollection conj(Object o) {
             edit();
-            if (o instanceof Map.Entry<?, ?> e) return assoc(e.getKey(), e.getValue());
+            if (o instanceof Map.Entry<?, ?> e) {
+                return assoc(e.getKey(), e.getValue());
+            }
             if (o instanceof IPersistentVector v) {
                 if (v.count() != 2) {
                     throw new IllegalArgumentException(
-                            "Vector arg to map conj must be a pair"
-                    );
+                            "Vector arg to map conj must be a pair");
                 }
                 return assoc(v.nth(0), v.nth(1));
             }

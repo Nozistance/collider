@@ -1,7 +1,6 @@
 (ns collider.game.entity.stamp
   "Values a level derives from its entities and keeps up to date."
-  (:require [collider.data.long-map :as lm])
-  (:import (collider.data LongMap)))
+  (:require [collider.data.long-map :as lm]))
 
 (set! *warn-on-reflection* true)
 
@@ -16,7 +15,7 @@
         now (entities lv)]
     (cond
       (identical? es now) v
-      (and v (instance? LongMap es) (instance? LongMap now))
+      (and v (lm/long-map? es) (lm/long-map? now))
       (caught v es now)
       :else (made now))))
 

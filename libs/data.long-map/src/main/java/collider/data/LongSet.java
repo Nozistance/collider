@@ -33,7 +33,9 @@ public final class LongSet extends APersistentSet
     }
 
     LongSet with(Node n) {
-        if (n == root) return this;
+        if (n == root) {
+            return this;
+        }
         return new LongSet(n, meta);
     }
 
@@ -51,23 +53,27 @@ public final class LongSet extends APersistentSet
 
     /// Returns the least key. Throws when the set is empty.
     public long first() {
-        if (root == null) throw new IllegalStateException("Empty set has no first key");
+        if (root == null) {
+            throw new IllegalStateException("Empty set has no first key");
+        }
         return Node.first(root);
     }
 
     /// Returns the greatest key. Throws when the set is empty.
     public long last() {
-        if (root == null) throw new IllegalStateException("Empty set has no last key");
+        if (root == null) {
+            throw new IllegalStateException("Empty set has no last key");
+        }
         return Node.last(root);
     }
 
-    /// Returns the keys from `lo` to `hi`, both included.
+    /// Returns the keys from lo to hi, both included.
     public LongSet range(long lo, long hi) {
         return with(root == null ? null : Node.range(root, Node.u(lo), Node.u(hi)));
     }
 
-    /// Returns the keys in either set. Returns this set itself when
-    /// `o` adds nothing.
+    /// Returns the keys in either set, or this set itself when o adds
+    /// none.
     public LongSet union(LongSet o) {
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
@@ -80,16 +86,16 @@ public final class LongSet extends APersistentSet
         return with(Node.combine(Node.DIFF, root, o.root, null));
     }
 
-    /// Reduces `(f acc k added)` in key order over the keys in exactly
-    /// one of this set and `o`. `added` is true for keys of `o`.
+    /// Reduces (f acc k added) in key order over the keys in exactly
+    /// one of this set and o. The flag added is true for keys of o.
     public Object diff(LongSet o, IFn f, Object init) {
         return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
-    /// Reduces the set in parts of at most `n` keys in parallel, with
-    /// `(reducef acc k)`, and joins the parts in key order with
-    /// `combinef`, on the fork-join functions that
-    /// `PersistentHashMap.fold` takes.
+    /// Reduces the set with (reducef acc k) in parallel parts of at
+    /// most n keys and joins the parts in key order with combinef. The
+    /// last four arguments are the fork and join functions of
+    /// clojure.core.reducers.
     public Object fold(
             int n,
             IFn combinef,
@@ -97,8 +103,7 @@ public final class LongSet extends APersistentSet
             IFn fjinvoke,
             IFn fjtask,
             IFn fjfork,
-            IFn fjjoin
-    ) {
+            IFn fjjoin) {
         Node.Fork fj = new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin);
         return Node.fold(root, n, combinef, reducef, Node.KEYS, fj);
     }
@@ -192,7 +197,9 @@ public final class LongSet extends APersistentSet
 
     @Override
     public LongSet withMeta(IPersistentMap m) {
-        if (m == meta) return this;
+        if (m == meta) {
+            return this;
+        }
         return new LongSet(root, m);
     }
 
