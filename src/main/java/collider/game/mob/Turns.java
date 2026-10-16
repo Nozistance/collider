@@ -62,13 +62,13 @@ public final class Turns extends CountedCompleter<Void> {
         this.moving = false;
     }
 
-    /// Calls `mind` before `body` with the index of each body of the
-    /// pinned grid `g`, and `join` with each index in ascending order.
-    /// The call of `body` with index s waits for the calls with each
+    /// Calls mind before body with the index of each body of the
+    /// pinned grid g, and join with each index in ascending order.
+    /// The call of body with index s waits for the calls with each
     /// body of lower index that s could meet in a tick in which no
-    /// body moves further than `reach` along x or z. The call of
-    /// `join` with s follows the calls of `body` with s and each lower
-    /// index, and no two calls of `join` overlap.
+    /// body moves further than reach along x or z. The call of
+    /// join with s follows the calls of body with s and each lower
+    /// index, and no two calls of join overlap.
     public static void run(PushGrid g, double reach, IFn mind, IFn body, IFn join) {
         new Turns(g, 2.0 * reach + 1.0E-4, mind, body, join).invoke();
     }

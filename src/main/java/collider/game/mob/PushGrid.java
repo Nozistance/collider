@@ -32,8 +32,8 @@ public final class PushGrid {
     private byte[] rules;
     private int[] teams;
 
-    /// The ids `eids` ascend. Every other array holds the body of
-    /// `eids` at the same index.
+    /// The ids eids ascend. Every other array holds the body of
+    /// eids at the same index.
     PushGrid(
             long[] eids,
             double[] halfs,
@@ -67,7 +67,7 @@ public final class PushGrid {
         return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
     }
 
-    /// Returns the push cell of four columns that holds coordinate `c`.
+    /// Returns the push cell of four columns that holds coordinate c.
     static long cell(double c) {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
@@ -93,15 +93,15 @@ public final class PushGrid {
         next[p] = next[s];
     }
 
-    /// Returns the index of body `eid` in `g`, or -1 for a body that
+    /// Returns the index of body eid in g, or -1 for a body that
     /// is not in it.
     public static long slot(PushGrid g, long eid) {
         int s = Arrays.binarySearch(g.eids, eid);
         return s < 0 ? -1 : s;
     }
 
-    /// Moves body `eid` of `g` and returns `g`. The tick `c` and the
-    /// rank `r` place it among the bodies of its section.
+    /// Moves body eid of g and returns g. The tick c and the
+    /// rank r place it among the bodies of its section.
     public static PushGrid moved(
             PushGrid g,
             long eid,
@@ -134,9 +134,9 @@ public final class PushGrid {
         return g;
     }
 
-    /// Keeps each body of grid `g` in the column it stands in now,
+    /// Keeps each body of grid g in the column it stands in now,
     /// for the moves of a tick in which no body moves further than
-    /// `reach` along x or z, and no body changes its box. Returns `g`,
+    /// reach along x or z, and no body changes its box. Returns g,
     /// which many readers may share while the bodies move.
     public static PushGrid pinned(PushGrid g, double reach) {
         g.slack = reach;
@@ -146,8 +146,8 @@ public final class PushGrid {
         return g;
     }
 
-    /// Returns `g`, in which each body meets the others as the
-    /// collision rule `rules` of its team `teams` lets it, by index.
+    /// Returns g, in which each body meets the others as the
+    /// collision rule rules of its team teams lets it, by index.
     /// A body of no team is in team -1 with rule 0.
     public static PushGrid teamed(PushGrid g, byte[] rules, int[] teams) {
         g.rules = rules;
@@ -264,10 +264,10 @@ public final class PushGrid {
         }
     }
 
-    /// Returns the shoves between the body `eid` of half width `half`
-    /// and height `height` at `x`, `y`, `z` and each body it overlaps
-    /// whose id is below `hi`. Below a bound `hi`, only the bodies
-    /// that step this tick count. Each shove `[id dx dz]` moves this
+    /// Returns the shoves between the body eid of half width half
+    /// and height height at x, y, z and each body it overlaps
+    /// whose id is below hi. Below a bound hi, only the bodies
+    /// that step this tick count. Each shove [id dx dz] moves this
     /// body by dx dz and the other body the opposite way. The shoves
     /// are not summed.
     public static Object shoves(
@@ -304,8 +304,8 @@ public final class PushGrid {
     }
 
     /// Returns the ids of the bodies whose boxes overlap the box of
-    /// the body `eid` of half width `half` and height `height` at
-    /// `x`, `y`, `z`.
+    /// the body eid of half width half and height height at
+    /// x, y, z.
     public static Object touching(
             PushGrid g,
             double x,
@@ -334,9 +334,9 @@ public final class PushGrid {
         return LazilyPersistentVector.createOwning(a);
     }
 
-    /// Returns the number of bodies of lower id that body `s` could
+    /// Returns the number of bodies of lower id that body s could
     /// meet in a tick in which no body moves further than half of
-    /// `far` along x or z, followed by the indices of such bodies of
+    /// far along x or z, followed by the indices of such bodies of
     /// higher id. It reads the places the bodies had when the grid
     /// was pinned.
     int[] near(int s, double far) {

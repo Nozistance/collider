@@ -65,8 +65,8 @@ public final class Islands {
         return out;
     }
 
-    /// Returns the indices of the bodies with ids `eids` in cells
-    /// `keys`, in groups. Each group is in the order of its ids and
+    /// Returns the indices of the bodies with ids eids in cells
+    /// keys, in groups. Each group is in the order of its ids and
     /// the groups are in the order of their first id.
     public static int[][] of(long[] eids, long[] keys) {
         int n = eids.length;

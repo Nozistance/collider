@@ -19,8 +19,8 @@ public final class Bodies {
     private int n;
     private ArrayList<Bodies> rest;
 
-    /// Adds body `eid` to `b` and returns `b`. The tick `came` and the
-    /// `rank` place it among the bodies of its section.
+    /// Adds body eid to b and returns b. The tick came and the
+    /// rank place it among the bodies of its section.
     public static Bodies add(
             Bodies b,
             Object entry,
@@ -64,8 +64,8 @@ public final class Bodies {
         ticking = Arrays.copyOf(ticking, size);
     }
 
-    /// Adds to `b` the bodies of `o` after its own and returns `b`.
-    /// No body may be added to `o` after.
+    /// Adds to b the bodies of o after its own and returns b.
+    /// No body may be added to o after.
     public static Bodies joined(Bodies b, Bodies o) {
         if (b.rest == null) {
             b.rest = new ArrayList<>();
@@ -103,7 +103,7 @@ public final class Bodies {
         rest = null;
     }
 
-    /// Returns the indices in `b` of its bodies, in the groups whose
+    /// Returns the indices in b of its bodies, in the groups whose
     /// cells of the push grid touch. Each group ascends by id, and the
     /// groups go by their first id.
     public static int[][] islands(Bodies b) {
@@ -143,7 +143,7 @@ public final class Bodies {
         return out;
     }
 
-    /// Returns the push grid of the bodies of `b` at indices `g`,
+    /// Returns the push grid of the bodies of b at indices g,
     /// which ascend by id.
     public static PushGrid grid(Bodies b, int[] g) {
         b.packed();
