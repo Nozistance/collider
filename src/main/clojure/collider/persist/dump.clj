@@ -105,12 +105,16 @@
     (printed ring w)
     (str w)))
 
+(defn write!
+  "Writes the ticks of ring to file."
+  [ring file]
+  (try (io/make-parents file)
+       (with-open [w (io/writer file)] (printed ring w))
+       (log/info "dumped" (count ring) "ticks to" file)
+       (catch Throwable t
+         (log/warn "could not dump to" file (ex-message t)))))
+
 (defn dump!
   "Writes the ticks of ring to file away from the caller."
   [ring file]
-  (Thread/startVirtualThread
-    #(try (io/make-parents file)
-          (with-open [w (io/writer file)] (printed ring w))
-          (log/info "dumped" (count ring) "ticks to" file)
-          (catch Throwable t
-            (log/warn "could not dump to" file (ex-message t))))))
+  (Thread/startVirtualThread #(write! ring file)))

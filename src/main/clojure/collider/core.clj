@@ -24,6 +24,8 @@
            (collider.game.deltas.record Deltas)
            (java.lang.management ManagementFactory)
            (java.net BindException ServerSocket URL)
+           (java.time LocalDateTime)
+           (java.time.format DateTimeFormatter)
            (java.util Queue)
            (java.util.concurrent LinkedBlockingQueue)))
 
@@ -199,8 +201,19 @@
          {:writable   (server/writable-eids conns)
           :read-chunk read-chunk})))
 
-(defn- on-crash [handle]
-  (fn [_]
+(def ^:private ^:const crash-ticks 20)
+
+(defn- crash-file []
+  (str "dumps/crash-"
+       (.format (DateTimeFormatter/ofPattern "yyyyMMdd-HHmmss")
+                (LocalDateTime/now))
+       ".edn"))
+
+(defn- on-crash [handle ring]
+  (fn [{:keys [events]}]
+    (-> (into dump/empty-ring (take-last crash-ticks @ring))
+        (dump/recorded (inc crash-ticks) :failed events nil)
+        (dump/write! (crash-file)))
     (let [exit! (fn [code] (System/exit code))]
       (Thread/startVirtualThread ^Runnable #(halt! @handle exit!)))))
 
@@ -212,7 +225,7 @@
            :on-tick (recording (:ring base))
            :settings (:settings base)
            :on-pause (commit-now base)
-           :on-crash (on-crash (:handle base))}
+           :on-crash (on-crash (:handle base) (:ring base))}
     (:phases base) (assoc :phases (:phases base))))
 
 (defn- period-change [timer]

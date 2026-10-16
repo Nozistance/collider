@@ -234,7 +234,8 @@
         world (first (opened! st world-atom opts))]
     (if-let [done (closed-or-nil st world-atom opts world events)]
       (ticked! st world-atom deliver! opts events done)
-      (reset! carried fresh))
+      (do (reset! carried fresh)
+          (reset! (:failed st) (into @(:heard st) events))))
     (reset-tick! st)
     @(:failures world)))
 
@@ -263,13 +264,14 @@
           (when (<= crash-streak (long n)) [unit n t]))
         streaks))
 
-(defn- crash! [{:keys [running]} opts [unit n t]]
+(defn- crash! [{:keys [running failed]} opts [unit n t]]
   (log/error "the server crashed")
   (log/error unit "failed" n "ticks in a row")
   (log/error-with "its last failure" t)
   (log/error "saving the world and stopping")
   (stop! running)
-  (when-let [f (:on-crash opts)] (f {:unit unit :ticks n :cause t})))
+  (when-let [f (:on-crash opts)]
+    (f {:unit unit :ticks n :cause t :events @failed})))
 
 (defn- supervised! [st opts failures]
   (let [s (swap! (:streaks st) streaks failures)]
@@ -281,6 +283,7 @@
    :counter (AtomicLong. 0)
    :stamps  (long-array tps-window)
    :carried (atom [])
+   :failed  (atom [])
    :open    (atom nil)
    :heard   (atom [])
    :held    (atom [])
