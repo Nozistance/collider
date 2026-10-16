@@ -35,8 +35,8 @@ public final class PathNode {
         malus = fl(m);
     }
 
-    /// Returns the path type of the cell, as its place in the order
-    /// the game declares them.
+    /// Returns the path type of the cell as its index among the path
+    /// types.
     public int kind() {
         return kind;
     }

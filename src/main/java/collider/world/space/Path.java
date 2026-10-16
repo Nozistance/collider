@@ -57,10 +57,10 @@ public final class Path {
     private final Scratch<Integer> typed = new Scratch<>(256);
 
     /// Makes one search for mob over chunks from minY up. For each
-    /// block state, the arrays types, forced and water hold its path
-    /// type, the type it forces upon neighbours (-1 for none) and
-    /// whether it is water. For each path type, the array malus holds
-    /// the malus of the mob and baseMalus the default one.
+    /// block state, types, forced and water hold its path type, the
+    /// type it forces upon neighbours (-1 for none) and whether it is
+    /// water. For each path type, malus holds the malus of the mob and
+    /// baseMalus the default one.
     public Path(
             ChunkIndex chunks,
             long minY,

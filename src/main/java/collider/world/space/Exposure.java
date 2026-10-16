@@ -26,9 +26,8 @@ public final class Exposure {
     private byte columnsRead;
 
     /// Makes the exposure of a blast at cx, cy, cz through the sections
-    /// of rg, with nothing read yet. For each block state, the array
-    /// shapes holds its collision boxes at the origin and the array
-    /// kinds its collision kind.
+    /// of rg, with nothing read yet. For each block state, shapes holds
+    /// its collision boxes at the origin and kinds its collision kind.
     public Exposure(
             SectionGrid rg,
             Object[] shapes,
