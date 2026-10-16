@@ -255,7 +255,7 @@ public final class Region {
 
     /// Returns the bytes of chunk id, or null when it has no record. A
     /// record whose crc fails gives way to the one before it. Throws
-    /// DataFormatException when no record of it reads.
+    /// DataFormatException when no record of it is readable.
     public byte[] get(long id) throws IOException, DataFormatException {
         long a = at[slot(id)];
         if (a == 0) {
@@ -265,7 +265,7 @@ public final class Region {
         return data != null ? data : older(a - 1, id);
     }
 
-    /// Returns the chunks with a record, by z and by x in a row.
+    /// Returns the chunks with a record, sorted by z and by x within a row.
     public long[] chunks() {
         int n = 0;
         long[] ids = new long[SIDE * SIDE];
@@ -283,7 +283,7 @@ public final class Region {
     }
 
     /// Returns a new region of generation gen with the live records
-    /// alone. A chunk that no record of reads is left out.
+    /// alone. A chunk with no readable record is left out.
     public Region compact(long gen) throws IOException {
         Region r = create(log.path.getParent(), key, gen);
         try {

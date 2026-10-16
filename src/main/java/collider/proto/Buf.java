@@ -172,9 +172,9 @@ public final class Buf {
         return len;
     }
 
-    /// Writes s as its length in bytes in two bytes and its chars in
-    /// modified UTF-8. The char 0 takes two bytes and each surrogate
-    /// three. Throws past 65535 bytes of chars.
+    /// Writes s as a two-byte length and its chars in modified UTF-8.
+    /// The char 0 takes two bytes and each surrogate three. Throws past
+    /// 65535 bytes of chars.
     public void writeModifiedUtf(String s) throws UTFDataFormatException {
         int len = utfLength(s);
         if (len > 65535) {
@@ -208,8 +208,8 @@ public final class Buf {
         return new UTFDataFormatException("malformed input: partial character at end");
     }
 
-    /// Reads a string as its length in bytes in two bytes and its chars
-    /// in modified UTF-8. Throws on a malformed or cut char.
+    /// Returns the string at the read position, as a two-byte length and
+    /// its chars in modified UTF-8. Throws on a malformed or cut char.
     public String readModifiedUtf() throws UTFDataFormatException {
         int len = readUnsignedShort();
         checkRead(len);

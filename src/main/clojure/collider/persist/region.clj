@@ -43,12 +43,13 @@
 
 (defn chunk-bytes
   "Returns the bytes of chunk id in r, or nil when r lacks it. Throws
-  when no record of it reads."
+  when no record of it is readable."
   [^Region r ^long id]
   (.get r id))
 
 (defn chunks
-  "Returns the chunks with a record in r, by z and by x in a row."
+  "Returns the chunks with a record in r, sorted by z and by x
+  within a row."
   [^Region r]
   (.chunks r))
 
