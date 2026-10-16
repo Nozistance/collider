@@ -225,25 +225,31 @@
                           [oid]))))
             nil (par/keyed (:entities world)))))
 
+(defn- cut
+  "Returns the move from from to to, rounded as their difference."
+  [from to]
+  [(- (v/x to) (v/x from)) (- (v/y to) (v/y from))
+   (- (v/z to) (v/z from))])
+
 (defn span
   "Returns d as it moves from, rounded as the sum from + d."
   [from d]
-  (let [to (v/add from d)]
-    [(- (v/x to) (v/x from)) (- (v/y to) (v/y from))
-     (- (v/z to) (v/z from))]))
+  (cut from (v/add from d)))
 
 (defn clip
   "Returns the first block or body that projectile e of eid meets
-  moving by d, or nil."
+  moving by d, with the point it meets it at, or nil. A body is
+  sought on the ray cut short at the block."
   [world eid e d]
   (let [from (:pos e)
         d (span from d)
         b (block-clip world from d)
+        to (when b (point from d (b 0)))
+        d (if b (cut from to) d)
         x (entity-clip world eid e from d)]
     (cond
-      (and x (or (nil? b) (<= (double (x 0)) (double (b 0)))))
-      {:kind :entity :t (x 0) :target (nth x 2)}
-      b {:kind :block :t (b 0) :face (b 1) :cell (nth b 2)})))
+      x {:kind :entity :at (point from d (x 0)) :target (nth x 2)}
+      b {:kind :block :at to :face (b 1) :cell (nth b 2)})))
 
 (defn left-owner?
   "Returns true once projectile e moving by d no longer touches its

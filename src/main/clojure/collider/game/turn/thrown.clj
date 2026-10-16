@@ -459,9 +459,7 @@
   (let [d (drift world e)
         left? (projectile/left-owner? world e d)
         hit (projectile/clip world eid (assoc e :left-owner? left?) d)
-        at (if hit
-             (projectile/point (:pos e) (projectile/span (:pos e) d) (:t hit))
-             (v/add (:pos e) d))]
+        at (if hit (:at hit) (v/add (:pos e) d))]
     (cond
       (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       hit (into [[:remove-entity eid]]
