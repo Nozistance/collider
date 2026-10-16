@@ -5,7 +5,8 @@
             [clojure.string :as str]
             [collider.log :as log]
             [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me])
+  (:import (java.util Random)))
 
 (set! *warn-on-reflection* true)
 
@@ -90,7 +91,7 @@
   when its level-seed is blank."
   ^long [cfg]
   (or (parsed-seed (:level-seed cfg ""))
-      (.nextLong (java.util.Random.))))
+      (.nextLong (Random.))))
 
 (def world-keys
   "The settings that the world holds for the tick."

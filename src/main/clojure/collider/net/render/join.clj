@@ -29,10 +29,9 @@
   "Returns the seed the client gets for the world seed, the first
   eight bytes of its SHA-256."
   ^long [^long seed]
-  (let [b (.array (.putLong (little-endian (byte-array 8)) seed))]
-    (.getLong (little-endian (.digest (MessageDigest/getInstance
-                                        "SHA-256")
-                                      b)))))
+  (let [b (.array (.putLong (little-endian (byte-array 8)) seed))
+        sha (MessageDigest/getInstance "SHA-256")]
+    (.getLong (little-endian (.digest sha b)))))
 
 (defn- spawn-info [lv e]
   (let [dim (:dim lv :overworld)]

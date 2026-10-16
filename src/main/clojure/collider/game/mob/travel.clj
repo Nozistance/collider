@@ -543,7 +543,9 @@
 (defn- own-vel [world index eid e half height f]
   (let [es (:entities world)
         took (fn [v s]
-               (if (mobs/flag? (get es (nth s 0)) :aloof?) v (taken v s)))
+               (if (mobs/flag? (get es (nth s 0)) :aloof?)
+                 v
+                 (taken v s)))
         shoves (when (push/pushable? (:chunks world) e)
                  (push/before index eid e half height))]
     (pushed (reduce took (:vel e) shoves) (:push f))))
@@ -568,9 +570,11 @@
         moving? (not (zero? (double (:zza (:move e) 0.0))))
         vel (own-vel world index eid e h ht f)
         [vel yaw] (or (driven-by e vel) [vel nil])
-        rest? (at-rest? world e h moving? (in-fluid? f) vel)]
-    (cond-> (if rest? (rest-move e f) (physics-move world e vel h ht f))
-      yaw (assoc :yaw yaw))))
+        rest? (at-rest? world e h moving? (in-fluid? f) vel)
+        tr (if rest?
+             (rest-move e f)
+             (physics-move world e vel h ht f))]
+    (cond-> tr yaw (assoc :yaw yaw))))
 
 (defn- settled
   [e {og :on-ground cd :jump-cd sup :support nb? :no-blocks?} pos fall

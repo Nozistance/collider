@@ -17,9 +17,8 @@
   (unchecked-add (Long/rotateLeft (unchecked-add lo hi) 17) lo))
 
 (defn- of-pair [^long lo ^long hi]
-  (map drawn (iterate step (if (zero? (bit-or lo hi))
-                             [golden silver]
-                             [lo hi]))))
+  (let [s (if (zero? (bit-or lo hi)) [golden silver] [lo hi])]
+    (map drawn (iterate step s))))
 
 (defn seeded
   "Returns the longs the random of seed gives, in order."
@@ -32,10 +31,9 @@
   (let [s (bit-xor (long (unchecked-multiply-int (int x) 3129871))
                    (unchecked-multiply (long z) 116129781)
                    (long y))
-        s (unchecked-add (unchecked-multiply (unchecked-multiply s s)
-                                             42317861)
-                         (unchecked-multiply s 11))]
-    (bit-shift-right s 16)))
+        a (unchecked-multiply (unchecked-multiply s s) 42317861)
+        b (unchecked-multiply s 11)]
+    (bit-shift-right (unchecked-add a b) 16)))
 
 (defn positional
   "Returns the longs the random of seed forked for block pos gives."
@@ -47,10 +45,9 @@
   "Returns a whole number from 0 below bound drawn from the longs
   xs, paired with the longs left."
   [xs ^long bound]
-  (let [bits #(bit-and (long (first %)) 0xFFFFFFFF)
-        least (Integer/remainderUnsigned (int (- bound)) (int bound))]
+  (let [least (Integer/remainderUnsigned (int (- bound)) (int bound))]
     (loop [xs xs]
-      (let [m (* (long (bits xs)) bound)]
+      (let [m (* (bit-and (long (first xs)) 0xFFFFFFFF) bound)]
         (if (< (bit-and m 0xFFFFFFFF) least)
           (recur (rest xs))
           [(bit-shift-right m 32) (rest xs)])))))

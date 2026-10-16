@@ -162,11 +162,12 @@
     (vector? x) (saved-in x)
     :else x))
 
+(defn- kind [stack] (saved (dissoc stack :count)))
+
 (defn same-kind?
   "Returns true when stacks a and b differ in count at most."
   [a b]
-  (let [kind #(saved (dissoc % :count))]
-    (boolean (and a b (= (kind a) (kind b))))))
+  (boolean (and a b (= (kind a) (kind b)))))
 
 (defn shrunk
   "Returns stack with k fewer items, or nil when none stay."
