@@ -264,7 +264,7 @@
   [0 2 3 4 5])
 
 (defn- spawn-rotation [tr kind k now]
-  (if-let [a (and tr (entity/thrown-types kind) (get tr k))]
+  (if-let [a (and tr (not (hanging/types kind)) (get tr k))]
     (/ (* (double a) 360.0) 256.0)
     now))
 
@@ -279,10 +279,10 @@
         (hanging/types kind) (dir/index (:facing e))
         :else 0))
 
-(defn- spawn-head-yaw [e kind]
-  (if (or (entity/thrown-types kind) (hanging/types kind))
-    0.0
-    (or (:head-yaw e) (:yaw e 0.0))))
+(defn- spawn-head-yaw [e tr kind]
+  (if (entity/living? e)
+    (spawn-rotation tr kind :head (or (:head-yaw e) (:yaw e 0.0)))
+    0.0))
 
 (defn- add-entity-packet [eid e tr kind]
   {:packet :add-entity :eid eid :uuid (entity/uuid-of eid e)
@@ -291,7 +291,7 @@
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
    :yaw    (spawn-rotation tr kind :yaw (:yaw e 0.0))
    :pitch  (spawn-rotation tr kind :pitch (:pitch e 0.0))
-   :head-yaw (spawn-head-yaw e kind)
+   :head-yaw (spawn-head-yaw e tr kind)
    :data   (spawn-data e kind)})
 
 (defn- equipment-of [tr]

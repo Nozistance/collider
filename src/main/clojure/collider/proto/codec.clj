@@ -3,6 +3,7 @@
   (:refer-clojure :exclude [read-string])
   (:require [collider.cell :as cell]
             [collider.data :as data]
+            [collider.num :as num]
             [collider.proto.buf :as buf])
   (:import (collider.proto Buf)
            (java.nio.charset StandardCharsets)
@@ -109,8 +110,7 @@
 (defn write-angle
   "Writes a rotation in degrees as one byte."
   [^Buf buf ^double deg]
-  (buf/write-byte!
-    buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
+  (buf/write-byte! buf (num/pack-degrees deg)))
 
 (defn read-angle
   "Returns the rotation at the read point in degrees."

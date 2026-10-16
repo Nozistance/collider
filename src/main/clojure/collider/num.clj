@@ -45,6 +45,13 @@
   ^double [^double a ^double b]
   (double (unchecked-float (/ a b))))
 
+(defn pack-degrees
+  "Returns angle a in degrees as a signed byte, 256 steps a turn,
+  computed in floats and floored to an int that saturates."
+  ^long [^double a]
+  (let [steps (fdiv (fmul (f32 a) 256.0) 360.0)]
+    (long (unchecked-byte (unchecked-int (Math/floor steps))))))
+
 (def ^:private ^:const deg-per-rad
   (let [pi (double (unchecked-float Math/PI))]
     (double (unchecked-float (/ 180.0 pi)))))

@@ -13,6 +13,7 @@
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.systems.tracker.track :refer [->Track]]
+            [collider.num :as num]
             [collider.vec :as vv])
   (:import (collider.game.deltas.record Deltas)
            (collider.game.systems.tracker.track Frame Track)))
@@ -42,8 +43,8 @@
 (defn- fixed
   ^long [v] (Math/round (* (double v) pos-unit)))
 
-(defn- angle
-  ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
+(defn- head-yaw ^double [e]
+  (if (entity/living? e) (double (or (:head-yaw e) (:yaw e))) 0.0))
 
 (def ^:private packed
   "The keys that share one field of entity data. A change to one sends
@@ -94,7 +95,8 @@
 (defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
     (->Track [(double x) (double y) (double z)]
-             (angle yaw) (angle pitch) (angle (or (:head-yaw e) yaw))
+             (num/pack-degrees yaw) (num/pack-degrees pitch)
+             (num/pack-degrees (head-yaw e))
              (boolean on-ground)
              (or (:kept-mdata e) (metadata/of e))
              (equipment-stacks e)
@@ -255,8 +257,9 @@
         dy (- (fixed y) (fixed by))
         dz (- (fixed z) (fixed bz))
         ticks (- (long t) (long (tr-t0 tr)))
-        yaw (angle (:yaw e)) pitch (angle (:pitch e))
-        head (angle (or (:head-yaw e) (:yaw e)))
+        yaw (num/pack-degrees (:yaw e))
+        pitch (num/pack-degrees (:pitch e))
+        head (num/pack-degrees (head-yaw e))
         ground (boolean (:on-ground e))
         since (if due?
                 (inc (long (tr-since-tp tr)))
