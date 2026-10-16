@@ -41,7 +41,6 @@
          (not (pos? (long (or (:fire e) 0))))
          (not (:burning? e))
          (zero? (long (or (:hurt-resist e) 0)))
-         (nil? (:landed e))
          (nil? (:struck-by e))
          (>= health (double (or (:health-sent e) health))))))
 
@@ -52,7 +51,6 @@
 (defn- busy-deltas [world eid e]
   (let [ds (concat (hurt/timer-deltas world eid e)
                    (removal-deltas world eid e)
-                   (hurt/landing-deltas world eid e)
                    (hurt/fire-deltas world eid e))]
     (->> (concat (hurt/burnt-deltas world eid e) ds)
          (hurt/hurt-now world eid e)

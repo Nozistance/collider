@@ -683,31 +683,6 @@
         [ds dead?] (hurt-deltas-of world eid e hurts)]
     (concat fire-ds ds (when dead? (gone-deltas world eid e)))))
 
-(def ^:private ^:const safe-fall 3.0)
-
-(defn- ground-state [world pos]
-  (chunk/at
-    (:chunks world)
-    [(long (Math/floor (v/x pos)))
-     (long (Math/floor (- (v/y pos) 0.2)))
-     (long (Math/floor (v/z pos)))]))
-
-(defn- landing-particles [world e ^double fall]
-  (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
-        pos (:pos e)
-        st (ground-state world pos)]
-    (when (and (pos? power) (not (block/air? st)))
-      (let [scale (min (+ 0.2 (/ power 15.0)) 2.5)
-            at [(v/x pos) (v/y pos) (v/z pos)]
-            n (long (* 150.0 scale))]
-        [(out/all (out/particles :block st at n 0.15))]))))
-
-(defn landing-deltas
-  [world eid e]
-  (when-let [fall (:landed e)]
-    (concat [[:merge-entity eid {:landed nil}]]
-            (landing-particles world e (double fall)))))
-
 (defn- loading? [world e]
   (and (entity/player? e)
        (not (player/client-loaded? e (inc (long (:tick world)))))))

@@ -136,7 +136,8 @@
    :event (fn [_ pos [_ id]] [(out/all (out/level-event id pos 0))])
    :trail (fn [_ pos [_ target color ticks]]
             (let [at (mapv #(+ (double %) 0.5) pos)]
-              [(out/all (out/trail at target color ticks))]))
+              [(out/all (out/particles :trail [target color ticks]
+                                       at 1 0.0))]))
    :geyser-start (fn [_ pos [_ st]] (sulfur-placed-fx pos st))
    :reset-countdown (fn [world pos _] (countdown-reset world pos))})
 

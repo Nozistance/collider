@@ -10,6 +10,7 @@
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
+            [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
@@ -37,6 +38,7 @@
    scaffold/rule
    composter/rule
    lectern/rule
+   lightning-rod/rule
    leaves/rule])
 
 (defn- find-rule [st]

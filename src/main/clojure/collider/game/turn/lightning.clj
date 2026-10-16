@@ -1,7 +1,8 @@
 (ns collider.game.turn.lightning
-  "The turn of a lightning bolt. It sets fire, cleans copper and hits
-  the bodies around it while it flashes."
-  (:require [collider.game.apply :as apply]
+  "The turn of a lightning bolt. It sets fire, powers a rod, cleans
+  copper and hits the bodies around it while it flashes."
+  (:require [collider.cell :as cell]
+            [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.deltas :as deltas]
             [collider.game.changes :as changes]
@@ -15,6 +16,7 @@
             [collider.world.block :as block]
             [collider.world.block.oxidation :as oxidation]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.support :as support]
             [collider.world.env.difficulty :as difficulty]))
 
@@ -80,19 +82,36 @@
         (recur q (inc i) (scraped-at world cur q) (conj fx (spark q)))
         [cur fx]))))
 
-(defn- copper-deltas
-  "Returns the deltas of a bolt cleaning the copper at the struck cell
-  p, a first stage for it and a few random walks that scrape."
-  [world eid p]
-  (let [st (changes/block-at world p)]
-    (when (or (oxidation/ages? st) (oxidation/unwaxed st))
-      (let [cur (if (oxidation/ages? st) {p (first-stage st)} {})
-            walks (+ 3 (random/below (roll world eid :walks) 3))
-            [cur fx] (reduce #(walked world eid p %1 %2) [cur []]
-                             (range walks))]
-        (concat (when (seq cur)
-                  (changes/change-deltas world (vec cur)))
-                fx)))))
+(defn- copper
+  "Returns the cells cur with the copper at the struck cell p cleaned,
+  a first stage for it and a few random walks that scrape, and the
+  sparks fx after them."
+  [world eid p [cur fx]]
+  (let [st (state-at world cur p)
+        ages? (oxidation/ages? st)]
+    (if (or ages? (oxidation/unwaxed st))
+      (let [cur (cond-> cur ages? (assoc p (first-stage st)))
+            walks (+ 3 (random/below (roll world eid :walks) 3))]
+        (reduce #(walked world eid p %1 %2) [cur fx] (range walks)))
+      [cur fx])))
+
+(defn- rod
+  "Returns the cells and the effects of a bolt that powers the rod at
+  the struck cell p, none when p holds no rod."
+  [world p]
+  (let [st (changes/block-at world p)
+        due (+ (long (:tick world)) lightning-rod/powered-ticks)
+        spark #(out/level-event :particles-electric-spark p
+                                (lightning-rod/axis-id st))]
+    (if (lightning-rod/rod? st)
+      [{p (lightning-rod/powered st true)}
+       [[:schedule-ticks {due [(cell/pack p)]}] (out/all (spark))]]
+      [{} []])))
+
+(defn- struck-deltas [world eid p]
+  (let [[cur fx] (copper world eid p (rod world p))]
+    (concat (when (seq cur) (changes/change-deltas world (vec cur)))
+            fx)))
 
 (defn- struck-cell [[x y z]]
   (v/cell [x (- (double y) 1.0E-6) z]))
@@ -136,7 +155,7 @@
 (defn- first-deltas [world eid b]
   (concat (when (>= (difficulty/id world) normal)
             (fire-deltas world eid (:pos b) 4))
-          (copper-deltas world eid (struck-cell (:pos b)))))
+          (struck-deltas world eid (struck-cell (:pos b)))))
 
 (defn- end-deltas [world eid b life flashes how]
   (if (= :gone how)

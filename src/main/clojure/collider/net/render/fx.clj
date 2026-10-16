@@ -36,18 +36,11 @@
 
 (defn- particles-packet [m]
   (let [[dx dy dz] (or (:spread m) [0.0 0.0 0.0])]
-    {:packet   :level-particles :limiter false :always false
+    {:packet   :level-particles :limiter (boolean (:force m))
+     :always   false
      :particle [(particle-id (:kind m)) (:state m)]
      :pos      (:pos m) :count (:count m) :speed (:speed m)
      :dx (double dx) :dy (double dy) :dz (double dz)}))
-
-(def ^:private ^:table trail-particle
-  (delay (data/registry-id "particle_type" :trail)))
-
-(defn- trail-packet [m]
-  {:packet   :level-particles :limiter false :always false
-   :particle [@trail-particle [(:target m) (:color m) (:ticks m)]]
-   :pos      (:pos m) :count 1 :speed 0.0 :dx 0.0 :dy 0.0 :dz 0.0})
 
 (defn- once! [kind]
   (log/once! [::unrendered kind]
@@ -340,7 +333,6 @@
    :block-entity   block-entity-fx
    :sound          (fn [_ m] (when-let [p (sound-packet m)] [p]))
    :particles      (fn [_ m] [(particles-packet m)])
-   :trail          (fn [_ m] [(trail-packet m)])
    :explosion      (fn [_ _] nil)
    :load-chunk     (fn [_ _] nil)
    :store-chunk    (fn [_ _] nil)
@@ -396,12 +388,6 @@
       (dissoc :game-mode)
       (assoc :gamemode (game-mode/id (:game-mode entry)))))
 
-(defn- particle-packet [{:keys [delta] :as m}]
-  {:packet :level-particles :limiter (:force m) :always false
-   :pos (:pos m) :dx (double (nth delta 0)) :dy (double (nth delta 1))
-   :dz (double (nth delta 2)) :speed (:speed m) :count (:count m)
-   :particle (:particle m)})
-
 (defn- tab-add-packet [m]
   {:packet :player-info-update :players (mapv listed (:entries m))})
 
@@ -437,8 +423,7 @@
    :tab-remove        (fn [_ m] [(tab-remove-packet m)])
    :tab-game-mode     (fn [_ m] [(tab-game-mode-packet m)])
    :tab-latency       (fn [_ m] [(tab-latency-packet m)])
-   :tab-header        (fn [_ m] [(tab-header-packet m)])
-   :particle          (fn [_ m] [(particle-packet m)])})
+   :tab-header        (fn [_ m] [(tab-header-packet m)])})
 
 (def ^:private animate-actions
   {:swing 0 :wake-up 2 :swing-off 3 :crit 4})

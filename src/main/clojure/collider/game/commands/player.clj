@@ -380,9 +380,10 @@
 (defn- particle-id [p]
   (data/wire (data/entry-name "particle_type" (first p))))
 
-(defn- particle-fx [p at [dx dy dz] speed n force?]
-  (out/particle p at [(or dx 0.0) (or dy 0.0) (or dz 0.0)]
-                (or speed 0.0) (or n 0) force?))
+(defn- particle-fx [[id opts] at [dx dy dz] speed n force?]
+  (out/particles (data/entry-name "particle_type" id) opts at
+                 (or n 0) (or speed 0.0)
+                 [(or dx 0.0) (or dy 0.0) (or dz 0.0)] force?))
 
 (defn- particle-viewers [world eid s at force?]
   (let [dim (targets/source-dim world)

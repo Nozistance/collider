@@ -27,7 +27,8 @@
         r (if (> v 1.0) (* 16.0 v) 16.0)]
     (* r r)))
 
-(def ^:private ^:const particle-range-sq (* 32.0 32.0))
+(defn- particle-range-sq ^double [force]
+  (let [r (if force 512.0 32.0)] (* r r)))
 
 (defn- near? [world r2 center eid]
   (within? r2 center (pos-of world eid)))
@@ -53,8 +54,9 @@
     :sound
     (let [r2 (sound-range-sq (:volume m))]
       #(near? world r2 (:pos m) %))
-    (:particles :trail)
-    #(near-cell? world particle-range-sq (:pos m) %)
+    :particles
+    (let [r2 (particle-range-sq (:force m))]
+      #(near-cell? world r2 (:pos m) %))
     :explosion #(near? world level-range-sq (:center m) %)
     :destroy-stage #(near? world destroy-range-sq (:pos m) %)
     nil))

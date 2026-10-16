@@ -422,29 +422,19 @@
                 (+ (double z) 0.5)]
           volume pitch source)))
 
-(defn particle
-  "Returns the effect of count particles p, as [type options], at pos,
-  spread by delta and moving at speed. Force lets them show farther
-  and past the client's own particle setting."
-  [p pos delta speed count force]
-  {:msg :particle :particle p :pos pos :delta delta
-   :speed (double speed) :count (long count) :force (boolean force)})
-
 (defn particles
-  "Returns the effect of count particles of kind at pos, spread by
-  the offsets dxyz."
-  ([kind state pos count speed]
-   (particles kind state pos count speed nil))
-  ([kind state pos count speed dxyz]
-   (cond-> {:msg :particles :kind kind :state state :pos pos
+  "Returns the effect of count particles of kind with options opts at
+  pos, spread by delta and moving at speed. Forced ones show from 512
+  blocks and past the client's own particle setting."
+  ([kind opts pos count speed]
+   (particles kind opts pos count speed nil nil))
+  ([kind opts pos count speed delta]
+   (particles kind opts pos count speed delta nil))
+  ([kind opts pos count speed delta force]
+   (cond-> {:msg :particles :kind kind :state opts :pos pos
             :count count :speed (double speed)}
-     dxyz (assoc :spread dxyz))))
-
-(defn trail
-  "Returns the effect of a trail particle from pos to target, of an
-  rgb color, that lasts ticks."
-  [pos target color ticks]
-  {:msg :trail :pos pos :target target :color color :ticks ticks})
+     delta (assoc :spread delta)
+     force (assoc :force true))))
 
 (defn destroy-stage
   "Returns the effect that shows the crack stage of the block at pos
