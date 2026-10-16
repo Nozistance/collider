@@ -240,14 +240,14 @@
                        acc))))))
 
 (defn- fluid-around [chunks [x y z] half height]
-  (let [x (double x) yd (double y) z (double z)
-        a (- (double half) fluid-margin)
-        y0 (+ yd fluid-margin)
-        y1 (- (+ yd (double height)) fluid-margin)]
+  (let [x (double x) yd (double y) z (double z) a (double half)]
     (scan-cells chunks y
-                (num/floor (- x a)) (ceil (+ x a))
-                (num/floor y0) (ceil y1)
-                (num/floor (- z a)) (ceil (+ z a)))))
+                (num/floor (+ (- x a) fluid-margin))
+                (ceil (- (+ x a) fluid-margin))
+                (num/floor (+ yd fluid-margin))
+                (ceil (- (+ yd (double height)) fluid-margin))
+                (num/floor (+ (- z a) fluid-margin))
+                (ceil (- (+ z a) fluid-margin)))))
 
 (defn fluid-height
   "Returns how deep in fluid cls a body of that size at pos stands."
