@@ -168,8 +168,7 @@
 
 (defn burns
   "Returns the marks in bits of the cells of span, x0 x1 y0 y1 z0 z1
-  with the high ends left out. Marks other than fire-mark and
-  lava-mark may go unseen."
+  with the high ends left out."
   ^long [chunks ^bytes bits ^longs span]
   (Phys/burns chunks bits span))
 

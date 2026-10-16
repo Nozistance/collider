@@ -435,8 +435,7 @@ public final class Phys {
     }
 
     /// Returns the marks in bits of the cells of the span, x0 x1 y0 y1
-    /// z0 z1 with the high ends left out. The scan ends once FIRE and
-    /// LAVA are both set, so a higher mark may go unseen.
+    /// z0 z1 with the high ends left out.
     public static long burns(ChunkIndex chunks, byte[] bits, long[] span) {
         if (!near(chunks, bits, span)) {
             return 0;

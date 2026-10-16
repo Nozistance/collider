@@ -179,18 +179,16 @@
   (long (Math/floor (+ a fluid-margin))))
 
 (defn- floor-hi ^long [^double a]
-  (long (Math/floor (+ (- a fluid-margin) 1.0))))
+  (long (Math/ceil (- a fluid-margin))))
 
 (defn- span
   ^longs [p ^double half ^double height]
-  (let [px (v/x p) py (v/y p) pz (v/z p)
-        h (- half fluid-margin)]
+  (let [px (v/x p) py (v/y p) pz (v/z p)]
     (doto (long-array 6)
-      (aset 0 (floor-lo (- px h))) (aset 1 (floor-hi (+ px h)))
-      (aset 2 (max chunk/min-y (floor-lo (+ py fluid-margin))))
-      (aset 3 (min (inc chunk/max-y)
-                   (floor-hi (- (+ py height) fluid-margin))))
-      (aset 4 (floor-lo (- pz h))) (aset 5 (floor-hi (+ pz h))))))
+      (aset 0 (floor-lo (- px half))) (aset 1 (floor-hi (+ px half)))
+      (aset 2 (max chunk/min-y (floor-lo py)))
+      (aset 3 (min (inc chunk/max-y) (floor-hi (+ py height))))
+      (aset 4 (floor-lo (- pz half))) (aset 5 (floor-hi (+ pz half))))))
 
 (defn- burn-bit ^long [st]
   (cond (block/lava? st) phys/lava-mark
@@ -204,7 +202,7 @@
       (dotimes [st (alength a)] (aset a st (byte (burn-bit st))))
       a)))
 
-(defn probe
+(defn- probe
   "Returns the flags of the burning blocks entity e touches.
   Zero means it touches none."
   (^long [world e] (probe world e (box-of e)))
@@ -231,16 +229,6 @@
                     (not in-lava?))]
       (cond-> [[:merge-entity eid {:fire (dec fire)}]]
               due? (conj [:damage eid 1.0 on-fire])))))
-
-(defn- fire-ticks ^long [fire seconds]
-  (max (long fire) (* ticks-per-second (long seconds))))
-
-(defn- ignite-deltas [eid fire wet? damages seconds src]
-  (when (seq damages)
-    (cond-> (mapv (fn [d] [:damage eid (double d) src]) damages)
-            (not wet?)
-            (conj [:merge-entity eid
-                   {:fire (fire-ticks fire seconds)}]))))
 
 (defn- fizz-cell [e]
   (mapv (fn [c] (long (Math/floor (double c))))
@@ -558,52 +546,33 @@
         wet? 0
         :else (dec fire)))
 
-(defn- item-cells
-  "Returns the hurts of the fire cells item e lies in, one a cell,
-  and those of its lava cells."
-  [world e]
-  (let [[half height] (box-of e)
-        p (:pos e)
-        met (inside/met (:chunks world) [[p p nil]] half height
-                        @burners)]
-    [(keep #(fire-cell-damage (nth % 3)) met)
-     (keep #(when (= :lava (nth % 5)) lava-damage) met)]))
+(defn- burn-sound [world eid e ^long i]
+  (let [r (random/of-key (:tick world) eid :burn i)
+        pitch (+ burn-pitch (* burn-pitch-spread r))]
+    (out/all (out/sound :generic/burn (:pos e) burn-volume pitch))))
 
-(defn- item-fire-deltas [world eid e ^long flags]
-  (let [fire (long (or (:fire e) 0))
-        touched? (or (pos? fire) (pos? flags))
-        wet? (boolean (and touched? (item-wet? world e)))
-        lava? (any-bit? flags phys/lava-mark)
-        [fires lavas] (when (pos? flags) (item-cells world e))
-        ignite (fn [ds s] (ignite-deltas eid fire wet? ds s nil))]
-    (concat (burning-flag eid e (burnt-down fire wet?))
-            (burn-tick-deltas eid fire wet? lava?)
-            (ignite fires fire-seconds)
-            (ignite lavas lava-seconds)
-            (douse-deltas eid e fire wet?))))
+(defn- heard?
+  "Returns true when a lava hurt of item e that leaves health plays
+  the burn sound."
+  [e ^double health]
+  (or (<= health 0.0)
+      (= :experience-orb (:type e))
+      (zero? (rem (inc (long (or (:age e) 0))) burn-sound-period))))
 
-(defn- damage-sum ^double [deltas]
-  (reduce (fn [^double s d]
-            (if (= :damage (nth d 0)) (+ s (double (nth d 2))) s))
-          0.0 deltas))
-
-(defn- burn-sound-deltas [world eid e ^double health]
-  (when (or (<= (- health lava-damage) 0.0)
-            (= :experience-orb (:type e))
-            (zero? (rem (inc (long (or (:age e) 0)))
-                        burn-sound-period)))
-    (let [r (random/of-key (:tick world) eid :burn)
-          pitch (+ burn-pitch (* burn-pitch-spread r))]
-      [(out/all
-         (out/sound :generic/burn (:pos e) burn-volume pitch))])))
-
-(defn- heard
-  "Returns deltas ds of item e with the game event after each damage.
-  No entity caused the hurt of a fire."
-  [e ds]
-  (let [ev (signal/game-event :entity-damage (:pos e) nil)]
-    (mapcat (fn [d] (if (= :damage (nth d 0)) (into [d] ev) [d]))
-            ds)))
+(defn- hurt-deltas-of
+  "Returns the deltas of hurts [amount source] of item or orb eid, e,
+  in order, up to the one that takes the last of its health."
+  [world eid e hurts]
+  (let [ev (when (= :item (:type e))
+             (signal/game-event :entity-damage (:pos e) nil))]
+    (loop [h (double (:health e)) i 0 hs hurts ds []]
+      (if-let [[d src] (when (pos? h) (first hs))]
+        (let [h (- h (double d))]
+          (recur h (inc i) (rest hs)
+                 (cond-> (into (conj ds [:damage eid d src]) ev)
+                   (and (identical? src in-lava) (heard? e h))
+                   (conj (burn-sound world eid e i)))))
+        [ds (not (pos? h))]))))
 
 (defn- held-stacks [stack]
   (let [cs (:components stack)]
@@ -627,44 +596,71 @@
 (defn- gone-deltas [world eid e]
   (cons [:remove-entity eid] (spill-deltas world eid e)))
 
-(defn- item-burn-deltas [world eid e ^long flags]
-  (concat (item-fire-deltas world eid e flags)
-          (when (any-bit? flags phys/lava-mark)
-            (burn-sound-deltas world eid e (double (:health e))))))
-
-(defn- unlit? [e ^long flags]
-  (and (zero? flags) (not (pos? (long (or (:fire e) 0))))
-       (not (:burning? e))))
-
-(defn- burnt [world eid e]
-  (if (fire-proof-item? e)
-    (when (pos? (long (or (:fire e) 0)))
-      [[:merge-entity eid {:fire 0}]])
-    (let [flags (probe world e)]
-      (when-not (unlit? e flags)
-        (item-burn-deltas world eid e flags)))))
-
 (def ^:private ^:table cactus-cells
   (delay (block/state-table :boolean #(= :cactus (block/type-of %)))))
 
-(defn pricked?
-  "Returns true when entity e stands in a cactus."
-  [world e]
-  (boolean (some-inside? (:chunks world) e @cactus-cells)))
+(def ^:private ^:table loose-harm
+  (delay (block/state-table
+           :boolean
+           #(or (pos? (burn-bit %)) (= :cactus (block/type-of %))))))
 
-(defn- pricked [world eid e]
-  (when (pricked? world e)
-    [[:damage eid 1.0 {:type :cactus}]]))
+(defn stirred?
+  "Returns true when item or orb e lies in fire, lava or a cactus."
+  [world e]
+  (boolean (some-inside? (:chunks world) e @loose-harm)))
+
+(def ^:private cactus {:type :cactus})
+
+(defn- pricks
+  "Returns a hurt for each cactus cell item e lies in."
+  [world e]
+  (let [chunks (:chunks world)]
+    (when (some-inside? chunks e @cactus-cells)
+      (for [c (inside-cells e)
+            :when (aget ^booleans @cactus-cells (cell-state chunks c))]
+        [1.0 cactus]))))
+
+(defn- item-hurts
+  "Returns the fire of item e once the tick burns it down and the
+  blocks met light it, and its hurts [amount source] in the order it
+  takes them."
+  [world e wet? met]
+  (let [fire (long (or (:fire e) 0))
+        lava? (any-bit? (probe world e) phys/lava-mark)
+        due? (and (pos? fire) (not wet?) (not lava?)
+                  (zero? (rem fire fire-damage-period)))
+        [r hurts] ((stepped-fire fire-lit identity true)
+                   [(burnt-down fire wet?) []] met)]
+    [r (concat (when due? [[1.0 on-fire]]) (pricks world e) hurts)]))
+
+(defn- item-fire
+  "Returns the deltas of the fire of item e, eid, and its hurts."
+  [world eid e]
+  (let [fire (long (or (:fire e) 0))
+        [half height] (box-of e)
+        p (:pos e)
+        met (inside/met (:chunks world) [[p p nil]] half height
+                        @burners)
+        wet? (and (or (pos? fire) (boolean (seq met)))
+                  (item-wet? world e))
+        [r hurts] (item-hurts world e wet? met)]
+    [(concat (burning-flag eid e (burnt-down fire wet?))
+             (when (and (not wet?) (not= r fire))
+               [[:merge-entity eid {:fire r}]])
+             (douse-deltas eid e fire wet?))
+     hurts]))
 
 (defn item-deltas
   "Returns the deltas of the fire, lava and cactus item or orb eid
   lies in. It goes once its hurts of the tick take all its health."
   [world eid e]
-  (let [ds (cond->> (concat (burnt world eid e) (pricked world eid e))
-             (= :item (:type e)) (heard e))]
-    (concat ds
-            (when (>= (damage-sum ds) (double (:health e)))
-              (gone-deltas world eid e)))))
+  (let [[fire-ds hurts] (if (fire-proof-item? e)
+                          [(when (pos? (long (or (:fire e) 0)))
+                             [[:merge-entity eid {:fire 0}]])
+                           (pricks world e)]
+                          (item-fire world eid e))
+        [ds dead?] (hurt-deltas-of world eid e hurts)]
+    (concat fire-ds ds (when dead? (gone-deltas world eid e)))))
 
 (def ^:private ^:const safe-fall 3.0)
 
