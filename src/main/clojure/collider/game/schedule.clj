@@ -14,53 +14,61 @@
   "The empty list of fluid ticks."
   {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
-(defn- queued [q at id ty order]
+(defn- queued [q at id ty v]
   (let [m (or (get q at) (lm/long-map))
         tys (get m id {})]
     (if (contains? tys ty)
       q
-      (assoc q at (assoc m id (assoc tys ty order))))))
+      (assoc q at (assoc m id (assoc tys ty v))))))
 
 (defn- pending? [ticks ^long id ty]
   (some? (get (get (:index ticks) id) ty)))
 
-(defn- added [ticks at id ty order]
-  (let [at (long at) id (long id) order (long order)]
+(defn- added [ticks at id ty priority order]
+  (let [at (long at) id (long id)
+        v [(long priority) (long order)]]
     (cond
       (nil? (:index ticks))
-      (update ticks :queue queued at id ty order)
+      (update ticks :queue queued at id ty v)
       (pending? ticks id ty) ticks
       :else (-> ticks
-                (update :queue queued at id ty order)
+                (update :queue queued at id ty v)
                 (assoc-in [:index id ty] at)))))
+
+(defn scheduled?
+  "Returns true when ticks hold a tick of type ty at block id."
+  [ticks id ty]
+  (pending? ticks (long id) ty))
 
 (defn add
   "Returns ticks with a tick of type ty at block id due at tick at.
   It comes after every tick added before it."
-  [ticks at id ty]
-  (let [order (long (:next ticks 0))
-        at (long at) id (long id)
-        index (:index ticks)
-        tys (get index id)
-        ticks (assoc ticks :next (inc order))]
-    (if (and index (some? (get tys ty)))
-      ticks
-      (cond-> (update ticks :queue queued at id ty order)
-        index (assoc :index (assoc index id (assoc tys ty at)))))))
+  ([ticks at id ty] (add ticks at id ty 0))
+  ([ticks at id ty priority]
+   (let [order (long (:next ticks 0))
+         at (long at) id (long id)
+         index (:index ticks)
+         tys (get index id)
+         ticks (assoc ticks :next (inc order))]
+     (if (and index (some? (get tys ty)))
+       ticks
+       (cond-> (update ticks :queue queued at id ty
+                       [(long priority) order])
+         index (assoc :index (assoc index id (assoc tys ty at))))))))
 
-(defn- queued! [q at id ty order]
+(defn- queued! [q at id ty v]
   (let [m (or (get q at) (lm/long-map))
         tys (get m id {})]
     (if (contains? tys ty)
       q
-      (assoc! q at (assoc m id (assoc tys ty order))))))
+      (assoc! q at (assoc m id (assoc tys ty v))))))
 
 (defn- added-to [[q ix ^long n] [at id ty]]
   (let [at (long at) id (long id)
         tys (when ix (get ix id))]
     (if (and ix (some? (get tys ty)))
       [q ix (inc n)]
-      [(queued! q at id ty n)
+      [(queued! q at id ty [0 n])
        (if ix (assoc! ix id (assoc tys ty at)) ix)
        (inc n)])))
 
@@ -87,18 +95,18 @@
              (lm/long-map) (due-rows ticks (long t))))
 
 (defn- row-entries [[at m]]
-  (for [[id tys] m [ty order] tys] [at order id ty]))
+  (for [[id tys] m [ty [priority order]] tys] [at priority order id ty]))
 
-(defn- lane-order [[at order]] [at order])
+(defn- lane-order [[at priority order]] [at priority order])
 
 (defn- lanes [es]
-  (->> (group-by #(chunk/block-id-chunk (% 2)) es)
+  (->> (group-by #(chunk/block-id-chunk (% 3)) es)
        vals
        (mapv #(sort-by lane-order %))))
 
 (defn- head-key [lane]
-  (let [[_ order id] (first lane)]
-    [order (chunk/block-id-chunk id)]))
+  (let [[_ priority order id] (first lane)]
+    [priority order (chunk/block-id-chunk id)]))
 
 (defn- merged [lanes]
   (loop [heads (into (sorted-map)
@@ -111,56 +119,56 @@
                (conj! acc (first lane))))
       (persistent! acc))))
 
-(defn- by-order [[_ o1 id1] [_ o2 id2]]
-  (let [c (Long/compare (long o1) (long o2))]
-    (if (zero? c)
-      (Long/compare (chunk/block-id-chunk (long id1))
-                    (chunk/block-id-chunk (long id2)))
-      c)))
+(defn- by-order [[_ p1 o1 id1] [_ p2 o2 id2]]
+  (compare [p1 o1 (chunk/block-id-chunk (long id1))]
+           [p2 o2 (chunk/block-id-chunk (long id2))]))
 
 (defn- due-into [acc [at m] runs?]
   (let [kept (fn [acc id tys]
                (if (runs? id)
-                 (reduce-kv #(conj! %1 [at %3 id %2]) acc tys)
+                 (reduce-kv (fn [acc ty [priority order]]
+                              (conj! acc [at priority order id ty]))
+                            acc tys)
                  acc))]
     (reduce-kv kept acc m)))
 
 (defn run-order
-  "Returns [id ty] of the ticks due at t, in run order.
+  "Returns [id ty priority] of the first limit ticks due at t, in
+  run order.
   Only the ticks whose block id runs? accepts count. A chunk gives
-  its ticks by due tick and by the order they were added in. The
-  chunks take turns by the order of their next tick."
-  [ticks t runs?]
+  its ticks by due tick, priority and the order they were added in.
+  The next ticks of the chunks take turns by priority and order."
+  [ticks t runs? limit]
   (let [rows (due-rows ticks (long t))
         into-due #(due-into %1 %2 runs?)
         es (persistent! (reduce into-due (transient []) rows))]
-    (mapv (fn [[_ _ id ty]] [id ty])
+    (into [] (comp (take limit)
+                   (map (fn [[_ priority _ id ty]] [id ty priority])))
           (if (next rows) (merged (lanes es)) (sort by-order es)))))
 
-(defn- unindexed! [index [id tys]]
-  (let [left (reduce dissoc (get index id) (keys tys))]
-    (if (seq left) (assoc! index id left) (dissoc! index id))))
+(defn- unqueued! [q at id ty]
+  (let [m (get q at)
+        tys (dissoc (get m id) ty)
+        m (if (seq tys) (assoc m id tys) (dissoc m id))]
+    (if (seq m) (assoc! q at m) (dissoc! q at))))
 
-(defn- unindexed [index gone]
-  (persistent! (reduce unindexed! (transient index) gone)))
+(defn- taken-out [[q ix] [id ty]]
+  (let [id (long id)
+        tys (get ix id)]
+    (if-some [at (get tys ty)]
+      (let [left (dissoc tys ty)]
+        [(unqueued! q at id ty)
+         (if (seq left) (assoc! ix id left) (dissoc! ix id))])
+      [q ix])))
 
-(defn- kept-row [q [at m] parked]
-  (let [kept (filter #(contains? parked (key %)))
-        m' (when (seq parked) (into (lm/long-map) kept m))]
-    (if (seq m') (assoc q at m') (dissoc q at))))
-
-(defn flushed
-  "Returns ticks without the ticks due at t.
-  The ticks of the blocks in parked stay, overdue."
-  [ticks t parked]
-  (let [rows (due-rows ticks (long t))
-        parked (into (lm/long-set) parked)
-        q (reduce #(kept-row %1 %2 parked) (:queue ticks) rows)
-        gone (for [[_ m] rows [id tys] m
-                   :when (not (contains? parked id))]
-               [id tys])]
-    (cond-> (assoc ticks :queue q)
-      (:index ticks) (update :index unindexed gone))))
+(defn without
+  "Returns ticks without the ticks [id ty] of taken."
+  [ticks taken]
+  (let [[q ix] (reduce taken-out
+                       [(transient (:queue ticks))
+                        (transient (:index ticks))]
+                       taken)]
+    (assoc ticks :queue (persistent! q) :index (persistent! ix))))
 
 (defn- in-chunk? [^long cid ^long id]
   (= cid (chunk/block-id-chunk id)))
@@ -183,46 +191,50 @@
   [ticks]
   (for [[at m] (:queue ticks) [id tys] m ty (keys tys)] [at id ty]))
 
+(defn- sub-order [e] (nth e 2))
+
 (defn copied
-  "Returns as [at id ty order] every tick of a block id that in?
-  accepts, moved to (moved id). They keep their order among
+  "Returns as [at id ty order priority] every tick of a block id that
+  in? accepts, moved to (moved id). They keep their order among
   themselves and follow the last tick of ticks."
   [ticks in? moved]
-  (let [xf (comp (mapcat row-entries) (filter #(in? (% 2))))
+  (let [xf (comp (mapcat row-entries) (filter #(in? (% 3))))
         es (into [] xf (:queue ticks))
-        orders (map second es)
+        orders (map sub-order es)
         lo (long (reduce min Long/MAX_VALUE orders))
         hi (long (reduce max Long/MIN_VALUE orders))]
-    (mapv (fn [[at order id ty]]
-            [at (moved id) ty (+ (- (long order) lo) hi 1)])
+    (mapv (fn [[at priority order id ty]]
+            [at (moved id) ty (+ (- (long order) lo) hi 1) priority])
           es)))
 
 (defn add-ordered
-  "Returns ticks with each tick [at id ty order] of entries added in
-  its own order. A block keeps a tick of a type it already has."
+  "Returns ticks with each tick [at id ty order priority] of entries
+  added in its own order. A block keeps a tick of a type it already
+  has."
   [ticks entries]
-  (reduce (fn [t [at id ty order]] (added t at id ty order))
+  (reduce (fn [t [at id ty order priority]]
+            (added t at id ty priority order))
           ticks entries))
 
-(defn- relative [^long t [at _ id ty]]
-  [(- (long at) t) (cell/unpack id) ty])
+(defn- relative [^long t [at priority _ id ty]]
+  [(- (long at) t) (cell/unpack id) ty priority])
 
 (defn saved
-  "Returns the ticks of chunk cid as [delay pos type].
+  "Returns the ticks of chunk cid as [delay pos type priority].
   They come in the order they were added in."
   [ticks cid t]
   (->> (mapcat row-entries (:queue ticks))
-       (filter #(in-chunk? cid (% 2)))
-       (sort-by second)
+       (filter #(in-chunk? cid (% 3)))
+       (sort-by sub-order)
        (mapv #(relative t %))))
 
 (defn saved-by-chunk
   "Returns the ticks of every chunk as saved, by chunk id."
   [ticks t]
-  (let [by-chunk #(chunk/block-id-chunk (% 2))
+  (let [by-chunk #(chunk/block-id-chunk (% 3))
         es (mapcat row-entries (:queue ticks))]
     (update-vals (group-by by-chunk es)
-                 #(mapv (partial relative t) (sort-by second %)))))
+                 #(mapv (partial relative t) (sort-by sub-order %)))))
 
 (defn restored
   "Returns ticks with the saved ticks back, due after their delays.
@@ -230,7 +242,7 @@
   order among themselves."
   [ticks t saved]
   (let [base (- (count saved))]
-    (reduce (fn [ticks [n [dt p ty]]]
+    (reduce (fn [ticks [n [dt p ty priority]]]
               (added ticks (+ (long t) (max 1 (long dt)))
-                     (cell/pack p) ty (+ base (long n))))
+                     (cell/pack p) ty (or priority 0) (+ base (long n))))
             ticks (map-indexed vector saved))))

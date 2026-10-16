@@ -74,9 +74,9 @@
     :apply writes/set-blocks}
    :ticks-flushed
    {:scope :level
-    :schema [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
-    :apply (fn [w [_ k t parked]]
-             (update w k schedule/flushed t parked))}
+    :schema [:cat [:enum :block-ticks :fluid-ticks] Coll]
+    :apply (fn [w [_ k taken]]
+             (update w k schedule/without taken))}
    :schedule-ticks
    {:scope :level :schema [:cat [:map-of :int Coll]]
     :apply writes/schedule-ticks}

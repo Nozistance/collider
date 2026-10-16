@@ -144,11 +144,7 @@
         pass (out-into pass ds)]
     (applied world ctx k pass (:changes r) by)))
 
-(defn- ordered [world k active]
-  (let [runs? #(areas/active-id? active %)
-        pos (fn [[id ty]] [(cell/unpack id) ty])
-        order (schedule/run-order (get world k) (:tick world) runs?)]
-    (mapv pos order)))
+(def ^:private ^:const tick-limit 65536)
 
 (def ^:private around
   (vec (for [dx [-1 0 1] dz [-1 0 1]] [dx dz])))
@@ -166,9 +162,10 @@
            flags (transient [])
            seen (transient (lm/long-set))]
       (if ts
-        (let [p (nth (first ts) 0)]
+        (let [[p _ priority] (first ts)]
           (recur (next ts)
-                 (conj! flags (not (crowded? seen size p)))
+                 (conj! flags (and (zero? (long priority))
+                                   (not (crowded? seen size p))))
                  (conj! seen (bucket size p [0 0]))))
         flags))))
 
@@ -190,20 +187,28 @@
       (:out (reduce #(stepped world ctx k %1 %2) start
                     (mapv vector ticks firsts))))))
 
-(defn- parked-ids [world active due]
-  (let [chunks (:chunks world)
-        loaded? #(contains? chunks (chunk/block-id-chunk %))
-        skip? #(or (areas/active-id? active %) (not (loaded? %)))]
-    (into [] (comp (map key) (remove skip?)) due)))
+(defn- unloaded [world due]
+  (let [chunks (:chunks world)]
+    (for [[id tys] due
+          :when (not (contains? chunks (chunk/block-id-chunk id)))
+          ty (keys tys)]
+      [id ty])))
 
 (defn- ticks-deltas [world k]
   (let [t (long (:tick world))
-        due (schedule/due (get world k) t)]
+        ticks (get world k)
+        due (schedule/due ticks t)]
     (when (seq due)
       (let [active (areas/ticking-chunks world)
-            parked (parked-ids world active due)]
-        (into [[:ticks-flushed k t parked]]
-              (ticks-run world k (ordered world k active)))))))
+            runs? #(areas/active-id? active %)
+            order (schedule/run-order ticks t runs? tick-limit)
+            gone (into order (unloaded world due))]
+        (when (seq gone)
+          (into [[:ticks-flushed k gone]]
+                (ticks-run world k
+                           (mapv (fn [[id ty priority]]
+                                   [(cell/unpack id) ty priority])
+                                 order))))))))
 
 (defn block-updates
   {:wake {:keys [[:block-ticks :queue]]}}
