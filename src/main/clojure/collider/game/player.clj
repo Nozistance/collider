@@ -221,11 +221,25 @@
   (let [slot (+ slots/hotbar (long (or (:held-slot e) 0)))]
     (get-in e [:inventory slot :item])))
 
+(defn- snap-turned
+  "Returns e turned to yaw and pitch wrapped to a half turn either
+  way, pitch clamped to straight up or down. An angle that is not
+  finite keeps the old one."
+  [e yaw pitch]
+  (let [y (num/wrap-degrees yaw)
+        x (Math/clamp (num/wrap-degrees pitch) -90.0 90.0)]
+    (cond-> e
+      (Double/isFinite y) (assoc :yaw y)
+      (Double/isFinite x) (assoc :pitch x))))
+
 (defn- snapped [e rot]
-  (if (and rot (held-item-of e))
-    (assoc e :yaw (num/wrap-degrees (double (:yaw rot)))
-             :pitch (num/wrap-degrees (double (:pitch rot))))
-    e))
+  (let [y (num/wrap-degrees (:yaw rot 0.0))
+        x (num/wrap-degrees (:pitch rot 0.0))]
+    (if (and rot (held-item-of e)
+             (not (and (== y (double (:yaw e 0.0)))
+                       (== x (double (:pitch e 0.0))))))
+      (snap-turned e y x)
+      e)))
 
 (defn hand-slot
   "Returns the inventory slot the hand holds."
@@ -607,7 +621,12 @@
 (defn move
   "Returns w after the event [:move eid changes]."
   [w [_ eid changes]]
-  (apply-move (resent w eid) eid changes true))
+  (let [e (get-in w [:entities eid])
+        turn (snap-turned (select-keys e [:yaw :pitch])
+                          (:yaw changes (:yaw e 0.0))
+                          (:pitch changes (:pitch e 0.0)))]
+    (apply-move (resent w eid) eid
+                (merge (dissoc changes :yaw :pitch) turn) true)))
 
 (defn release-use
   "Returns w after the event [:release-use eid]."
