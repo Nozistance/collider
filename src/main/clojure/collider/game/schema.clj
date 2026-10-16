@@ -77,7 +77,7 @@
 
 (defn- entity-entry [t]
   (fn [[eid m]]
-    (when-let [e (entity/loaded m t)]
+    (when-let [e (and (entity/saveable? m) (entity/loaded m t))]
       [(long eid) e])))
 
 (defn refreshed
