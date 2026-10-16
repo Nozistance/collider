@@ -7,6 +7,7 @@
             [collider.game.level :as level]
             [collider.game.mob.push :as push]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.game.systems.attacks :as attacks]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.blocks.dig :as dig]
@@ -34,6 +35,12 @@
     (when-let [sq (get sequences eid)]
       [(out/to eid (out/block-ack sq))])))
 
+(defn- snapped [_ [eid e]]
+  (let [turn (select-keys e [:yaw :pitch])
+        turn' (player/snap-turned turn (:yaw e 0.0) (:pitch e 0.0))]
+    (when (not= turn turn')
+      [[:merge-entity eid turn']])))
+
 (defn- steps [d]
   [(ack (blocks/sequences (:input d)))
    dig/player-deltas
@@ -55,7 +62,8 @@
    food/player-deltas
    landing/grace-deltas
    experience/player-deltas
-   keepalive/player-deltas])
+   keepalive/player-deltas
+   snapped])
 
 (defn- stepped [[w :as acc] eid f]
   (if-let [e (get (:entities w) eid)]

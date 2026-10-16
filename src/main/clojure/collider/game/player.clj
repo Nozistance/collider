@@ -221,13 +221,13 @@
   (let [slot (+ slots/hotbar (long (or (:held-slot e) 0)))]
     (get-in e [:inventory slot :item])))
 
-(defn- snap-turned
-  "Returns e turned to yaw and pitch wrapped to a half turn either
-  way, pitch clamped to straight up or down. An angle that is not
-  finite keeps the old one."
+(defn snap-turned
+  "Returns e turned to yaw cut to under a turn either way and pitch
+  clamped to straight up or down. An angle that is not finite keeps
+  the old one."
   [e yaw pitch]
-  (let [y (num/wrap-degrees yaw)
-        x (Math/clamp (num/wrap-degrees pitch) -90.0 90.0)]
+  (let [y (num/frem yaw 360.0)
+        x (Math/clamp (double pitch) -90.0 90.0)]
     (cond-> e
       (Double/isFinite y) (assoc :yaw y)
       (Double/isFinite x) (assoc :pitch x))))
@@ -497,8 +497,9 @@
   [w [_ eid id]]
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
-      (update-entity w eid merge
-                     {:pos (v/v3 (:tp-target e)) :tp-target nil})
+      (-> w
+          (update-entity eid assoc :pos (v/v3 (:tp-target e)) :tp-target nil)
+          (update-entity eid snap-turned (:yaw e 0.0) (:pitch e 0.0)))
       w)))
 
 (defn- fall-changes [e changes vel]
@@ -622,9 +623,10 @@
   "Returns w after the event [:move eid changes]."
   [w [_ eid changes]]
   (let [e (get-in w [:entities eid])
-        turn (snap-turned (select-keys e [:yaw :pitch])
-                          (:yaw changes (:yaw e 0.0))
-                          (:pitch changes (:pitch e 0.0)))]
+        turn (snap-turned
+               (select-keys e [:yaw :pitch])
+               (num/wrap-degrees (:yaw changes (:yaw e 0.0)))
+               (num/wrap-degrees (:pitch changes (:pitch e 0.0))))]
     (apply-move (resent w eid) eid
                 (merge (dissoc changes :yaw :pitch) turn) true)))
 

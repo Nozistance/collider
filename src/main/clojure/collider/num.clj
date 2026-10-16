@@ -34,6 +34,12 @@
   ^double [^double a]
   (Mth/wrapDegrees (unchecked-float a)))
 
+(defn frem
+  "Returns the remainder of a divided by b as floats, with the sign of
+  a."
+  ^double [^double a ^double b]
+  (Mth/rem (unchecked-float a) (unchecked-float b)))
+
 (defn fdiv
   "Returns a divided by b rounded to a float."
   ^double [^double a ^double b]

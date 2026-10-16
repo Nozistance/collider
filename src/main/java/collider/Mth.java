@@ -79,4 +79,9 @@ public final class Mth {
         }
         return n;
     }
+
+    /// Returns the remainder of a divided by b as floats, with the sign of a.
+    public static float rem(float a, float b) {
+        return a % b;
+    }
 }

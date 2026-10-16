@@ -4,6 +4,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
@@ -42,8 +43,8 @@
   (when-let [cam (:camera e)]
     (let [c (get-in world [:entities cam])]
       (if (alive? c)
-        (let [m {:pos (:pos c) :yaw (double (:yaw c 0.0))
-                 :pitch (double (:pitch c 0.0))}]
+        (let [m (player/snap-turned {:pos (:pos c)} (:yaw c 0.0)
+                                    (:pitch c 0.0))]
           (cons [:merge-entity eid m]
                 (when (:sneaking? e)
                   (set-deltas world eid (merge e m) nil))))
