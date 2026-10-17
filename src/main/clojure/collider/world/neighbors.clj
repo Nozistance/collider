@@ -154,10 +154,9 @@
 
 (def ^:private told-all (constantly update/all))
 
-(defn- ticked [s ctx k at p ty]
+(defn- ticked [s k at p ty]
   (if (and at ty)
-    (let [at (max (long at) (inc (long (:tick ctx))))]
-      (add-tick! s [k at (cell/pack p) ty]))
+    (add-tick! s [k (long at) (cell/pack p) ty])
     s))
 
 (declare set-block op-run)
@@ -194,18 +193,18 @@
         (reacted s (dissoc ctx :moved?)
                  (rules/reshape-changes cs st p ctx')
                  flags-for limit))
-      (ticked s ctx :block-ticks at p (block/block-of st)))))
+      (ticked s :block-ticks at p (block/block-of st)))))
 
 (defn- fluid-woken [s ctx p old side]
   (let [{:keys [dim tick]} ctx
         st (block-at s p)
         at (rules/fluid-wake-tick (chunks s) dim st tick p old side)]
-    (ticked s ctx :fluid-ticks at p (rules/fluid-of st))))
+    (ticked s :fluid-ticks at p (rules/fluid-of st))))
 
 (defn- column-woken [s ctx p below]
   (let [st (block-at s p)
         at (liquid/column-wake st below (:tick ctx))]
-    (ticked s ctx :block-ticks at p (block/block-of st))))
+    (ticked s :block-ticks at p (block/block-of st))))
 
 (defn- neighbor-woken [s ctx p old side]
   (rule-woken s ctx p old side told-all update-limit :neighbor))
