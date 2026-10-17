@@ -32,7 +32,9 @@
 
 (defn- drop-block-entity [w pos]
   (-> w
-      (update-in [:block-entities (chunk/block-chunk pos)] dissoc pos)
+      (cond-> (be/at w pos)
+        (update-in [:block-entities (chunk/block-chunk pos)]
+                   dissoc pos))
       (update :openers dissoc pos)
       (update :tickers tickers/without pos)))
 

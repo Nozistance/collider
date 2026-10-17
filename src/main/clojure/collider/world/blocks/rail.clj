@@ -3,7 +3,8 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.env.signal :as signal]))
+            [collider.world.env.signal :as signal]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -169,16 +170,18 @@
       (when-let [side (slope-sides shape)]
         (not (rigid-top? chunks (dir/toward p side))))))
 
-(defn- self-told [p ^long st]
+(defn- self-told [p ^long st moved?]
   (fn [chunks]
-    [[p (chunk/at chunks p) [[:neighbor-changed p st]]]]))
+    [[p (chunk/at chunks p)
+      [(cond-> [:neighbor-changed p st] moved? (conj true))]]]))
 
 (defn- set-down
-  [chunks p ^long st]
+  [chunks p ^long st moved?]
   (let [cs (placed chunks p st (signal/has-neighbor-signal? chunks p)
                    true)
         st' (or (some-> cs first second) st)]
-    (cond-> (vec cs) (curveless? st) (conj (self-told p st')))))
+    (cond-> (vec cs)
+      (curveless? st) (conj (self-told p st' moved?)))))
 
 (defn- signal-block?
   "Returns true when the block of old is a signal source in its
@@ -186,11 +189,15 @@
   [^long old]
   (block/signal-source? (block/state (block/block-of old))))
 
+(def ^:private ^:const pushed-off
+  (bit-or update/all update/moved-by-piston))
+
 (defn- rechecked
-  [chunks p ^long st ^long old]
+  [chunks p st old moved?]
   (cond
     (removed? chunks p (shape-of st))
-    [[p (block/emptied st) [[:drop st]]]]
+    [(cond-> [p (block/emptied st) [[:drop st]]]
+       moved? (conj pushed-off))]
     (and (not (curveless? st)) (signal-block? old)
          (= 3 (potential-links chunks p)))
     (placed chunks p st (signal/has-neighbor-signal? chunks p)
@@ -199,12 +206,12 @@
 (defn- same-block? [^long a ^long b]
   (= (block/block-of a) (block/block-of b)))
 
-(defn- on-neighbor-change [chunks p {:keys [side old]}]
+(defn- on-neighbor-change [chunks p {:keys [side old moved?]}]
   (let [st (chunk/at chunks p) old (long old)]
     (cond
-      (some? side) (rechecked chunks p st old)
-      (not (same-block? st old)) (set-down chunks p st)
-      (= st old) (rechecked chunks p st st))))
+      (some? side) (rechecked chunks p st old false)
+      (not (same-block? st old)) (set-down chunks p st moved?)
+      (= st old) (rechecked chunks p st st moved?))))
 
 (defn removal-notified
   "Returns the cells whose neighbours hear that rail st at p went."

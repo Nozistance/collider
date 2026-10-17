@@ -198,7 +198,9 @@
              (or quiet by) (conj quiet)
              by (conj by))]
      (cond-> (into [d] (removal-deltas world (:writes s)))
-       (with-fx? recs) (into (change-fx world recs))))))
+       (with-fx? recs) (into (change-fx world recs))
+       (seq (:updates s))
+       (conj (out/all (out/neighbor-updates (:updates s))))))))
 
 (defn- joined [a b]
   (let [[_ ca ta _ by] a [_ cb tb] b

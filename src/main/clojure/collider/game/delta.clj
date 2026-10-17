@@ -293,6 +293,7 @@
      :load-chunk [[:id :int]]
      :store-chunk [[:id :int] [:payload :map]]
      :debug-dump [[:ticks :int] [:file :string]]
+     :neighbor-updates [[:cells [:vector Pos]]]
      :config-op [[:op :keyword] [:eid :int] [:key [:maybe :keyword]]
                  [:value [:maybe :string]]]
      :break-effect [[:pos Pos] [:state State]]

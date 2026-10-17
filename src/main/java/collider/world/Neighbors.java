@@ -16,6 +16,8 @@ import java.util.Arrays;
 /// what the run collects and the queue of neighbour updates. Updates
 /// added while one runs wait in a layer, and the layer goes on top of
 /// the stack in the order it was added once the running one yields.
+/// Each update counts toward a limit of the chain, and the updates past
+/// it are dropped.
 public final class Neighbors {
 
     private static final long CLIENTS = 2;
@@ -31,16 +33,23 @@ public final class Neighbors {
 
     /// The chunks of the window as the run left them so far.
     public ChunkIndex chunks;
-    private ITransientCollection records, writes, ticks, sent;
+    private ITransientCollection records, writes, ticks, sent, updates;
     private final ArrayList<Object> placed = new ArrayList<>();
     private long[] placedOld = new long[16];
     private final ArrayDeque<Object> stack = new ArrayDeque<>();
     private final ArrayList<Object> added = new ArrayList<>();
-    private boolean running;
+    private final long limit;
+    private final boolean trace;
+    private long count;
 
-    /// Starts a run over the edit window chunks.
-    public Neighbors(ChunkIndex chunks) {
+    /// Starts a run over the edit window chunks that drops the updates
+    /// of a chain past limit, none when limit is negative. With trace
+    /// the run collects the cells of each update as it comes to the
+    /// top of the stack.
+    public Neighbors(ChunkIndex chunks, long limit, boolean trace) {
         this.chunks = chunks;
+        this.limit = limit;
+        this.trace = trace;
     }
 
     private static ITransientCollection conj(ITransientCollection v, Object x) {
@@ -98,15 +107,16 @@ public final class Neighbors {
         return ((Indexed) writes).nth(n);
     }
 
-    /// Returns the records, writes, ticks, sent cells and placed cells
-    /// that the run collected. The run ends here.
+    /// Returns the records, writes, ticks, sent cells, placed cells and
+    /// traced cells that the run collected. The run ends here.
     public Object[] collected() {
         return new Object[] {
             done(records),
             done(writes),
             done(ticks),
             done(sent),
-            PersistentVector.create(placed)
+            PersistentVector.create(placed),
+            done(updates)
         };
     }
 
@@ -282,19 +292,19 @@ public final class Neighbors {
     }
 
     /// Runs (told run pos old) for each placed cell pos, old being its
-    /// state before, with a block beside it that deaf does not mark.
-    public Neighbors tell(boolean[] deaf, IFn told, int minY, int maxY) {
+    /// state before, with a block beside it that deaf does not mark or
+    /// with old or its state now marked by loud.
+    public Neighbors tell(boolean[] deaf, boolean[] loud, IFn told, int minY, int maxY) {
         for (int i = 0; i < placed.size(); i++) {
             Object p = placed.get(i);
-            if (!deafAround(
-                    RT.longCast(RT.nth(p, 0)),
-                    RT.longCast(RT.nth(p, 1)),
-                    RT.longCast(RT.nth(p, 2)),
-                    deaf,
-                    minY,
-                    maxY
-            )) {
-                told.invoke(this, p, placedOld[i]);
+            int x = RT.intCast(RT.nth(p, 0));
+            int y = RT.intCast(RT.nth(p, 1));
+            int z = RT.intCast(RT.nth(p, 2));
+            long old = placedOld[i];
+            if (loud[(int) old]
+                    || loud[stateAt(chunks, x, y, z, minY, maxY)]
+                    || !deafAround(x, y, z, deaf, minY, maxY)) {
+                told.invoke(this, p, old);
             }
         }
         return this;
@@ -302,57 +312,83 @@ public final class Neighbors {
 
     /// Returns true while an update runs, so a new one waits.
     public boolean running() {
-        return running;
+        return count > 0;
     }
 
-    /// Adds item. When none runs, it runs the item and all it adds with
-    /// step, a function of this run and an item that returns the item
-    /// to run again or nil.
+    /// Adds item [kind pos ...], one update of the cell pos. When none
+    /// runs, it runs the item and all it adds with step, a function of
+    /// this run and an item.
     public Neighbors addAndRun(Object item, IFn step) {
-        if (running) {
-            added.add(item);
-            return this;
+        return added(item, 1, step);
+    }
+
+    /// Adds item standing for n updates, of which those within the
+    /// limit stay, and runs it as addAndRun does.
+    private Neighbors added(Object item, int n, IFn step) {
+        boolean was = count > 0;
+        long room = limit < 0 ? n : Math.max(0, Math.min(n, limit - count));
+        count += n;
+        if (room > 0) {
+            Object it = room < n ? ((Pass) item).cut((int) room) : item;
+            if (was) {
+                added.add(it);
+            } else {
+                stack.push(it);
+            }
         }
-        running = true;
-        stack.push(item);
-        while (true) {
+        if (!was) {
+            runAll(step);
+        }
+        return this;
+    }
+
+    private void runAll(IFn step) {
+        while (!stack.isEmpty() || !added.isEmpty()) {
             for (int k = added.size() - 1; k >= 0; k--) {
                 stack.push(added.get(k));
             }
             added.clear();
-            if (stack.isEmpty()) {
-                break;
+            Object top = stack.peek();
+            if (trace) {
+                traced(top);
             }
-            while (true) {
-                Object top = stack.pop();
-                Object next = top instanceof Pass p
+            while (added.isEmpty()) {
+                boolean more = top instanceof Pass p
                         ? p.step(this)
-                        : step.invoke(this, top);
-                if (next == null) {
-                    break;
-                }
-                stack.push(next);
-                if (!added.isEmpty()) {
+                        : step.invoke(this, top) != null;
+                if (!more) {
+                    stack.pop();
                     break;
                 }
             }
         }
-        running = false;
-        return this;
+        count = 0;
     }
 
-    /// Adds a pass over the six blocks beside x, y, z and runs it like
-    /// addAndRun. The pass goes in the order of shape updates when
-    /// shape is true, else of neighbour updates. It runs
-    /// (told run pos side st) for each block that deaf does not mark
-    /// when it comes to it, st being its state then. sides names the
-    /// side of each step as seen from the block told. Outside the
-    /// height counts as air.
+    private void traced(Object top) {
+        if (top instanceof Pass p) {
+            p.traced(this);
+        } else {
+            updates = conj(updates, RT.nth(top, 1));
+        }
+    }
+
+    /// Adds a pass over the six blocks beside x, y, z but the one of
+    /// step skip, -1 for none, and runs it like addAndRun. The pass goes
+    /// in the order of shape updates when shape is true, else of
+    /// neighbour updates. It runs (told run pos side st) for each block
+    /// that deaf does not mark when it comes to it, st being its state
+    /// then. sides names the side of each step as seen from the block
+    /// told. Outside the height counts as air. A pass of neighbour
+    /// updates is one update and traces all its cells each time it
+    /// comes to the top. A pass of shape updates is six, each traced
+    /// as it runs, and when none runs each is a run of its own.
     public Neighbors pass(
             long x,
             long y,
             long z,
             boolean shape,
+            int skip,
             boolean[] deaf,
             Object[] sides,
             IFn told,
@@ -360,27 +396,37 @@ public final class Neighbors {
             int minY,
             int maxY
     ) {
-        int[] dy = shape ? SY : DY;
-        int[] dz = shape ? SZ : DZ;
-        Pass p = new Pass(x, y, z, dy, dz, deaf, sides, told, minY, maxY);
-        return addAndRun(p, step);
+        if (!shape) {
+            return added(new Pass(x, y, z, false, skip, 0, 6, deaf, sides, told, minY, maxY), 1, step);
+        }
+        if (count > 0) {
+            return added(new Pass(x, y, z, true, -1, 0, 6, deaf, sides, told, minY, maxY), 6, step);
+        }
+        for (int d = 0; d < 6; d++) {
+            added(new Pass(x, y, z, true, -1, d, d + 1, deaf, sides, told, minY, maxY), 1, step);
+        }
+        return this;
     }
 
     private static final class Pass {
         private final long x, y, z;
         private final int[] dy, dz;
+        private final boolean shape;
+        private final int skip;
+        private int i, end;
         private final boolean[] deaf;
         private final Object[] sides;
         private final IFn told;
         private final int minY, maxY;
-        private int i;
 
         Pass(
                 long x,
                 long y,
                 long z,
-                int[] dy,
-                int[] dz,
+                boolean shape,
+                int skip,
+                int i,
+                int end,
                 boolean[] deaf,
                 Object[] sides,
                 IFn told,
@@ -390,8 +436,12 @@ public final class Neighbors {
             this.x = x;
             this.y = y;
             this.z = z;
-            this.dy = dy;
-            this.dz = dz;
+            this.dy = shape ? SY : DY;
+            this.dz = shape ? SZ : DZ;
+            this.shape = shape;
+            this.skip = skip;
+            this.i = i;
+            this.end = end;
             this.deaf = deaf;
             this.sides = sides;
             this.told = told;
@@ -399,9 +449,35 @@ public final class Neighbors {
             this.maxY = maxY;
         }
 
-        Object step(Neighbors s) {
-            while (i < 6) {
+        Pass cut(int n) {
+            end = i + n;
+            return this;
+        }
+
+        private Object cell(int d) {
+            return vec(x + DX[d], y + dy[d], z + dz[d]);
+        }
+
+        void traced(Neighbors s) {
+            if (shape) {
+                return;
+            }
+            for (int d = 0; d < 6; d++) {
+                if (d != skip) {
+                    s.updates = conj(s.updates, cell(d));
+                }
+            }
+        }
+
+        boolean step(Neighbors s) {
+            while (i < end) {
                 int d = i++;
+                if (d == skip) {
+                    continue;
+                }
+                if (shape && s.trace) {
+                    s.updates = conj(s.updates, cell(d));
+                }
                 long nx = x + DX[d];
                 long ny = y + dy[d];
                 long nz = z + dz[d];
@@ -412,7 +488,10 @@ public final class Neighbors {
                 told.invoke(s, vec(nx, ny, nz), sides[d], (long) st);
                 break;
             }
-            return i < 6 ? this : null;
+            if (i == skip) {
+                i++;
+            }
+            return i < end;
         }
     }
 

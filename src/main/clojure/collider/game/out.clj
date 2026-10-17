@@ -86,6 +86,12 @@
   [ticks file]
   {:msg :debug-dump :ticks ticks :file file})
 
+(defn neighbor-updates
+  "Returns the effect that holds the cells of the neighbour updates of
+  a run, in the order they came to the top of the queue."
+  [cells]
+  {:msg :neighbor-updates :cells cells})
+
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 

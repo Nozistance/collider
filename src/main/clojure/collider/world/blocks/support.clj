@@ -457,21 +457,36 @@
                    (multiface/sides-updated chunks p st #{side}))))
     (and (shape-side? st side) (not (supported? chunks p st)))))
 
-(defn- wake [chunks _dim tick p _old side]
-  (let [st (chunk/at chunks p)]
-    (if-let [sides (tick-sides (block/type-of st))]
-      (when (and (sides side) (not (supported? chunks p st)))
-        (inc (long tick)))
-      (when (popped? chunks p st side) :neighbor))))
-
 (def ^:private removed-types
   #{:repeater :comparator :redstone-wire})
 
-(defn- unsupported [chunks p _ctx]
+(defn- wake [chunks _dim tick p _old side]
+  (let [st (chunk/at chunks p)
+        t (block/type-of st)]
+    (if-let [sides (tick-sides t)]
+      (when (and (sides side) (not (supported? chunks p st)))
+        (inc (long tick)))
+      (when (if (removed-types t)
+              (not (supported? chunks p st))
+              (popped? chunks p st side))
+        :neighbor))))
+
+(def ^:private diode-told
+  [:down :up :north :south :west :east])
+
+(defn- removed [p ^long st]
+  (cond-> [[p (block/emptied st) [[:drop st]]]]
+    (not= :redstone-wire (block/type-of st))
+    (into (map #(vector :notify (dir/toward p %))) diode-told)))
+
+(defn- unsupported [chunks p {:keys [pass side]}]
   (let [st (chunk/at chunks p)]
     (when-not (supported? chunks p st)
       (if (removed-types (block/type-of st))
-        [[p (block/emptied st) [[:drop st]]]]
+        (case pass
+          :shape (when (= :down side) [(gone p st)])
+          :place nil
+          (removed p st))
         [(gone p st)]))))
 
 (def ^:private popped-types
@@ -489,7 +504,7 @@
    :lit?    (fn [st _ctx] (contains? lit-types (block/type-of st)))
    :pass    (fn [st]
               (if (removed-types (block/type-of st))
-                :neighbor
+                :both
                 :shape))
    :wake    wake
    :reshape unsupported
