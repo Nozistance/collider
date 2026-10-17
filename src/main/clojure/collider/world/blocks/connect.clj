@@ -132,17 +132,23 @@
 
 (defn- partner-side [^long st] (side-of (halves/partner-offset st)))
 
+(defn- other-door [chunks pos ^long st]
+  (let [half (:half (block/props-of st))
+        n (chunk/at chunks (mapv + pos (halves/partner-offset st)))]
+    (when (and (contains? block/door-types (block/type-of n))
+               (not= half (:half (block/props-of n))))
+      n)))
+
 (defn- door-state [chunks pos ^long st sides]
   (let [lower? (= :lower (:half (block/props-of st)))
-        [_ pst] (halves/partner chunks pos st)
+        pst (other-door chunks pos st)
         below (chunk/at chunks (dir/down pos))]
     (cond
       (and lower? (contains? sides :down)
            (not (block/face-sturdy? below :up))) (block/emptied st)
       (not (contains? sides (partner-side st))) st
       (nil? pst) (block/emptied st)
-      lower? st
-      :else (block/with pst :half :upper))))
+      :else (block/with pst :half (if lower? :lower :upper)))))
 
 (defn- bed-state [chunks pos ^long st sides]
   (let [[_ pst] (halves/partner chunks pos st)]

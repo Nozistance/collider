@@ -12,6 +12,7 @@
             [collider.world.blocks.lamp :as lamp]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
+            [collider.world.blocks.powered :as powered]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
             [collider.world.env.signal :as signal]))
@@ -184,7 +185,11 @@
         order (placement-order yaw pitch face replacing?)
         backed? #(skull-wall-backed? chunks pos %)
         wall (first-wall order backed? #(wall-state-of st %))]
-    (first-candidate order :up :down st wall)))
+    (some->> (first-candidate order :up :down st wall)
+             (powered/placed chunks pos))))
+
+(defn- powered-fitted [chunks pos st _]
+  (powered/placed chunks pos st))
 
 (defn- growing-plant-fitted [chunks pos st {:keys [tick]}]
   (let [{:keys [head body dir]}
@@ -294,7 +299,8 @@
    [[:campfire] campfire-fitted]
    [[:huge-mushroom] mushroom-fitted]
    [[:farmland :dirt-path] dirt-fitted]
-   [[:redstone-lamp] lamp-fitted]])
+   [[:redstone-lamp] lamp-fitted]
+   [(conj block/trapdoor-types :fence-gate) powered-fitted]])
 
 (def ^:private fits
   (into {} (for [[classes f] fit-rules, k classes] [k f])))

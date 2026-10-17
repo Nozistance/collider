@@ -5,8 +5,9 @@
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.halves :as halves]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.env.signal :as signal]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -21,15 +22,12 @@
     (and (contains? openable-types (block/type-of cur))
          (data/by-hand? (block/block-of cur)))))
 
+(def ^:private ^:const shaped-only
+  (bit-or update/clients update/immediate))
+
 (defn- flipped [st]
   (let [open? (= :true (:open (block/props-of st)))]
     (block/with st :open (block/flag (not open?)))))
-
-(defn- door-toggled [world pos state]
-  (let [st' (flipped state)]
-    (if-let [[ppos pst] (halves/partner (:chunks world) pos state)]
-      [[pos st'] [ppos (flipped pst)]]
-      [[pos st']])))
 
 (defn- gate-toggled [world eid pos state]
   (let [{:keys [facing open]} (block/props-of state)
@@ -37,13 +35,19 @@
         side (dir/player-direction yaw)
         turn? (and (= :false open) (= facing (dir/opposite side)))
         facing' (if turn? side facing)]
-    [[pos (block/with (flipped state) :facing facing')]]))
+    (block/with (flipped state) :facing facing')))
+
+(defn- trapdoor-toggled [pos state]
+  (let [st' (flipped state)
+        wet? (= :true (:waterlogged (block/props-of st')))]
+    [pos st' (when wet? [:fluid-tick]) update/clients]))
 
 (defn- toggled [world eid pos state]
   (case (block/type-of state)
-    (:door :weathering-copper-door) (door-toggled world pos state)
-    (:trapdoor :weathering-copper-trapdoor) [[pos (flipped state)]]
-    :fence-gate (gate-toggled world eid pos state)))
+    (:door :weathering-copper-door)
+    [pos (flipped state) nil shaped-only]
+    (:trapdoor :weathering-copper-trapdoor) (trapdoor-toggled pos state)
+    :fence-gate [pos (gate-toggled world eid pos state) nil shaped-only]))
 
 (defn- open-sound [world pos state open?]
   (let [kind (data/open-sound (block/block-of state) open?)
@@ -54,8 +58,9 @@
   "Returns the deltas of player eid using the door, trapdoor or gate
   state at pos."
   [world eid pos state]
-  (let [changes (toggled world eid pos state)
-        st' (second (first changes))
-        open? (= :true (:open (block/props-of st')))]
-    (conj (changes/change-deltas world changes)
-          (out/except eid (open-sound world pos state open?)))))
+  (let [c (toggled world eid pos state)
+        open? (= :true (:open (block/props-of (c 1))))]
+    (concat (changes/change-deltas world [c])
+            [(out/except eid (open-sound world pos state open?))]
+            (signal/game-event (if open? :block-open :block-close)
+                               pos eid))))

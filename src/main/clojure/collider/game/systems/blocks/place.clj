@@ -13,6 +13,7 @@
             [collider.world.blocks.halves :as halves]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.placement :as placement]
+            [collider.world.blocks.powered :as powered]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
@@ -131,7 +132,7 @@
   (let [facing (block/facing-of state)
         chunks (:chunks world)
         hinge (placement/door-hinge chunks pos' facing cx cz)]
-    (block/with state :hinge hinge)))
+    (powered/placed chunks pos' (block/with state :hinge hinge))))
 
 (defn- door-base-ok? [world pos' above]
   (let [below (changes/block-at world (dir/down pos'))]

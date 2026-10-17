@@ -14,6 +14,7 @@
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.powered :as powered]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
@@ -43,7 +44,8 @@
    lectern/rule
    lightning-rod/rule
    leaves/rule
-   lamp/rule])
+   lamp/rule
+   powered/rule])
 
 (defn- find-rule [st]
   (some (fn [r] (when ((:match? r) nil st nil) r)) rules))
