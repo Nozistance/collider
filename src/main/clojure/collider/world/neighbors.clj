@@ -119,7 +119,7 @@
   [^long st]
   (not (or (rules/update-pass st) (block/liquid? st)
            (rules/fluid-of st) (connect/connecting? st)
-           (geyser/placed-fx st) (block/analog-output? st))))
+           (geyser/placed-fx st) (analog? st))))
 
 (defn- by-state [f]
   (boolean-array (map (comp boolean f)
