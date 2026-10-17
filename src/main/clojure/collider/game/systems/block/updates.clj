@@ -111,7 +111,7 @@
 (defn- applied [world ctx k pass changes by]
   (if (empty? changes)
     pass
-    (let [op #(if (keyword? (% 0))
+    (let [op #(if (or (fn? %) (keyword? (% 0)))
                 %
                 [:set % (neighbors/flags-of % update/all)])
           ops (mapv op changes)]
@@ -129,7 +129,9 @@
 
 (defn- lifted [world pass changes]
   (let [chunks (:chunks (:w pass))]
-    (lift/lifted world (for [[p st] changes
+    (lift/lifted world (for [c changes
+                             :when (vector? c)
+                             :let [[p st] c]
                              :when (vector? p)
                              :let [old (chunk/at chunks p)]
                              :when (lift/rises? old st)]

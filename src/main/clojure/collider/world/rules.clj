@@ -23,6 +23,7 @@
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
+            [collider.world.blocks.torch :as torch]
             [collider.world.blocks.water :as water]))
 
 (set! *warn-on-reflection* true)
@@ -42,6 +43,7 @@
    bell/rule
    dust/rule
    diode/rule
+   torch/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule

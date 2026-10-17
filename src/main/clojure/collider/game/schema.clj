@@ -231,6 +231,7 @@
                         :load identity :schema :map
                         :scope :level}
    :shulker-anim       {:default {} :scope :level}
+   :torch-toggles      {:default {} :scope :level}
    :teams              {:default [] :store store-same :load identity
                         :schema [:vector :map] :scope :shared}
    :scoreboard         {:default {} :store scoreboard/stored

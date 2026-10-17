@@ -258,6 +258,7 @@
    :sound-sulfur-spike-land          1052
    :composter-fill                   1500
    :lava-fizz                        1501
+   :redstone-torch-burnout           1502
    :dripstone-drip                   1504
    :particles-and-sound-plant-growth 1505
    :particles-destroy-block          2001

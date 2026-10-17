@@ -12,6 +12,7 @@
             [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]
             [collider.vec :as v]
+            [collider.world.blocks.torch :as torch]
             [collider.world.env.weather :as weather]
             [malli.core :as m]
             [malli.error :as me])
@@ -87,6 +88,9 @@
              (update w :block-ticks schedule/add-ordered es))}
    :openers
    {:scope :level :schema [:cat Pos :int] :apply writes/openers}
+   :torch-toggled
+   {:scope :level :schema [:cat Pos :int]
+    :apply (fn [w [_ p t]] (update w :torch-toggles torch/toggled p t))}
    :shulker-anim
    {:scope :level :schema [:cat Pos [:maybe :map]]
     :apply writes/shulker-anim}

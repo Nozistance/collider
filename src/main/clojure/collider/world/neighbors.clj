@@ -12,6 +12,7 @@
             [collider.world.blocks.lightning-rod :as rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.rail :as rail]
+            [collider.world.blocks.torch :as torch]
             [collider.world.blocks.wire :as wire]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -93,6 +94,11 @@
           q (dir/toward p (dir/opposite f))]
       [[:changed q st f] [:notify q f st]])))
 
+(defn- placed-ops
+  "Returns the ops that block st set at p runs, or nil."
+  [p ^long st]
+  (if (torch/torch? st) (torch/told p st) (front-ops p st)))
+
 (defn- removal-ops
   "Returns the ops that block old at p runs when it goes."
   [p ^long old moved?]
@@ -109,6 +115,7 @@
       (button/switch? old)
       (when (button/powered? old) (button/told p old))
       (diode/diode? old) (front-ops p old)
+      (torch/torch? old) (torch/told p old)
       (= :redstone-wire t) (dust/removed p old)
       (rail/rail? old)
       (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
@@ -392,7 +399,7 @@
             s
             (-> (placed s ctx p old
                         (has? flags update/moved-by-piston))
-                (hooked ctx (front-ops p st))))
+                (hooked ctx (placed-ops p st))))
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
@@ -556,6 +563,11 @@
     :send (add-sent! s x)
     :tick (ticked s :block-ticks y x ty z)))
 
+(defn- stepped [s ctx o]
+  (if (fn? o)
+    (reacted s ctx (o (chunks s)) told-all update-limit)
+    (op-run s ctx o)))
+
 (defn run
   "Returns the level after ops run in order. An op [:set c flags] or
   [:put c flags] sets change c as it is, not shaped by its neighbours.
@@ -569,9 +581,10 @@
   change of block src, [:changed pos src side] tells the block at pos
   of a change of block src on side, [:output-signal pos] tells the
   comparators that read pos, and [:tick pos at priority ty] asks
-  for a tick of type ty at pos at tick at."
+  for a tick of type ty at pos at tick at. A step fn of chunks gives
+  the changes that follow the ops before it."
   [chunks ctx ops]
-  (run-each chunks ctx ops op-run))
+  (run-each chunks ctx ops stepped))
 
 (defn- op-counted [[s n] ctx [op :as o]]
   (let [w (write-count s)

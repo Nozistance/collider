@@ -171,7 +171,8 @@
               [(out/all (out/particles :trail [target color ticks]
                                        at 1 0.0))]))
    :geyser-start (fn [_ pos [_ st]] (sulfur-placed-fx pos st))
-   :reset-countdown (fn [world pos _] (countdown-reset world pos))})
+   :reset-countdown (fn [world pos _] (countdown-reset world pos))
+   :toggle (fn [_ pos [_ t]] [[:torch-toggled pos t]])})
 
 (defn change-fx
   "Returns the deltas of the effects the changes carry.

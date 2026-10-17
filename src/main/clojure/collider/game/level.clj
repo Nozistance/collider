@@ -230,7 +230,7 @@
   ([w] (level-ctx w (:tick w)))
   ([w t]
    (merge (select-keys w weather/fields)
-          (select-keys w [:trace-updates
+          (select-keys w [:trace-updates :torch-toggles
                           :max-chained-neighbor-updates])
           {:rules (:rules w)
            :dim (:dim w)
