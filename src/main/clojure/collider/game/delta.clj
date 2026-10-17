@@ -88,6 +88,9 @@
              (update w :block-ticks schedule/add-ordered es))}
    :openers
    {:scope :level :schema [:cat Pos :int] :apply writes/openers}
+   :set-signal
+   {:scope :level :schema [:cat Pos [:int {:min 0 :max 15}]]
+    :apply writes/set-signal}
    :torch-toggled
    {:scope :level :schema [:cat Pos :int]
     :apply (fn [w [_ p t]] (update w :torch-toggles torch/toggled p t))}

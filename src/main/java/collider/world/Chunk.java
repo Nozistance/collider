@@ -132,6 +132,35 @@ public final class Chunk {
         return new Chunk(a, edges, token);
     }
 
+    /// Returns this chunk with the kept signal at x, y, z set to v, x
+    /// and z taken within the chunk. The edit window token writes in
+    /// place the chunk it owns. A null token copies it.
+    public Chunk withSignal(int x, int y, int z, int v, Object token) {
+        int si = sectionIndex(y);
+        Section s = sections[si];
+        if (s == null) {
+            s = fresh(si);
+        }
+        Section n = s.withSignal(Section.index(x, y, z), v, token);
+        if (n == s) {
+            return this;
+        }
+        if (token != null && this.token == token) {
+            sections[si] = n;
+            return this;
+        }
+        Section[] a = sections.clone();
+        a[si] = n;
+        return new Chunk(a, edges, token);
+    }
+
+    /// Returns the kept signal at x, y, z, x and z taken within the
+    /// chunk. It is 0 outside the column and in an absent section.
+    public int signal(int x, int y, int z) {
+        Section s = section(sectionIndex(y));
+        return s == null ? 0 : s.signal(Section.index(x, y, z));
+    }
+
     /// Returns the block state at x, y, z, x and z taken within the
     /// chunk. Air comes back outside the column and in an absent
     /// section.
@@ -161,6 +190,12 @@ public final class Chunk {
     /// outside the height and in an absent chunk or section.
     public static int blockAt(ChunkIndex chunks, int x, int y, int z) {
         return at(chunks, x >> 4, z >> 4).block(x, y, z);
+    }
+
+    /// Returns the kept signal at x, y, z in chunks, 0 in an absent
+    /// chunk or section.
+    public static int signalAt(ChunkIndex chunks, int x, int y, int z) {
+        return at(chunks, x >> 4, z >> 4).signal(x, y, z);
     }
 
     /// Returns the section that holds x, y, z in chunks, or null.

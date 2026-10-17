@@ -105,7 +105,7 @@
                 (assoc-in [:w :chunks] (:chunks settled))
                 (out-into ds))
       (:dirty pass)
-      (update :dirty into (map (comp column first)) writes)
+      (update :dirty into (map (comp column first)) (:records settled))
       (= :block-ticks k) (update :lit lit-writes writes))))
 
 (defn- applied [world ctx k pass changes by]

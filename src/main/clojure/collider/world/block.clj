@@ -752,6 +752,12 @@
   [^long st]
   (aget ^booleans @analog-arr st))
 
+(defn analog-signal
+  "Returns the value st gives a comparator when its state alone
+  decides it, -1 when the level does."
+  ^long [^long st]
+  (states/analog st))
+
 (defn signal
   "Returns the signal st gives to the neighbor that looks at it toward
   face, -1 when the level decides. Redstone wire gives it only while

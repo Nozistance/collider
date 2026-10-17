@@ -18,7 +18,7 @@ public final class Section {
     private static final byte[] FULL = filled();
 
     /// A section of air under an open sky.
-    public static final Section EMPTY = new Section(0, new int[] {0}, null, null, FULL);
+    public static final Section EMPTY = new Section(0, new int[] {0}, null, null, FULL, null);
 
     private final int bits;
     private final int per;
@@ -27,10 +27,11 @@ public final class Section {
     private final long[] data;
     private final byte[] bl;
     private final byte[] sl;
+    private final byte[] sg;
     private final Object token;
 
-    private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl) {
-        this(bits, pal, data, bl, sl, null);
+    private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl, byte[] sg) {
+        this(bits, pal, data, bl, sl, sg, null);
     }
 
     private Section(
@@ -39,6 +40,7 @@ public final class Section {
             long[] data,
             byte[] bl,
             byte[] sl,
+            byte[] sg,
             Object token
     ) {
         this.token = token;
@@ -49,6 +51,7 @@ public final class Section {
         this.data = data;
         this.bl = bl;
         this.sl = sl;
+        this.sg = sg;
     }
 
     private static byte[] filled() {
@@ -70,8 +73,8 @@ public final class Section {
         return Arrays.equals(a, FULL) ? FULL : a;
     }
 
-    private static Section single(int state, byte[] bl, byte[] sl) {
-        return new Section(0, new int[] {state}, null, bl, sl);
+    private static Section single(int state, byte[] bl, byte[] sl, byte[] sg) {
+        return new Section(0, new int[] {state}, null, bl, sl, sg);
     }
 
     private static int width(int n) {
@@ -103,22 +106,22 @@ public final class Section {
         for (int i = 0; i < SIZE; i++) {
             v[i] = blocks[i] & 0xFFFF;
         }
-        return build(v, canon(blockLight), canon(skyLight));
+        return build(v, canon(blockLight), canon(skyLight), null);
     }
 
-    private static Section build(int[] v, byte[] bl, byte[] sl) {
+    private static Section build(int[] v, byte[] bl, byte[] sl, byte[] sg) {
         int[] ids = new int[MAX_PALETTE + 1];
         int[] ix = new int[SIZE];
         int n = scan(v, ids, ix);
         int bits = width(n);
         if (bits == 0) {
-            return single(v[0], bl, sl);
+            return single(v[0], bl, sl, sg);
         }
         if (bits == GLOBAL_BITS) {
-            return new Section(bits, null, pack(bits, v), bl, sl);
+            return new Section(bits, null, pack(bits, v), bl, sl, sg);
         }
         int[] p = Arrays.copyOf(ids, n);
-        return new Section(bits, p, pack(bits, ix), bl, sl);
+        return new Section(bits, p, pack(bits, ix), bl, sl, sg);
     }
 
     private static int scan(int[] v, int[] ids, int[] ix) {
@@ -184,12 +187,13 @@ public final class Section {
         if (!(other instanceof Section o)) {
             return false;
         }
-        return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl) && sameBlocks(o);
+        return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl)
+                && Arrays.equals(sg, o.sg) && sameBlocks(o);
     }
 
     @Override
     public int hashCode() {
-        int h = 31 * Arrays.hashCode(bl) + Arrays.hashCode(sl);
+        int h = 31 * (31 * Arrays.hashCode(bl) + Arrays.hashCode(sl)) + Arrays.hashCode(sg);
         for (int i = 0; i < SIZE; i++) {
             h = 31 * h + block(i);
         }
@@ -273,6 +277,29 @@ public final class Section {
         return sl == null ? 0 : nibble(sl, i);
     }
 
+    /// Returns the signal the level keeps for the block at index i,
+    /// such as the output of a comparator, from 0 to 15.
+    public int signal(int i) {
+        return sg == null ? 0 : nibble(sg, i);
+    }
+
+    /// Returns this section with the kept signal at index i set to v.
+    /// The signals are copied, never written in place, so a section
+    /// owned by the edit window token stays owned and any other loses
+    /// its owner.
+    public Section withSignal(int i, int v, Object token) {
+        if (v < 0 || v > 15) {
+            throw new IllegalArgumentException("signal " + v);
+        }
+        if (signal(i) == v) {
+            return this;
+        }
+        byte[] a = sg == null ? new byte[LIGHT] : sg.clone();
+        setNibble(a, i, v);
+        Object t = token != null && this.token == token ? token : null;
+        return new Section(bits, pal, data, bl, sl, canon(a), t);
+    }
+
     /// Returns how many bits each packed palette index takes.
     public int bits() {
         return bits;
@@ -340,26 +367,26 @@ public final class Section {
     /// Returns this section with block light a, 2048 bytes or null for
     /// dark.
     public Section withBlockLight(byte[] a) {
-        return new Section(bits, pal, data, canon(a), sl);
+        return new Section(bits, pal, data, canon(a), sl, sg);
     }
 
     /// Returns this section with sky light a, 2048 bytes or null for
     /// dark.
     public Section withSkyLight(byte[] a) {
-        return new Section(bits, pal, data, bl, canon(a));
+        return new Section(bits, pal, data, bl, canon(a), sg);
     }
 
     /// Returns an all-air section with the bottom layer of sky light
     /// of this section spread across every layer.
     public Section below() {
         if (sl == null || sl == FULL) {
-            return single(0, null, sl);
+            return single(0, null, sl, null);
         }
         byte[] a = new byte[LIGHT];
         for (int k = 0; k < 16; k++) {
             System.arraycopy(sl, 0, a, k * 128, 128);
         }
-        return single(0, null, canon(a));
+        return single(0, null, canon(a), null);
     }
 
     private Section with(int i, int state) {
@@ -387,7 +414,7 @@ public final class Section {
     }
 
     private Section owned(Object t) {
-        return t == token ? this : new Section(bits, pal, data, bl, sl, t);
+        return t == token ? this : new Section(bits, pal, data, bl, sl, sg, t);
     }
 
     /// Returns this section with the blocks at the first n entries of
@@ -451,7 +478,7 @@ public final class Section {
             v[i] = nb == GLOBAL_BITS ? np[q] : q;
         }
         int[] kept = nb == GLOBAL_BITS ? null : np;
-        return new Section(nb, kept, pack(nb, v), bl, sl);
+        return new Section(nb, kept, pack(nb, v), bl, sl, sg);
     }
 
     private int used(long[] d, int[] remap) {
@@ -472,16 +499,16 @@ public final class Section {
 
     private Section settle(long[] d, int[] p) {
         if (bits == 0) {
-            return new Section(0, p, null, bl, sl);
+            return new Section(0, p, null, bl, sl, sg);
         }
         if (p == null) {
             return settleGlobal(d);
         }
         int q0 = index(d, 0);
         if (uniform(d, q0)) {
-            return single(p[q0], bl, sl);
+            return single(p[q0], bl, sl, sg);
         }
-        return new Section(bits, p, d, bl, sl);
+        return new Section(bits, p, d, bl, sl, sg);
     }
 
     private boolean uniform(long[] d, int q) {
@@ -508,9 +535,9 @@ public final class Section {
         int[] ids = new int[MAX_PALETTE + 1];
         int[] ix = new int[SIZE];
         if (scan(v, ids, ix) > MAX_PALETTE) {
-            return new Section(bits, null, d, bl, sl);
+            return new Section(bits, null, d, bl, sl, sg);
         }
-        return build(v, bl, sl);
+        return build(v, bl, sl, sg);
     }
 
     /// Returns true when the section may hold a state true in pred. A
@@ -632,6 +659,7 @@ public final class Section {
         }
         saveLight(out, bl);
         saveLight(out, sl);
+        saveLight(out, sg);
     }
 
     private static void saveLight(DataOutput out, byte[] a) throws IOException {
@@ -655,8 +683,9 @@ public final class Section {
         }
         byte[] bl = loadLight(in);
         byte[] sl = loadLight(in);
+        byte[] sg = loadLight(in);
         long[] d = bits == 0 ? null : data;
-        return new Section(bits, pal, d, bl, sl);
+        return new Section(bits, pal, d, bl, sl, sg);
     }
 
     private static int[] loadPalette(DataInput in, int bits) throws IOException {

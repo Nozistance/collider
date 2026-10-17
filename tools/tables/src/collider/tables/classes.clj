@@ -106,6 +106,21 @@
         both (into (sides "getSignal") (sides "getDirectSignal"))]
     (unless-default no-signal both)))
 
+(defn- analog-on
+  "Returns the analog output of st toward d with no level, or -1 when
+  it reads the level."
+  [zero st d]
+  (try (call st "getAnalogOutputSignal" nil zero d)
+       (catch NullPointerException _ -1)))
+
+(defn- state-analog
+  "Returns the analog output of st, the same toward every side, -1
+  when it reads the level or differs by side, nil without one."
+  [{:keys [zero dirs]} st]
+  (when (call st "hasAnalogOutputSignal")
+    (let [vs (mapv #(analog-on zero st %) dirs)]
+      (if (apply = vs) (first vs) -1))))
+
 (defn- shape-env []
   {:air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
    :zero (static-field "core.BlockPos" "ZERO")
@@ -253,6 +268,7 @@
      :outlines (each #(partial-box (outline-shape env %)))
      :flags (each #(state-flags env %))
      :signals (each #(state-signals env %))
+     :analog (each #(state-analog env %))
      :sturdy {:full (sturdy)
               :center (sturdy (:center env))
               :rigid (sturdy (:rigid env))}}))

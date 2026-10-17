@@ -1,13 +1,29 @@
 (ns collider.game.systems.blocks.redstone
-  "Turning redstone wire from a cross to a dot and stepping the delay
-  of a repeater by hand."
+  "Turning redstone wire from a cross to a dot, stepping the delay of
+  a repeater and switching the mode of a comparator by hand."
   (:require [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
+            [collider.game.out :as out]
             [collider.world.block :as block]
+            [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.diode :as diode]
-            [collider.world.blocks.wire :as wire]))
+            [collider.world.blocks.wire :as wire]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
+
+(defn- refreshed [pos]
+  (fn [chunks]
+    (let [st (chunk/at chunks pos)]
+      (when (comparator/comparator? st)
+        (comparator/refreshed chunks pos st)))))
+
+(defn- switched-deltas [world eid pos st]
+  (let [st' (comparator/stepped st)
+        pitch (if (= :subtract (:mode (block/props-of st'))) 0.55 0.5)]
+    (into [(out/except eid (out/block-sound :block.comparator.click pos
+                                            0.3 pitch))]
+          (changes/change-deltas world [[pos st' nil 2] (refreshed pos)]))))
 
 (defn turned-deltas
   "Returns the deltas of player eid turning the wire or the repeater
@@ -23,4 +39,5 @@
             world (into [[pos st' nil 3]]
                         (wire/told-on-turn chunks pos st st'))))
         (= :repeater (block/type-of st))
-        (changes/change-deltas world [[pos (diode/stepped st) nil 3]])))))
+        (changes/change-deltas world [[pos (diode/stepped st) nil 3]])
+        (comparator/comparator? st) (switched-deltas world eid pos st)))))

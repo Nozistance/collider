@@ -561,7 +561,9 @@
     :tell (set-told s ctx x y)
     :edge (edged s ctx x y)
     :send (add-sent! s x)
-    :tick (ticked s :block-ticks y x ty z)))
+    :tick (ticked s :block-ticks y x ty z)
+    :signal (-> (set-chunks! s (chunk/chunks-set-signal (chunks s) x y))
+                (add-record! [x (block-at s x) [[:signal y]]]))))
 
 (defn- stepped [s ctx o]
   (if (fn? o)
@@ -580,8 +582,9 @@
   pos but the one on side, [:notify pos side src] tells them of a
   change of block src, [:changed pos src side] tells the block at pos
   of a change of block src on side, [:output-signal pos] tells the
-  comparators that read pos, and [:tick pos at priority ty] asks
-  for a tick of type ty at pos at tick at. A step fn of chunks gives
+  comparators that read pos, [:tick pos at priority ty] asks for a
+  tick of type ty at pos at tick at, and [:signal pos v] keeps v as
+  the signal of the comparator at pos. A step fn of chunks gives
   the changes that follow the ops before it."
   [chunks ctx ops]
   (run-each chunks ctx ops stepped))

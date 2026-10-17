@@ -158,6 +158,13 @@
     (orb/awarded w spawned pos (or dir [0.0 0.0 0.0])
                  (long amount) #(random/of-key t pos salt %))))
 
+(defn set-signal
+  "Returns level w after the delta [:set-signal pos v]."
+  [w [_ pos v]]
+  (update w :chunks #(-> (chunk/editable %)
+                         (chunk/chunks-set-signal pos v)
+                         chunk/frozen)))
+
 (defn schedule-ticks
   "Returns level w after the delta [:schedule-ticks at-ids]."
   [w [_ at-ids]]

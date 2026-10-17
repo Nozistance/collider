@@ -4,6 +4,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.bell :as bell]
             [collider.world.blocks.button :as button]
+            [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.diode :as diode]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -43,6 +44,7 @@
    bell/rule
    dust/rule
    diode/rule
+   comparator/rule
    torch/rule
    support/rule
    dripstone/rule

@@ -32,12 +32,14 @@
 
 (defn- given
   "Returns the signal or the direct signal st at p gives toward d.
-  Wires give none while wires? is false."
+  Wires give none while wires? is false. A comparator gives the output
+  the level keeps for it."
   [chunks p st d wires? direct?]
-  (if (wire/wire? st)
-    (if wires? (wire-signal chunks p st d) 0)
-    (known (if direct? (block/direct-signal st d) (block/signal st d))
-           st d)))
+  (let [s (if direct? (block/direct-signal st d) (block/signal st d))]
+    (cond
+      (wire/wire? st) (if wires? (wire-signal chunks p st d) 0)
+      (and (neg? s) (= :comparator (block/type-of st))) (chunk/signal-at chunks p)
+      :else (known s st d))))
 
 (defn direct-signal
   "Returns the direct signal the block at p gives toward side."

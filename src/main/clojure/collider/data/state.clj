@@ -91,6 +91,15 @@
                      (aset a (+ (* w id) i) (byte (nth v i))))))
       a)))
 
+(def ^:private ^:table analog-table
+  (delay (byte-table (data/read-edn "analog.edn") 0)))
+
+(defn analog
+  "Returns the analog output of st that its state alone decides, 0
+  without one, -1 where it reads the level."
+  ^long [^long st]
+  (long (aget ^bytes @analog-table st)))
+
 (defn shapes
   "Returns the collision boxes of every state, by id.
   A state that is a full cube has nil instead."

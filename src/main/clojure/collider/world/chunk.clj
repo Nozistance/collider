@@ -276,6 +276,20 @@
   (.withBlock chunks (unchecked-int x) (unchecked-int y)
               (unchecked-int z) (unchecked-int state)))
 
+(defn signal-at
+  "Returns the signal the level keeps at p, such as the output of a
+  comparator, 0 where none is kept."
+  ^long [^ChunkIndex chunks [x y z]]
+  (Chunk/signalAt chunks (unchecked-int x) (unchecked-int y)
+                  (unchecked-int z)))
+
+(defn chunks-set-signal
+  "Returns chunks with the signal kept at p set to v. A change in an
+  absent chunk is dropped."
+  ^ChunkIndex [^ChunkIndex chunks [x y z] v]
+  (.withSignal chunks (unchecked-int x) (unchecked-int y)
+               (unchecked-int z) (unchecked-int v)))
+
 (defn changed
   "Returns the changes [pos st] that alter a block of chunks inside
   the height of level lv, as [pos old st] in order. A change sees the

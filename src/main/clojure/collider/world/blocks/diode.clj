@@ -21,7 +21,10 @@
 
 (defn- delay-of ^long [^long st] (* 2 (block/prop-long st :delay)))
 
-(defn- input ^long [chunks p ^long st]
+(defn input
+  "Returns the signal diode st at p reads from the cell it faces, the
+  power of a wire there when that is more."
+  ^long [chunks p ^long st]
   (let [f (block/facing-of st)
         q (dir/toward p f)
         s (signal/signal chunks q f)
@@ -46,7 +49,10 @@
   ^long [chunks p ^long st]
   (block/with st :locked (block/flag (held? chunks p st))))
 
-(defn- prioritized? [chunks p ^long st]
+(defn prioritized?
+  "Returns true when diode st at p faces a diode that does not face
+  it back."
+  [chunks p ^long st]
   (let [d (dir/opposite (block/facing-of st))
         o (chunk/at chunks (dir/toward p d))]
     (and (diode? o) (not= d (block/facing-of o)))))

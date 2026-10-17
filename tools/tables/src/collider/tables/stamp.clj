@@ -63,7 +63,7 @@
 (def files
   (-> ["packets" "registries" "blocks" "synced" "light" "fire"
        "fuel" "brewing" "dyes" "sounds" "potions" "effects"
-       "shapes" "outlines" "sturdy" "flags" "signals" "compost"
+       "shapes" "outlines" "sturdy" "flags" "signals" "analog" "compost"
        "wall-blocks" "place-sounds" "remainders" "banner-colors"
        "non-breakers" "item-names" "entities" "version"
        "block-entities" "growers" "mob-buckets"

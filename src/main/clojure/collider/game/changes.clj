@@ -16,6 +16,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
+            [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.diode :as diode]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.liquid :as liquid]
@@ -31,9 +32,10 @@
   ^long [world pos]
   (chunk/at (:chunks world) pos))
 
-(defn- drying? [world [_ st]]
-  (and (number? st)
-       (= :wet-sponge (block/block-of (long st)))
+(defn- drying? [world c]
+  (and (vector? c)
+       (number? (nth c 1 nil))
+       (= :wet-sponge (block/block-of (long (c 1))))
        (attribute/water-evaporates? (:dim world))))
 
 (defn- dried-fx [world pos]
@@ -48,7 +50,7 @@
   [world changes]
   (let [dry? #(drying? world %)
         sponge (block/state :sponge)]
-    [(mapv (fn [[pos :as c]] (if (dry? c) [pos sponge] c)) changes)
+    [(mapv (fn [c] (if (dry? c) [(c 0) sponge] c)) changes)
      (into [] (comp (filter dry?) (map first)
                     (mapcat #(dried-fx world %)))
            changes)]))
@@ -172,7 +174,8 @@
                                        at 1 0.0))]))
    :geyser-start (fn [_ pos [_ st]] (sulfur-placed-fx pos st))
    :reset-countdown (fn [world pos _] (countdown-reset world pos))
-   :toggle (fn [_ pos [_ t]] [[:torch-toggled pos t]])})
+   :toggle (fn [_ pos [_ t]] [[:torch-toggled pos t]])
+   :signal (fn [_ pos [_ v]] [[:set-signal pos v]])})
 
 (defn change-fx
   "Returns the deltas of the effects the changes carry.
@@ -254,7 +257,9 @@
 
 (defn- given-ops [changes]
   (mapv (fn [c]
-          (if (keyword? (c 0)) c [:set c (neighbors/flags-of c 3)]))
+          (if (or (fn? c) (keyword? (c 0)))
+            c
+            [:set c (neighbors/flags-of c 3)]))
         changes))
 
 (defn- as-given [chunks ctx changes]
@@ -327,7 +332,9 @@
     [(out/all (out/block-sound kind pos 1.0 1.0))]))
 
 (defn- placed-by-ticks [chunks pos base]
-  (when-let [at (diode/placed-tick chunks pos (chunk/at chunks pos) base)]
+  (when-let [at (let [st (chunk/at chunks pos)]
+                  (or (diode/placed-tick chunks pos st base)
+                      (comparator/placed-tick chunks pos st base)))]
     [[:schedule-ticks {at [(cell/pack pos)]}]]))
 
 (defn- placed-by-fx [pos ^long state]
