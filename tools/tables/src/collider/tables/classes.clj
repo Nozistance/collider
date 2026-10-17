@@ -328,7 +328,13 @@
      ["world.level.block.TrapDoorBlock" set-type
       "trapdoorOpen" "trapdoorClose" true]
      ["world.level.block.FenceGateBlock" wood-type
-      "fenceGateOpen" "fenceGateClose" false]]))
+      "fenceGateOpen" "fenceGateClose" false]
+     ["world.level.block.ButtonBlock" set-type
+      "buttonClickOn" "buttonClickOff" false]]))
+
+(defn- pressed [b]
+  (when (Class/.isInstance (cls "world.level.block.ButtonBlock") b)
+    {:pressed (long (hidden-field (class b) b "ticksToStayPressed"))}))
 
 (defn- toggle [b]
   (some (fn [[block type open close hand?]]
@@ -431,6 +437,7 @@
            (dig-props st)
            (instrument st)
            (toggle b)
+           (pressed b)
            (clone-props env reg b))))
 
 (defn- weathering-pairs [reg]

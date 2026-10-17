@@ -9,10 +9,12 @@
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.grow.vine :as vine]
             [collider.world.blocks.hugemushroom :as hugemushroom]
+            [collider.world.blocks.lamp :as lamp]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.scaffold :as scaffold]
-            [collider.world.blocks.support :as support]))
+            [collider.world.blocks.support :as support]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -265,6 +267,9 @@
 (defn- dirt-fitted [chunks pos st _opts]
   (if (support/supported? chunks pos st) st (support/gone-state st)))
 
+(defn- lamp-fitted [chunks pos st _]
+  (lamp/lit st (signal/has-neighbor-signal? chunks pos)))
+
 (def ^:private fit-rules
   [[[:button :lever :grindstone] face-attached-fitted]
    [[:standing-sign :torch :redstone-torch :banner :coral-fan
@@ -288,7 +293,8 @@
    [[:scaffolding] scaffold-fitted]
    [[:campfire] campfire-fitted]
    [[:huge-mushroom] mushroom-fitted]
-   [[:farmland :dirt-path] dirt-fitted]])
+   [[:farmland :dirt-path] dirt-fitted]
+   [[:redstone-lamp] lamp-fitted]])
 
 (def ^:private fits
   (into {} (for [[classes f] fit-rules, k classes] [k f])))

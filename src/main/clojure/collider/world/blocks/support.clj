@@ -219,7 +219,10 @@
     (or (contains? #{head body} (block/block-of n))
         (block/face-sturdy? n dir))))
 
-(defn- connected-direction [^long st]
+(defn connected-direction
+  "Returns the side of a block hung by its face, such as a lever,
+  that points away from the block holding it."
+  [^long st]
   (let [props (block/props-of st)]
     (case (:face props)
       :ceiling :down

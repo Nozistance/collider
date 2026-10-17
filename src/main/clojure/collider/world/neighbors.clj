@@ -3,6 +3,7 @@
   (:require [collider.cell :as cell]
             [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.blocks.button :as button]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.lectern :as lectern]
@@ -105,6 +106,8 @@
       (when (= :true powered)
         [[:notify (dir/toward p (dir/opposite facing)) nil old]])
       moved? nil
+      (button/switch? old)
+      (when (button/powered? old) (button/told p old))
       (diode? old) (front-ops p old)
       (= :redstone-wire t)
       (mapv #(vector :notify (dir/toward p %) nil old) dir/six)
@@ -218,10 +221,13 @@
       s')))
 
 (defn- placed [s ctx p old moved?]
-  (if (block/liquid? (block-at s p))
-    (liquid-woken s ctx p old nil)
-    (rule-woken s (cond-> ctx moved? (assoc :moved? true)) p old nil
-                told-all update-limit :place)))
+  (let [st (block-at s p)]
+    (cond
+      (block/liquid? st) (liquid-woken s ctx p old nil)
+      (rules/hears-place? st)
+      (rule-woken s (cond-> ctx moved? (assoc :moved? true)) p old nil
+                  told-all update-limit :place)
+      :else s)))
 
 (defn- state-changed [s ctx q st old side]
   (cond

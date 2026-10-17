@@ -523,6 +523,11 @@
 (defn open-sound [block open?]
   (get (info block) (if open? :open :close)))
 
+(defn pressed-ticks
+  "Returns how many ticks a pressed button of block stays pressed."
+  ^long [block]
+  (long (get (info block) :pressed 0)))
+
 (defn by-hand?
   "Returns true when block drops when broken without a tool."
   [block]

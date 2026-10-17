@@ -18,6 +18,7 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.held :as held]
             [collider.game.systems.blocks.place :as place]
+            [collider.game.systems.blocks.switch :as switch]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
@@ -185,6 +186,8 @@
 (defn- without-item-deltas [{:keys [world eid pos use-block?]}]
   (when use-block?
     (cond
+      (switch/switches? world pos)
+      (switch/switch-deltas world eid pos (changes/block-at world pos))
       (door/opens? world pos)
       (door/toggle-deltas world eid pos (changes/block-at world pos))
       (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos))))
@@ -217,10 +220,11 @@
        (not (player/on-cooldown? e item (:tick world)))))
 
 (defn- consumed? [deltas]
-  (some (fn [[tag m]]
-          (not (and (= :fx tag)
-                    (#{:blocks-changed :overlay} (:msg m)))))
-        deltas))
+  (or (:consumed (meta deltas))
+      (some (fn [[tag m]]
+              (not (and (= :fx tag)
+                        (#{:blocks-changed :overlay} (:msg m)))))
+            deltas)))
 
 (def ^:private ^:const hit-slack 1.0000001)
 

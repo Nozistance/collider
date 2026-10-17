@@ -18,6 +18,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.env.attribute :as attribute]
+            [collider.world.env.signal :as signal]
             [collider.world.neighbors :as neighbors]))
 
 (set! *warn-on-reflection* true)
@@ -147,6 +148,8 @@
            [(out/all (out/level-event (drip-events fluid) pos 0))])
    :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])
    :event (fn [_ pos [_ id]] [(out/all (out/level-event id pos 0))])
+   :game-event (fn [_ pos [_ kind source]]
+                 (signal/game-event kind pos source))
    :trail (fn [_ pos [_ target color ticks]]
             (let [at (mapv #(+ (double %) 0.5) pos)]
               [(out/all (out/particles :trail [target color ticks]

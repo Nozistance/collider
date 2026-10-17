@@ -2,12 +2,14 @@
   "Registry of the block rules and their tick hooks."
   (:require [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.blocks.button :as button]
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fall :as fall]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.lamp :as lamp]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.lightning-rod :as lightning-rod]
@@ -30,6 +32,7 @@
    support/attached-stem-rule
    water/coral-rule
    rail/rule
+   button/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule
@@ -39,7 +42,8 @@
    composter/rule
    lectern/rule
    lightning-rod/rule
-   leaves/rule])
+   leaves/rule
+   lamp/rule])
 
 (defn- find-rule [st]
   (some (fn [r] (when ((:match? r) nil st nil) r)) rules))
@@ -68,6 +72,11 @@
   (when-let [r (rule-for st)]
     (let [p (:pass r :shape)]
       (if (keyword? p) p (p st)))))
+
+(defn hears-place?
+  "Returns true when the rule owning st hears of st being placed."
+  [st]
+  (if-let [r (rule-for st)] (:place? r true) false))
 
 (defn fluid-of
   "Returns the fluid of st whose ticks it takes, or nil."
