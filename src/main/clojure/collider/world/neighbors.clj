@@ -70,6 +70,9 @@
   (or (zero? st)
       (not (or (block/liquid? st) (hears? st :neighbor)))))
 
+(defn- analog? [^long st]
+  (and (< st (data/block-state-count)) (block/analog-output? st)))
+
 (def ^:private emptied-types
   #{:furnace :blast-furnace :smoker :barrel :brewing-stand :chest
     :trapped-chest :copper-chest :weathering-copper-chest
@@ -126,9 +129,9 @@
   (delay {:shape (by-state shape-deaf?)
           :neighbor (by-state neighbor-deaf?)
           :plain (by-state plain?)
-          :analog (by-state block/analog-output?)
+          :analog (by-state analog?)
           :hooked (by-state hooked?)
-          :loud (by-state #(or (block/analog-output? %) (hooked? %)))
+          :loud (by-state #(or (analog? %) (hooked? %)))
           :none (by-state (constantly false))}))
 
 (defn- marked? [k ^long st]
