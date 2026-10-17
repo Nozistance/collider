@@ -5,6 +5,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.button :as button]
             [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.dust :as dust]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.lightning-rod :as rod]
@@ -110,8 +111,7 @@
       (button/switch? old)
       (when (button/powered? old) (button/told p old))
       (diode? old) (front-ops p old)
-      (= :redstone-wire t)
-      (mapv #(vector :notify (dir/toward p %) nil old) dir/six)
+      (= :redstone-wire t) (dust/removed p old)
       (rail/rail? old)
       (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
 
@@ -386,7 +386,7 @@
         (add-write! [p old st flags]))))
 
 (defn- hooked [s ctx ops]
-  (reduce #(op-run %1 ctx %2) s ops))
+  (reacted s ctx ops told-all update-limit))
 
 (defn- updated [s ctx p old st flags limit]
   (let [flags (long flags)

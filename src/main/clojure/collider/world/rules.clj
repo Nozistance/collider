@@ -7,6 +7,7 @@
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
+            [collider.world.blocks.dust :as dust]
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fall :as fall]
             [collider.world.blocks.fire :as fire]
@@ -38,6 +39,7 @@
    rail/rule
    button/rule
    bell/rule
+   dust/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule
