@@ -15,11 +15,8 @@
   {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
 (defn- queued [q at id ty v]
-  (let [m (or (get q at) (lm/long-map))
-        tys (get m id {})]
-    (if (contains? tys ty)
-      q
-      (assoc q at (assoc m id (assoc tys ty v))))))
+  (let [m (or (get q at) (lm/long-map))]
+    (assoc q at (assoc m id (assoc (get m id {}) ty v)))))
 
 (defn- pending? [ticks ^long id ty]
   (some? (get (get (:index ticks) id) ty)))
@@ -27,13 +24,11 @@
 (defn- added [ticks at id ty priority order]
   (let [at (long at) id (long id)
         v [(long priority) (long order)]]
-    (cond
-      (nil? (:index ticks))
-      (update ticks :queue queued at id ty v)
-      (pending? ticks id ty) ticks
-      :else (-> ticks
-                (update :queue queued at id ty v)
-                (assoc-in [:index id ty] at)))))
+    (if (pending? ticks id ty)
+      ticks
+      (-> ticks
+          (update :queue queued at id ty v)
+          (assoc-in [:index id ty] at)))))
 
 (defn scheduled?
   "Returns true when ticks hold a tick of type ty at block id."
@@ -45,44 +40,32 @@
   It comes after every tick added before it."
   ([ticks at id ty] (add ticks at id ty 0))
   ([ticks at id ty priority]
-   (let [order (long (:next ticks 0))
-         at (long at) id (long id)
-         index (:index ticks)
-         tys (get index id)
-         ticks (assoc ticks :next (inc order))]
-     (if (and index (some? (get tys ty)))
-       ticks
-       (cond-> (update ticks :queue queued at id ty
-                       [(long priority) order])
-         index (assoc :index (assoc index id (assoc tys ty at))))))))
+   (let [order (long (:next ticks))]
+     (-> (assoc ticks :next (inc order))
+         (added at id ty priority order)))))
 
 (defn- queued! [q at id ty v]
-  (let [m (or (get q at) (lm/long-map))
-        tys (get m id {})]
-    (if (contains? tys ty)
-      q
-      (assoc! q at (assoc m id (assoc tys ty v))))))
+  (let [m (or (get q at) (lm/long-map))]
+    (assoc! q at (assoc m id (assoc (get m id {}) ty v)))))
 
 (defn- added-to [[q ix ^long n] [at id ty]]
   (let [at (long at) id (long id)
-        tys (when ix (get ix id))]
-    (if (and ix (some? (get tys ty)))
+        tys (get ix id)]
+    (if (some? (get tys ty))
       [q ix (inc n)]
       [(queued! q at id ty [0 n])
-       (if ix (assoc! ix id (assoc tys ty at)) ix)
+       (assoc! ix id (assoc tys ty at))
        (inc n)])))
 
 (defn add-all
   "Returns ticks with each tick [at id ty] of entries added in
   order, as add adds them one by one."
   [ticks entries]
-  (let [index (:index ticks)
-        start [(transient (or (:queue ticks) (lm/long-map)))
-               (some-> index transient)
-               (long (:next ticks 0))]
+  (let [start [(transient (:queue ticks)) (transient (:index ticks))
+               (long (:next ticks))]
         [q ix n] (reduce added-to start entries)]
-    (cond-> (assoc ticks :queue (persistent! q) :next n)
-      ix (assoc :index (persistent! ix)))))
+    (assoc ticks
+           :queue (persistent! q) :index (persistent! ix) :next n)))
 
 (defn- due-rows [ticks ^long t]
   (into [] (take-while (fn [[at _]] (<= (long at) t)))
@@ -121,8 +104,12 @@
       (persistent! acc))))
 
 (defn- by-order [[_ p1 o1 id1] [_ p2 o2 id2]]
-  (compare [p1 o1 (chunk/block-id-chunk (long id1))]
-           [p2 o2 (chunk/block-id-chunk (long id2))]))
+  (let [c (Long/compare (long p1) (long p2))
+        c (if (zero? c) (Long/compare (long o1) (long o2)) c)]
+    (if (zero? c)
+      (Long/compare (chunk/block-id-chunk (long id1))
+                    (chunk/block-id-chunk (long id2)))
+      c)))
 
 (defn- tys-into [acc at id tys]
   (reduce-kv (fn [acc ty [priority order]]
@@ -184,8 +171,7 @@
         row (fn [[at m]]
               (let [m (outside cid m)] (when (seq m) [at m])))
         q (into (lm/long-map) (keep row) (:queue ticks))]
-    (cond-> (assoc ticks :queue q)
-      (:index ticks) (update :index #(outside cid %)))))
+    (assoc ticks :queue q :index (outside cid (:index ticks)))))
 
 (defn entries
   "Returns each tick of ticks as [at id ty]."

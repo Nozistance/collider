@@ -74,7 +74,8 @@
     :apply writes/set-blocks}
    :ticks-flushed
    {:scope :level
-    :schema [:cat [:enum :block-ticks :fluid-ticks] Coll]
+    :schema [:cat [:enum :block-ticks :fluid-ticks]
+             [:sequential [:cat :int :keyword [:? :int]]]]
     :apply (fn [w [_ k taken]]
              (update w k schedule/without taken))}
    :schedule-ticks
