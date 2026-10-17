@@ -77,13 +77,16 @@
 (def ^:private ^:table flag-table
   (delay (byte-table @flag-runs 0)))
 
+(def ^:private ^:const sides 6)
+
 (def ^:private ^:table signal-table
   (delay
-    (let [a (byte-array (* 12 (data/block-state-count)))]
+    (let [w (* 2 sides)
+          a (byte-array (* w (data/block-state-count)))]
       (each-run! (data/read-edn "signals.edn")
                  (fn [^long id v]
-                   (dotimes [i 12]
-                     (aset a (+ (* 12 id) i) (byte (nth v i))))))
+                   (dotimes [i w]
+                     (aset a (+ (* w id) i) (byte (nth v i))))))
       a)))
 
 (defn shapes
@@ -131,7 +134,7 @@
   true, -1 where it reads the level."
   ^long [^long st ^long side direct?]
   (long (aget ^bytes @signal-table
-              (+ (* 12 st) (if direct? 6 0) side))))
+              (+ (* 2 sides st) (if direct? sides 0) side))))
 
 (defn- default-of [b]
   (decode-props b (- (long (:default b)) (long (:first b)))))

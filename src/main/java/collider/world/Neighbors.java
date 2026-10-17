@@ -319,24 +319,24 @@ public final class Neighbors {
     /// runs, it runs the item and all it adds with step, a function of
     /// this run and an item.
     public Neighbors addAndRun(Object item, IFn step) {
-        return added(item, 1, step);
+        return addAndRun(item, 1, step);
     }
 
     /// Adds item standing for n updates, of which those within the
     /// limit stay, and runs it as addAndRun does.
-    private Neighbors added(Object item, int n, IFn step) {
-        boolean was = count > 0;
+    private Neighbors addAndRun(Object item, int n, IFn step) {
+        boolean busy = count > 0;
         long room = limit < 0 ? n : Math.max(0, Math.min(n, limit - count));
         count += n;
         if (room > 0) {
             Object it = room < n ? ((Pass) item).cut((int) room) : item;
-            if (was) {
+            if (busy) {
                 added.add(it);
             } else {
                 stack.push(it);
             }
         }
-        if (!was) {
+        if (!busy) {
             runAll(step);
         }
         return this;
@@ -352,14 +352,16 @@ public final class Neighbors {
             if (trace) {
                 traced(top);
             }
-            while (added.isEmpty()) {
-                boolean more = top instanceof Pass p
-                        ? p.step(this)
-                        : step.invoke(this, top) != null;
-                if (!more) {
-                    stack.pop();
-                    break;
+            if (top instanceof Pass p) {
+                while (added.isEmpty()) {
+                    if (!p.step(this)) {
+                        stack.pop();
+                        break;
+                    }
                 }
+            } else {
+                step.invoke(this, top);
+                stack.pop();
             }
         }
         count = 0;
@@ -397,13 +399,16 @@ public final class Neighbors {
             int maxY
     ) {
         if (!shape) {
-            return added(new Pass(x, y, z, false, skip, 0, 6, deaf, sides, told, minY, maxY), 1, step);
+            Pass all = new Pass(x, y, z, false, skip, 0, 6, deaf, sides, told, minY, maxY);
+            return addAndRun(all, 1, step);
         }
         if (count > 0) {
-            return added(new Pass(x, y, z, true, -1, 0, 6, deaf, sides, told, minY, maxY), 6, step);
+            Pass all = new Pass(x, y, z, true, -1, 0, 6, deaf, sides, told, minY, maxY);
+            return addAndRun(all, 6, step);
         }
         for (int d = 0; d < 6; d++) {
-            added(new Pass(x, y, z, true, -1, d, d + 1, deaf, sides, told, minY, maxY), 1, step);
+            Pass one = new Pass(x, y, z, true, -1, d, d + 1, deaf, sides, told, minY, maxY);
+            addAndRun(one, 1, step);
         }
         return this;
     }

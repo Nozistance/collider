@@ -18,26 +18,24 @@
   (let [m (or (get q at) (lm/long-map))]
     (assoc q at (assoc m id (assoc (get m id {}) ty v)))))
 
-(defn- pending? [ticks ^long id ty]
+(defn scheduled?
+  "Returns true when ticks hold a tick of type ty at block id."
+  [ticks ^long id ty]
   (some? (get (get (:index ticks) id) ty)))
 
 (defn- added [ticks at id ty priority order]
   (let [at (long at) id (long id)
         v [(long priority) (long order)]]
-    (if (pending? ticks id ty)
+    (if (scheduled? ticks id ty)
       ticks
       (-> ticks
           (update :queue queued at id ty v)
           (assoc-in [:index id ty] at)))))
 
-(defn scheduled?
-  "Returns true when ticks hold a tick of type ty at block id."
-  [ticks id ty]
-  (pending? ticks (long id) ty))
-
 (defn add
   "Returns ticks with a tick of type ty at block id due at tick at.
-  It comes after every tick added before it."
+  Among ticks due at the same tick, a lower priority runs first and
+  equal priorities run in the order they were added."
   ([ticks at id ty] (add ticks at id ty 0))
   ([ticks at id ty priority]
    (let [order (long (:next ticks))]
@@ -81,10 +79,14 @@
   (for [[id tys] m [ty [priority order]] tys]
     [at priority order id ty]))
 
+(defn- entry-order [e] (nth e 2))
+
+(defn- entry-id [e] (nth e 3))
+
 (defn- lane-order [[at priority order]] [at priority order])
 
 (defn- lanes [es]
-  (->> (group-by #(chunk/block-id-chunk (% 3)) es)
+  (->> (group-by #(chunk/block-id-chunk (entry-id %)) es)
        vals
        (mapv #(sort-by lane-order %))))
 
@@ -178,30 +180,26 @@
   [ticks]
   (for [[at m] (:queue ticks) [id tys] m ty (keys tys)] [at id ty]))
 
-(defn- sub-order [e] (nth e 2))
-
 (defn copied
-  "Returns as [at id ty order priority] every tick of a block id that
+  "Returns as [at id ty priority order] every tick of a block id that
   in? accepts, moved to (moved id). They keep their order among
   themselves and follow the last tick of ticks."
   [ticks in? moved]
-  (let [xf (comp (mapcat row-entries) (filter #(in? (% 3))))
+  (let [xf (comp (mapcat row-entries) (filter #(in? (entry-id %))))
         es (into [] xf (:queue ticks))
-        orders (map sub-order es)
+        orders (map entry-order es)
         lo (long (reduce min Long/MAX_VALUE orders))
         hi (long (reduce max Long/MIN_VALUE orders))]
     (mapv (fn [[at priority order id ty]]
-            [at (moved id) ty (+ (- (long order) lo) hi 1) priority])
+            [at (moved id) ty priority (+ (- (long order) lo) hi 1)])
           es)))
 
 (defn add-ordered
-  "Returns ticks with each tick [at id ty order priority] of entries
+  "Returns ticks with each tick [at id ty priority order] of entries
   added in its own order. A block keeps a tick of a type it already
   has."
   [ticks entries]
-  (reduce (fn [t [at id ty order priority]]
-            (added t at id ty priority order))
-          ticks entries))
+  (reduce (fn [t e] (apply added t e)) ticks entries))
 
 (defn- relative [^long t [at priority _ id ty]]
   [(- (long at) t) (cell/unpack id) ty priority])
@@ -211,17 +209,17 @@
   They come in the order they were added in."
   [ticks cid t]
   (->> (mapcat row-entries (:queue ticks))
-       (filter #(in-chunk? cid (% 3)))
-       (sort-by sub-order)
+       (filter #(in-chunk? cid (entry-id %)))
+       (sort-by entry-order)
        (mapv #(relative t %))))
 
 (defn saved-by-chunk
   "Returns the ticks of every chunk as saved, by chunk id."
   [ticks t]
-  (let [by-chunk #(chunk/block-id-chunk (% 3))
+  (let [by-chunk #(chunk/block-id-chunk (entry-id %))
         es (mapcat row-entries (:queue ticks))]
     (update-vals (group-by by-chunk es)
-                 #(mapv (partial relative t) (sort-by sub-order %)))))
+                 #(mapv (partial relative t) (sort-by entry-order %)))))
 
 (defn restored
   "Returns ticks with the saved ticks back, due after their delays.

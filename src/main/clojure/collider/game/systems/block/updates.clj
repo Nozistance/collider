@@ -165,10 +165,10 @@
            flags (transient [])
            seen (transient (lm/long-set))]
       (if ts
-        (let [tick (first ts)]
+        (let [[p :as tick] (first ts)]
           (recur (next ts)
                  (conj! flags (lone? seen size tick))
-                 (conj! seen (bucket size (tick 0) [0 0]))))
+                 (conj! seen (bucket size p [0 0]))))
         flags))))
 
 (defn- first-runs [world ctx k ticks]
@@ -207,9 +207,9 @@
       (let [active (areas/ticking-chunks world)
             runs? #(areas/active-id? active %)
             order (schedule/run-order ticks t runs? tick-limit)
-            gone (into order (unloaded world due))]
-        (when (seq gone)
-          (into [[:ticks-flushed k gone]]
+            taken (into order (unloaded world due))]
+        (when (seq taken)
+          (into [[:ticks-taken k taken]]
                 (ticks-run world k (mapv at-cell order))))))))
 
 (defn block-updates

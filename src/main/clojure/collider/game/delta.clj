@@ -72,7 +72,7 @@
     :schema [:cat Records [:? [:maybe Coll]] [:? [:maybe Coll]]
              [:? Authors]]
     :apply writes/set-blocks}
-   :ticks-flushed
+   :ticks-taken
    {:scope :level
     :schema [:cat [:enum :block-ticks :fluid-ticks]
              [:sequential [:cat :int :keyword [:? :int]]]]

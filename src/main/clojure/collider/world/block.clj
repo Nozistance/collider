@@ -612,6 +612,10 @@
 
 (def ^:private ^:const legacy-solid-bit 64)
 
+(def ^:private ^:const conductor-bit 256)
+
+(def ^:private ^:const analog-bit 512)
+
 (defn- flagged? [^long st ^long mask]
   (pos? (bit-and (long (aget ^bytes (states/flags) st)) mask)))
 
@@ -732,10 +736,6 @@
   [^long st tag]
   (contains? (tag-set tag) (block-of st)))
 
-(def ^:private ^:const conductor-bit 256)
-
-(def ^:private ^:const analog-bit 512)
-
 (def ^:private ^:table conductor-arr
   (delay (states/flag-states conductor-bit)))
 
@@ -761,8 +761,7 @@
 
 (defn direct-signal
   "Returns the signal st gives through the neighbor that looks at it
-  toward face, -1 when the level decides. Redstone wire gives it only
-  while it is not working out its own power."
+  toward face, as signal does."
   ^long [^long st face]
   (states/signal st (long (dir/index face)) true))
 

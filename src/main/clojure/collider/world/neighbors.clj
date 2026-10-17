@@ -80,14 +80,14 @@
     :dispenser :dropper :hopper :jukebox :shelf :shulker-box
     :copper-golem-statue :weathering-copper-golem-statue})
 
-(def ^:private around
-  [:down :up :north :south :west :east])
+(defn- diode? [^long st]
+  (contains? #{:repeater :comparator} (block/type-of st)))
 
 (defn- front-ops
-  "Returns the ops of a diode st at p that tells the cell it faces
+  "Returns the ops of a diode st at p that tell the cell it faces
   away from, or nil when st is no diode."
   [p ^long st]
-  (when (contains? #{:repeater :comparator} (block/type-of st))
+  (when (diode? st)
     (let [f (:facing (block/props-of st))
           q (dir/toward p (dir/opposite f))]
       [[:changed q st f] [:notify q f st]])))
@@ -100,16 +100,16 @@
     (cond
       (contains? emptied-types t) [[:output-signal p]]
       (lectern/lectern? old)
-      (when (= :true powered) [[:notify (dir/toward p :down)]])
+      (when (= :true powered) [[:notify (dir/toward p :down) nil old]])
       (rod/rod? old)
       (when (= :true powered)
-        [[:notify (dir/toward p (dir/opposite facing))]])
+        [[:notify (dir/toward p (dir/opposite facing)) nil old]])
       moved? nil
-      (contains? #{:repeater :comparator} t) (front-ops p old)
+      (diode? old) (front-ops p old)
       (= :redstone-wire t)
-      (mapv #(vector :notify (dir/toward p %)) around)
+      (mapv #(vector :notify (dir/toward p %) nil old) dir/six)
       (rail/rail? old)
-      (mapv #(vector :notify %) (rail/removal-notified p old)))))
+      (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
 
 (defn- hooked? [^long st]
   (boolean (seq (removal-ops [0 0 0] st false))))
@@ -132,7 +132,7 @@
           :analog (by-state analog?)
           :hooked (by-state hooked?)
           :loud (by-state #(or (analog? %) (hooked? %)))
-          :none (by-state (constantly false))}))
+          :none (boolean-array (inc (data/block-state-count)))}))
 
 (defn- marked? [k ^long st]
   (aget ^booleans (k @states) st))
@@ -207,12 +207,12 @@
         at (liquid/column-wake st below (:tick ctx))]
     (ticked s ctx :block-ticks at p (block/block-of st))))
 
+(defn- neighbor-woken [s ctx p old side]
+  (rule-woken s ctx p old side told-all update-limit :neighbor))
+
 (defn- liquid-woken [s ctx p old side]
   (let [st (block-at s p)
-        s' (if (block/lava? st)
-             (rule-woken s ctx p old side told-all update-limit
-                         :neighbor)
-             s)]
+        s' (if (block/lava? st) (neighbor-woken s ctx p old side) s)]
     (if (= st (block-at s' p))
       (-> (fluid-woken s' ctx p old side)
           (column-woken ctx p (block-at s' (dir/toward p :down))))
@@ -228,8 +228,7 @@
   (cond
     (zero? (long st)) s
     (block/liquid? st) (liquid-woken s ctx q old side)
-    (hears? st :neighbor)
-    (rule-woken s ctx q old side told-all update-limit :neighbor)
+    (hears? st :neighbor) (neighbor-woken s ctx q old side)
     :else s))
 
 (defn- reshaped [s ctx q st side flags limit]
@@ -272,8 +271,7 @@
   (if (= :changed k)
     (state-changed s ctx p (block-at s p) src x)
     (state-changed s (cond-> ctx x (assoc :moved? true))
-                   p src src nil))
-  nil)
+                   p src src nil)))
 
 (defn- stepper [ctx]
   (fn [s item] (run-next! s ctx item)))
@@ -292,12 +290,12 @@
            chunk/min-y chunk/max-y)))
 
 (defn- neighbors-changed
-  ([s ctx p old] (neighbors-changed s ctx p old nil))
-  ([s ctx p old skip]
+  ([s ctx p src] (neighbors-changed s ctx p src nil))
+  ([s ctx p src skip]
    (if (and (not (running? s)) (deaf-around? s ctx :neighbor p))
      s
      (passed s ctx p false skip
-             #(state-changed %1 ctx %2 %4 old %3)))))
+             #(state-changed %1 ctx %2 %4 src %3)))))
 
 (defn- called [s ctx fx]
   (if (seq fx)
@@ -356,9 +354,8 @@
         (add-record! (if (seq fx) [p st fx] [p st]))
         (add-write! [p old st flags]))))
 
-(defn- hooked [s ctx old ops]
-  (reduce (fn [s [op q x src]] (op-run s ctx [op q x (or src old)]))
-          s ops))
+(defn- hooked [s ctx ops]
+  (reduce #(op-run %1 ctx %2) s ops))
 
 (defn- updated [s ctx p old st flags limit]
   (let [flags (long flags)
@@ -366,7 +363,7 @@
             s
             (-> (placed s ctx p old
                         (has? flags update/moved-by-piston))
-                (hooked ctx st (front-ops p st))))
+                (hooked ctx (front-ops p st))))
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
@@ -379,7 +376,7 @@
         (shapes-changed ctx p old flags (dec limit))))))
 
 (defn- after-removal [s ctx p old moved?]
-  (hooked s ctx old (removal-ops p old moved?)))
+  (hooked s ctx (removal-ops p old moved?)))
 
 (defn- removed
   "Returns s after block old that st replaced at p tells the cells
@@ -394,8 +391,7 @@
       (after-removal s ctx p old moved?)
       s)))
 
-(defn- kept?
-  [s p st]
+(defn- kept? [s p st]
   (= (block/block-of st) (block/block-of (block-at s p))))
 
 (defn- liquid-placed [s ctx p old fx]
@@ -530,7 +526,8 @@
   "Returns the level after ops run in order. An op [:set c flags] or
   [:put c flags] sets change c as it is, not shaped by its neighbours.
   An op [:notify pos] tells the six blocks around pos of a change
-  there, and [:tell pos old] tells them of a change from old. An op
+  there, and [:tell pos old] tells them of a change to the block now
+  at pos, with old as the block that went. An op
   [:edge pos side] updates the shapes of pos and the cell on side
   against each other with flags 2. An op [:send pos] tells the
   clients of pos. An op [:notify pos side] tells the blocks around

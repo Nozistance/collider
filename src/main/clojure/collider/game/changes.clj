@@ -193,14 +193,14 @@
   ([world s] (settled-deltas world s nil))
   ([world s by]
    (let [recs (:records s)
+         updates (:updates s)
          quiet (not-empty (neighbors/unheard s))
          d (cond-> [:set-blocks (block-changes recs) (:ticks s)]
              (or quiet by) (conj quiet)
              by (conj by))]
      (cond-> (into [d] (removal-deltas world (:writes s)))
        (with-fx? recs) (into (change-fx world recs))
-       (seq (:updates s))
-       (conj (out/all (out/neighbor-updates (:updates s))))))))
+       (seq updates) (conj (out/all (out/neighbor-updates updates)))))))
 
 (defn- joined [a b]
   (let [[_ ca ta _ by] a [_ cb tb] b
