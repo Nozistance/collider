@@ -70,26 +70,12 @@
   (or (zero? st)
       (not (or (block/liquid? st) (hears? st :neighbor)))))
 
-(def ^:private analog-types
-  #{:cauldron :layered-cauldron :lava-cauldron :furnace :blast-furnace
-    :smoker :barrel :beehive :brewing-stand :cake :candle-cake :chest
-    :trapped-chest :copper-chest :weathering-copper-chest
-    :chiseled-book-shelf :command :composter :copper-bulb-block
-    :weathering-copper-bulb :copper-golem-statue
-    :weathering-copper-golem-statue :crafter :creaking-heart
-    :decorated-pot :detector-rail :dispenser :dropper
-    :end-portal-frame :hopper :jukebox :lectern :respawn-anchor
-    :sculk-sensor :calibrated-sculk-sensor :shelf :shulker-box})
-
 (def ^:private emptied-types
   #{:furnace :blast-furnace :smoker :barrel :brewing-stand :chest
     :trapped-chest :copper-chest :weathering-copper-chest
     :chiseled-book-shelf :crafter :creaking-heart :decorated-pot
     :dispenser :dropper :hopper :jukebox :shelf :shulker-box
     :copper-golem-statue :weathering-copper-golem-statue})
-
-(defn- analog? [^long st]
-  (contains? analog-types (block/type-of st)))
 
 (def ^:private around
   [:down :up :north :south :west :east])
@@ -130,7 +116,7 @@
   [^long st]
   (not (or (rules/update-pass st) (block/liquid? st)
            (rules/fluid-of st) (connect/connecting? st)
-           (geyser/placed-fx st) (analog? st))))
+           (geyser/placed-fx st) (block/analog-output? st))))
 
 (defn- by-state [f]
   (boolean-array (map (comp boolean f)
@@ -140,9 +126,9 @@
   (delay {:shape (by-state shape-deaf?)
           :neighbor (by-state neighbor-deaf?)
           :plain (by-state plain?)
-          :analog (by-state analog?)
+          :analog (by-state block/analog-output?)
           :hooked (by-state hooked?)
-          :loud (by-state #(or (analog? %) (hooked? %)))
+          :loud (by-state #(or (block/analog-output? %) (hooked? %)))
           :none (by-state (constantly false))}))
 
 (defn- marked? [k ^long st]
