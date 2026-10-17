@@ -1,6 +1,7 @@
 (ns collider.game.changes
   "Block changes as deltas, with their updates and effects."
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.instrument :as instrument]
             [collider.game.block.spill :as spill]
@@ -15,6 +16,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
+            [collider.world.blocks.diode :as diode]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -323,6 +325,10 @@
                :block.dried-ghast.place)]
     [(out/all (out/block-sound kind pos 1.0 1.0))]))
 
+(defn- placed-by-ticks [chunks pos base]
+  (when-let [at (diode/placed-tick chunks pos (chunk/at chunks pos) base)]
+    [[:schedule-ticks {at [(cell/pack pos)]}]]))
+
 (defn- placed-by-fx [pos ^long state]
   (case (block/type-of state)
     :dried-ghast (ghast-placed-fx pos state)
@@ -350,9 +356,10 @@
   ([world eid pos state] (placed-by-use-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [base (dec (long (:tick world)))
-         deltas (shaped-deltas world changes base)
+         [deltas s] (run-deltas world changes base neighbors/set-blocks)
          [[pos state]] (first (dried world changes))]
      (-> deltas
+         (into (placed-by-ticks (:chunks s) pos base))
          (into (placed-by-fx pos state))
          (conj (place-sound world eid pos state))
          (into (spent world eid))))))

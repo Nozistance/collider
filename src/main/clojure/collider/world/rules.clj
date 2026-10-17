@@ -5,6 +5,7 @@
             [collider.world.blocks.bell :as bell]
             [collider.world.blocks.button :as button]
             [collider.world.blocks.composter :as composter]
+            [collider.world.blocks.diode :as diode]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.dust :as dust]
@@ -40,6 +41,7 @@
    button/rule
    bell/rule
    dust/rule
+   diode/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule

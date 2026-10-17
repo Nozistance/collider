@@ -46,18 +46,18 @@
   (let [m (or (get q at) (lm/long-map))]
     (assoc! q at (assoc m id (assoc (get m id {}) ty v)))))
 
-(defn- added-to [[q ix ^long n] [at id ty]]
+(defn- added-to [[q ix ^long n] [at id ty priority]]
   (let [at (long at) id (long id)
         tys (get ix id)]
     (if (some? (get tys ty))
       [q ix (inc n)]
-      [(queued! q at id ty [0 n])
+      [(queued! q at id ty [(long priority) n])
        (assoc! ix id (assoc tys ty at))
        (inc n)])))
 
 (defn add-all
-  "Returns ticks with each tick [at id ty] of entries added in
-  order, as add adds them one by one."
+  "Returns ticks with each tick [at id ty priority] of entries added
+  in order, as add adds them one by one."
   [ticks entries]
   (let [start [(transient (:queue ticks)) (transient (:index ticks))
                (long (:next ticks))]

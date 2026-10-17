@@ -5,6 +5,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.button :as button]
             [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.diode :as diode]
             [collider.world.blocks.dust :as dust]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.lectern :as lectern]
@@ -83,14 +84,11 @@
     :dispenser :dropper :hopper :jukebox :shelf :shulker-box
     :copper-golem-statue :weathering-copper-golem-statue})
 
-(defn- diode? [^long st]
-  (contains? #{:repeater :comparator} (block/type-of st)))
-
 (defn- front-ops
   "Returns the ops of a diode st at p that tell the cell it faces
   away from, or nil when st is no diode."
   [p ^long st]
-  (when (diode? st)
+  (when (diode/diode? st)
     (let [f (:facing (block/props-of st))
           q (dir/toward p (dir/opposite f))]
       [[:changed q st f] [:notify q f st]])))
@@ -110,7 +108,7 @@
       moved? nil
       (button/switch? old)
       (when (button/powered? old) (button/told p old))
-      (diode? old) (front-ops p old)
+      (diode/diode? old) (front-ops p old)
       (= :redstone-wire t) (dust/removed p old)
       (rail/rail? old)
       (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
@@ -159,9 +157,9 @@
 
 (def ^:private told-all (constantly update/all))
 
-(defn- ticked [s k at p ty]
+(defn- ticked [s k at p ty priority]
   (if (and at ty)
-    (add-tick! s [k (long at) (cell/pack p) ty])
+    (add-tick! s [k (long at) (cell/pack p) ty (long priority)])
     s))
 
 (declare set-block op-run)
@@ -198,18 +196,18 @@
         (reacted s (dissoc ctx :moved? :given)
                  (rules/reshape-changes cs st p ctx')
                  flags-for limit))
-      (ticked s :block-ticks at p (block/block-of st)))))
+      (ticked s :block-ticks at p (block/block-of st) 0))))
 
 (defn- fluid-woken [s ctx p old side]
   (let [{:keys [dim tick]} ctx
         st (block-at s p)
         at (rules/fluid-wake-tick (chunks s) dim st tick p old side)]
-    (ticked s :fluid-ticks at p (rules/fluid-of st))))
+    (ticked s :fluid-ticks at p (rules/fluid-of st) 0)))
 
 (defn- column-woken [s ctx p below]
   (let [st (block-at s p)
         at (liquid/column-wake st below (:tick ctx))]
-    (ticked s :block-ticks at p (block/block-of st))))
+    (ticked s :block-ticks at p (block/block-of st) 0)))
 
 (defn- neighbor-woken [s ctx p old side]
   (rule-woken s ctx p old side told-all update-limit :neighbor))
@@ -547,7 +545,7 @@
       true (neighbors-changed ctx p st)
       (marked? :analog st) (output-signaled ctx p))))
 
-(defn- op-run [s ctx [op x y z]]
+(defn- op-run [s ctx [op x y z ty]]
   (case op
     (:set :put) (set-block s ctx x y update-limit)
     :notify (neighbors-changed s ctx x (or z (block-at s x)) y)
@@ -555,7 +553,8 @@
     :output-signal (output-signaled s ctx x)
     :tell (set-told s ctx x y)
     :edge (edged s ctx x y)
-    :send (add-sent! s x)))
+    :send (add-sent! s x)
+    :tick (ticked s :block-ticks y x ty z)))
 
 (defn run
   "Returns the level after ops run in order. An op [:set c flags] or
@@ -568,8 +567,9 @@
   clients of pos. An op [:notify pos side] tells the blocks around
   pos but the one on side, [:notify pos side src] tells them of a
   change of block src, [:changed pos src side] tells the block at pos
-  of a change of block src on side, and [:output-signal pos] tells the
-  comparators that read pos."
+  of a change of block src on side, [:output-signal pos] tells the
+  comparators that read pos, and [:tick pos at priority ty] asks
+  for a tick of type ty at pos at tick at."
   [chunks ctx ops]
   (run-each chunks ctx ops op-run))
 

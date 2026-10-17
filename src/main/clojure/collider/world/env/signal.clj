@@ -39,6 +39,11 @@
     (known (if direct? (block/direct-signal st d) (block/signal st d))
            st d)))
 
+(defn direct-signal
+  "Returns the direct signal the block at p gives toward side."
+  ^long [chunks p side]
+  (long (given chunks p (chunk/at chunks p) side true true)))
+
 (defn direct-signal-to
   "Returns the strongest direct signal the blocks around p give it.
   Wires give none while wires? is false."

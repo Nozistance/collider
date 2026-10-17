@@ -70,7 +70,7 @@
 (defn- ticks-added [w ticks]
   (reduce-kv (fn [w k es]
                (update w k schedule/add-all
-                       (mapv (fn [[_ at id ty]] [at id ty]) es)))
+                       (mapv (fn [[_ at id ty priority]] [at id ty priority]) es)))
              w (group-by first ticks)))
 
 (defn- unquiet [changes quiet]

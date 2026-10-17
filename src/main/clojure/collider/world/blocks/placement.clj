@@ -5,6 +5,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.campfire :as campfire]
+            [collider.world.blocks.diode :as diode]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.grow.vine :as vine]
@@ -277,6 +278,10 @@
   (when (support/supported? chunks pos st)
     (wire/placed chunks pos)))
 
+(defn- repeater-fitted [chunks pos st _]
+  (when (support/supported? chunks pos st)
+    (diode/held chunks pos st)))
+
 (defn- lamp-fitted [chunks pos st _]
   (lamp/lit st (signal/has-neighbor-signal? chunks pos)))
 
@@ -305,6 +310,7 @@
    [[:huge-mushroom] mushroom-fitted]
    [[:farmland :dirt-path] dirt-fitted]
    [[:redstone-lamp] lamp-fitted]
+   [[:repeater] repeater-fitted]
    [[:redstone-wire] wire-fitted]
    [(conj block/trapdoor-types :fence-gate) powered-fitted]])
 

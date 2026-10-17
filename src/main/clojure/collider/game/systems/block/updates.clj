@@ -136,8 +136,9 @@
                          [p old st]))))
 
 (defn- stepped
-  [world ctx k pass [tick first-run]]
-  (let [[pass r] (if (stale? pass tick first-run)
+  [world ctx k pass [i tick first-run]]
+  (let [ctx (cond-> ctx (:will-tick? ctx) (update :will-tick? partial i))
+        [pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
                    [pass first-run])
         by (nth tick 1)
@@ -182,15 +183,24 @@
       (par/pmapv first-run (vec (range (count ticks))))
       (vec (repeat (count ticks) nil)))))
 
+(defn- will-tick
+  "Returns the fn of step i that tells whether a tick of type ty at p
+  runs later in ticks."
+  [ticks]
+  (let [at (delay (into {} (map-indexed (fn [i [p ty]] [[p ty] i])) ticks))]
+    (fn [^long i p ty] (< i (long (get @at [p ty] -1))))))
+
 (defn- ticks-run [world k ticks]
   (let [ctx (level/level-ctx world)
         firsts (first-runs world ctx k ticks)
+        ctx (cond-> ctx
+              (= :block-ticks k) (assoc :will-tick? (will-tick ticks)))
         w (update world :chunks chunk/editable)
         dirty (when (some some? firsts) (lm/long-set))
         start {:w w :dirty dirty :lit {} :out (transient [])}]
     (persistent!
       (:out (reduce #(stepped world ctx k %1 %2) start
-                    (mapv vector ticks firsts))))))
+                    (mapv vector (range) ticks firsts))))))
 
 (defn- unloaded [world due]
   (let [chunks (:chunks world)]
