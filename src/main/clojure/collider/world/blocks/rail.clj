@@ -206,12 +206,11 @@
 (defn- same-block? [^long a ^long b]
   (= (block/block-of a) (block/block-of b)))
 
-(defn- on-neighbor-change [chunks p {:keys [side old moved?]}]
+(defn- on-neighbor-change [chunks p {:keys [pass old moved?]}]
   (let [st (chunk/at chunks p) old (long old)]
     (cond
-      (some? side) (rechecked chunks p st old false)
-      (not (same-block? st old)) (set-down chunks p st moved?)
-      (= st old) (rechecked chunks p st st moved?))))
+      (not= :place pass) (rechecked chunks p st old moved?)
+      (not (same-block? st old)) (set-down chunks p st moved?))))
 
 (defn removal-notified
   "Returns the cells whose neighbours hear that rail st at p went."

@@ -101,7 +101,7 @@
   (when (contains? #{:repeater :comparator} (block/type-of st))
     (let [f (:facing (block/props-of st))
           q (dir/toward p (dir/opposite f))]
-      [[:changed q] [:notify q f]])))
+      [[:changed q st f] [:notify q f st]])))
 
 (defn- removal-ops
   "Returns the ops that block old at p runs when it goes."
@@ -279,10 +279,11 @@
     (block/liquid? st) (liquid-shaped s ctx q old side st nst)
     :else (block-shaped s ctx q st old side flags limit)))
 
-(defn- run-next! [s ctx [k p old moved?]]
-  (let [old (if (= :changed k) (block-at s p) old)]
-    (state-changed s (cond-> ctx moved? (assoc :moved? true))
-                   p old old nil))
+(defn- run-next! [s ctx [k p src x]]
+  (if (= :changed k)
+    (state-changed s ctx p (block-at s p) src x)
+    (state-changed s (cond-> ctx x (assoc :moved? true))
+                   p src src nil))
   nil)
 
 (defn- stepper [ctx]
@@ -367,11 +368,7 @@
         (add-write! [p old st flags]))))
 
 (defn- hooked [s ctx old ops]
-  (reduce (fn [s [op q skip]]
-            (case op
-              :notify (neighbors-changed s ctx q old skip)
-              :changed (add-and-run! s ctx [:changed q])
-              :output-signal (output-signaled s ctx q)))
+  (reduce (fn [s [op q x src]] (op-run s ctx [op q x (or src old)]))
           s ops))
 
 (defn- updated [s ctx p old st flags limit]
@@ -380,7 +377,7 @@
             s
             (-> (placed s ctx p old
                         (has? flags update/moved-by-piston))
-                (hooked ctx old (front-ops p st))))
+                (hooked ctx st (front-ops p st))))
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
@@ -527,14 +524,14 @@
       (and (marked? :hooked old)
            (not= (block/block-of old) (block/block-of st)))
       (after-removal ctx p old false)
-      true (neighbors-changed ctx p old)
+      true (neighbors-changed ctx p st)
       (marked? :analog st) (output-signaled ctx p))))
 
-(defn- op-run [s ctx [op x y]]
+(defn- op-run [s ctx [op x y z]]
   (case op
     (:set :put) (set-block s ctx x y update-limit)
-    :notify (neighbors-changed s ctx x (block-at s x) y)
-    :changed (add-and-run! s ctx [:changed x])
+    :notify (neighbors-changed s ctx x (or z (block-at s x)) y)
+    :changed (add-and-run! s ctx [:changed x y z])
     :output-signal (output-signaled s ctx x)
     :tell (set-told s ctx x y)
     :edge (edged s ctx x y)
@@ -548,9 +545,10 @@
   [:edge pos side] updates the shapes of pos and the cell on side
   against each other with flags 2. An op [:send pos] tells the
   clients of pos. An op [:notify pos side] tells the blocks around
-  pos but the one on side, [:changed pos src] tells the block at pos
-  of a change of block src beside it, and [:output-signal pos] tells
-  the comparators that read pos."
+  pos but the one on side, [:notify pos side src] tells them of a
+  change of block src, [:changed pos src side] tells the block at pos
+  of a change of block src on side, and [:output-signal pos] tells the
+  comparators that read pos."
   [chunks ctx ops]
   (run-each chunks ctx ops op-run))
 

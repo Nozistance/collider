@@ -477,7 +477,8 @@
 (defn- removed [p ^long st]
   (cond-> [[p (block/emptied st) [[:drop st]]]]
     (not= :redstone-wire (block/type-of st))
-    (into (map #(vector :notify (dir/toward p %))) diode-told)))
+    (into (map #(vector :notify (dir/toward p %) nil st))
+          diode-told)))
 
 (defn- unsupported [chunks p {:keys [pass side]}]
   (let [st (chunk/at chunks p)]
