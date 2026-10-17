@@ -192,24 +192,73 @@
 (def ^:private ^:const pushed-off
   (bit-or update/all update/moved-by-piston))
 
+(defn- same-block? [^long a ^long b]
+  (= (block/block-of a) (block/block-of b)))
+
+(def ^:private power-steps
+  {:north_south [[0 0 1 true] [0 0 -1 true] :north_south]
+   :east_west [[-1 0 0 true] [1 0 0 true] :east_west]
+   :ascending_east [[-1 0 0 true] [1 1 0 false] :east_west]
+   :ascending_west [[-1 1 0 false] [1 0 0 true] :east_west]
+   :ascending_north [[0 0 1 true] [0 1 -1 false] :north_south]
+   :ascending_south [[0 1 1 false] [0 0 -1 true] :north_south]})
+
+(def ^:private across
+  {:east_west #{:north_south :ascending_north :ascending_south}
+   :north_south #{:east_west :ascending_east :ascending_west}})
+
+(declare powered-along?)
+
+(defn- powered-rail-at? [chunks q st forward? depth flat]
+  (let [n (chunk/at chunks q)]
+    (and (same-block? n st)
+         (not (contains? (across flat) (shape-of n)))
+         (= :true (:powered (block/props-of n)))
+         (or (signal/has-neighbor-signal? chunks q)
+             (powered-along? chunks q n forward? (inc (long depth)))))))
+
+(defn- powered-along?
+  "Returns true when a powered rail of the same block that a signal
+  reaches lies along the powered rail st at p, at most eight away."
+  [chunks p st forward? depth]
+  (when (< (long depth) 8)
+    (let [[fwd back flat] (power-steps (shape-of st))
+          [dx dy dz below?] (if forward? fwd back)
+          q (mapv + p [dx dy dz])]
+      (or (powered-rail-at? chunks q st forward? depth flat)
+          (and below?
+               (powered-rail-at? chunks (dir/down q) st forward? depth
+                                 flat))))))
+
+(defn- power-changes [chunks p ^long st]
+  (let [on (or (signal/has-neighbor-signal? chunks p)
+               (powered-along? chunks p st true 0)
+               (powered-along? chunks p st false 0))]
+    (when (not= on (= :true (:powered (block/props-of st))))
+      (let [st' (block/with st :powered (block/flag on))]
+        (cond-> [[p st' nil update/all] [:notify (dir/down p) nil st']]
+          (contains? slope-sides (shape-of st))
+          (conj [:notify (dir/up p) nil st']))))))
+
 (defn- rechecked
   [chunks p st old moved?]
   (cond
     (removed? chunks p (shape-of st))
     [(cond-> [p (block/emptied st) [[:drop st]]]
        moved? (conj pushed-off))]
+    (= :powered-rail (block/type-of st)) (power-changes chunks p st)
     (and (not (curveless? st)) (signal-block? old)
          (= 3 (potential-links chunks p)))
     (placed chunks p st (signal/has-neighbor-signal? chunks p)
             false)))
 
-(defn- same-block? [^long a ^long b]
-  (= (block/block-of a) (block/block-of b)))
-
-(defn- on-neighbor-change [chunks p {:keys [pass old moved?]}]
+(defn- on-neighbor-change [chunks p {:keys [pass old moved? given]}]
   (let [st (chunk/at chunks p) old (long old)]
     (cond
-      (not= :place pass) (rechecked chunks p st old moved?)
+      (not= :place pass)
+      (let [given (long (or given st))]
+        (when (same-block? given st)
+          (rechecked chunks p given old moved?)))
       (not (same-block? st old)) (set-down chunks p st moved?))))
 
 (defn removal-notified

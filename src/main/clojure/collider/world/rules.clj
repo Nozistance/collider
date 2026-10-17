@@ -9,6 +9,7 @@
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fall :as fall]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.fuse :as fuse]
             [collider.world.blocks.lamp :as lamp]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
@@ -45,7 +46,8 @@
    lightning-rod/rule
    leaves/rule
    lamp/rule
-   powered/rule])
+   powered/rule
+   fuse/rule])
 
 (defn- find-rule [st]
   (some (fn [r] (when ((:match? r) nil st nil) r)) rules))

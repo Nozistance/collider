@@ -94,11 +94,17 @@
                :start pos :time 0}
         h (assoc :hurt h :hurt-max hurt-max))]]))
 
-(defn- primed [world pos]
+(defn primed-deltas
+  "Returns the deltas of the TNT at pos lit by entity source, or by
+  nothing when source is nil. Gives none when the rules keep TNT from
+  exploding."
+  [world pos source]
   (when (get-in world [:rules :tnt-explodes] true)
-    (let [e (tnt/primed pos [(:tick world) pos])]
-      [[:spawn-entity e]
-       (out/all (out/sound :tnt/primed (:pos e) 1.0 1.0))])))
+    (let [e (cond-> (tnt/primed pos [(:tick world) pos])
+              source (assoc :owner source))]
+      (into [[:spawn-entity e]
+             (out/all (out/sound :tnt/primed (:pos e) 1.0 1.0))]
+            (signal/game-event :prime-fuse pos source)))))
 
 (def ^:private drip-events
   {:water :sound-drip-water-into-cauldron
@@ -140,7 +146,7 @@
    :break (fn [_ pos [_ old]] [(out/all (out/break-effect pos old))])
    :drop dropped
    :fall (fn [_ pos e] (falling-block pos e))
-   :prime (fn [world pos _] (primed world pos))
+   :prime (fn [world pos _] (primed-deltas world pos nil))
    :dry (fn [world pos _] (dried-fx world pos))
    :sound (fn [_ pos [_ kind volume pitch]]
             [(out/all (out/block-sound kind pos volume pitch))])

@@ -193,7 +193,7 @@
         at (rules/wake-tick cs dim st tick p old side)]
     (if (= :neighbor at)
       (let [ctx' (assoc ctx :side side :old old :pass pass)]
-        (reacted s (dissoc ctx :moved?)
+        (reacted s (dissoc ctx :moved? :given)
                  (rules/reshape-changes cs st p ctx')
                  flags-for limit))
       (ticked s :block-ticks at p (block/block-of st)))))
@@ -233,7 +233,8 @@
   (cond
     (zero? (long st)) s
     (block/liquid? st) (liquid-woken s ctx q old side)
-    (hears? st :neighbor) (neighbor-woken s ctx q old side)
+    (hears? st :neighbor)
+    (neighbor-woken s (assoc ctx :given st) q old side)
     :else s))
 
 (defn- reshaped [s ctx q st side flags limit]

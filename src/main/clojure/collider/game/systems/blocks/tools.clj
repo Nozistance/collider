@@ -93,11 +93,8 @@
        (not ((tnt/primed-origins world) pos))))
 
 (defn- prime-deltas [world eid pos]
-  (let [primed (-> (tnt/primed pos [(:tick world) pos])
-                   (assoc :owner eid))]
-    (into (changes/change-deltas world [[pos 0]])
-          [[:spawn-entity primed]
-           (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))])))
+  (into (changes/change-deltas world [[pos 0]])
+        (changes/primed-deltas world pos eid)))
 
 (defn prime-tnt-deltas
   "Returns the deltas of player eid lighting the tnt at pos, or nil

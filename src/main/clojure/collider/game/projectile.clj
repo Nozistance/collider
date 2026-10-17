@@ -3,11 +3,9 @@
   owner left behind and its turn towards its motion."
   (:require [collider.data :as data]
             [collider.game.changes :as changes]
-            [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
-            [collider.game.out :as out]
             [collider.game.reach :as reach]
             [collider.num :as num]
             [collider.parallel :as par]
@@ -310,11 +308,8 @@
       (:owner e))))
 
 (defn- primed-deltas [world e cell]
-  (let [t (cond-> (tnt/primed cell [(:tick world) cell])
-            (primer world e) (assoc :owner (primer world e)))]
-    (into (changes/change-deltas world [[cell 0]])
-          [[:spawn-entity t]
-           (out/all (out/sound :tnt/primed (:pos t) 1.0 1.0))])))
+  (into (changes/change-deltas world [[cell 0]])
+        (changes/primed-deltas world cell (primer world e))))
 
 (defn block-hit-deltas
   "Returns the deltas of projectile e hitting the block at cell. A
