@@ -16,7 +16,8 @@
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
-            [collider.world.blocks.support :as support]))
+            [collider.world.blocks.support :as support]
+            [collider.world.blocks.wire :as wire]))
 
 (set! *warn-on-reflection* true)
 
@@ -56,7 +57,8 @@
             :hanging-moss :pointed-dripstone :sulfur-spike
             :big-dripleaf :fire :soul-fire :chest :trapped-chest
             :copper-chest :weathering-copper-chest :chorus-plant
-            :potent-sulfur :tripwire :note :pitcher-crop :bell}
+            :potent-sulfur :tripwire :note :pitcher-crop :bell
+            :redstone-wire}
           (concat bar-types stair-types halves/pair-types
                   block/growing-plant-types snowy-types
                   (block/leaves-types)))))
@@ -364,8 +366,17 @@
           st))
       st)))
 
+(defn- wire-reshaped
+  "Returns the wire st at pos after changes on sides. The block below
+  going is left to the support rule, which drops the wire."
+  [chunks pos st sides]
+  (reduce (fn [st side]
+            (if (= :down side) st (wire/shaped chunks pos st side)))
+          st sides))
+
 (def ^:private sided-reshapers
   {:door                    door-state
+   :redstone-wire           wire-reshaped
    :weathering-copper-door  door-state
    :bed                     bed-state
    :double-plant            pair-state

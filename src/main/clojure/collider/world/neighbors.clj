@@ -10,6 +10,7 @@
             [collider.world.blocks.lightning-rod :as rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.rail :as rail]
+            [collider.world.blocks.wire :as wire]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.rules :as rules]
@@ -135,7 +136,8 @@
           :analog (by-state analog?)
           :hooked (by-state hooked?)
           :loud (by-state #(or (analog? %) (hooked? %)))
-          :none (boolean-array (inc (data/block-state-count)))}))
+          :none (boolean-array (inc (data/block-state-count)))
+          :wire (by-state wire/wire?)}))
 
 (defn- marked? [k ^long st]
   (aget ^booleans (k @states) st))
@@ -273,9 +275,10 @@
     (block/liquid? st) (liquid-shaped s ctx q old side st nst)
     :else (block-shaped s ctx q st old side flags limit)))
 
-(defn- run-next! [s ctx [k p src x]]
-  (if (= :changed k)
-    (state-changed s ctx p (block-at s p) src x)
+(defn- run-next! [s ctx [k p src x flags limit]]
+  (case k
+    :changed (state-changed s ctx p (block-at s p) src x)
+    :shape (shape-changed s ctx p (block-at s p) src x src flags limit)
     (state-changed s (cond-> ctx x (assoc :moved? true))
                    p src src nil)))
 
@@ -339,6 +342,28 @@
 (def ^:private ^:const shape-cleared
   (bit-or update/neighbors update/suppress-drops))
 
+(defn- indirect-shaped
+  "Returns s after the wires a step up or down beside wire st at p,
+  past a side it runs to, take the shape of the cell beside them."
+  [s ctx p st flags limit]
+  (if (wire/wire? st)
+    (let [f (bit-and-not (long flags) shape-cleared)]
+      (reduce
+        (fn [s d]
+          (let [q (dir/toward p d)]
+            (if (or (= :none (wire/side-of st d)) (wire/wire? (block-at s q)))
+              s
+              (reduce (fn [s v]
+                        (let [r (dir/toward q v)]
+                          (if (wire/wire? (block-at s r))
+                            (let [n (dir/toward r (dir/opposite d))]
+                              (add-and-run! s ctx [:shape r (block-at s n)
+                                                   (dir/opposite d) f limit]))
+                            s)))
+                      s [:down :up]))))
+        s [:north :east :south :west]))
+    s))
+
 (defn- shapes-changed [s ctx p old flags limit]
   (if (and (not (running? s)) (deaf-around? s ctx :shape p))
     s
@@ -379,7 +404,9 @@
         (and (has? flags update/neighbors) (marked? :analog st))
         (output-signaled ctx p)
         (and (pos? limit) (not (has? flags update/known-shape)))
-        (shapes-changed ctx p old flags (dec limit))))))
+        (-> (indirect-shaped ctx p old flags (dec limit))
+            (shapes-changed ctx p old flags (dec limit))
+            (indirect-shaped ctx p st flags (dec limit)))))))
 
 (defn- after-removal [s ctx p old moved?]
   (hooked s ctx (removal-ops p old moved?)))
@@ -434,7 +461,9 @@
       (cond-> s
         (has? flags update/neighbors) (neighbors-changed ctx p old)
         (and (pos? limit) (not (has? flags update/known-shape)))
-        (shapes-changed ctx p old flags (dec limit))))))
+        (-> (indirect-shaped ctx p old flags (dec limit))
+            (shapes-changed ctx p old flags (dec limit))
+            (indirect-shaped ctx p st flags (dec limit)))))))
 
 (defn set-block
   "Returns s after change [p st fx] is set with update flags to depth
@@ -598,10 +627,14 @@
 
 (def ^:private ^:const shape-depth (dec update-limit))
 
+(defn- command-shaped [s ctx p old]
+  (-> (indirect-shaped s ctx p old update/silent shape-depth)
+      (shapes-changed ctx p old update/silent shape-depth)))
+
 (defn- commanded-each [^Neighbors s ctx changes]
   (.command s changes update/silent (:plain @states)
-            (deaf-of ctx :shape)
-            #(shapes-changed %1 ctx %2 %3 update/silent shape-depth)
+            (deaf-of ctx :shape) (:wire @states)
+            #(command-shaped %1 ctx %2 %3)
             #(command-placed %1 ctx %2) chunk/min-y chunk/max-y))
 
 (defn- told [^Neighbors s ctx]

@@ -15,6 +15,7 @@
             [collider.world.blocks.powered :as powered]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
+            [collider.world.blocks.wire :as wire]
             [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
@@ -272,6 +273,10 @@
 (defn- dirt-fitted [chunks pos st _opts]
   (if (support/supported? chunks pos st) st (support/gone-state st)))
 
+(defn- wire-fitted [chunks pos st _]
+  (when (support/supported? chunks pos st)
+    (wire/placed chunks pos)))
+
 (defn- lamp-fitted [chunks pos st _]
   (lamp/lit st (signal/has-neighbor-signal? chunks pos)))
 
@@ -300,6 +305,7 @@
    [[:huge-mushroom] mushroom-fitted]
    [[:farmland :dirt-path] dirt-fitted]
    [[:redstone-lamp] lamp-fitted]
+   [[:redstone-wire] wire-fitted]
    [(conj block/trapdoor-types :fence-gate) powered-fitted]])
 
 (def ^:private fits

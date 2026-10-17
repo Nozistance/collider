@@ -253,8 +253,8 @@ public final class Neighbors {
 
     /// Sets the changes of a command in order, each with flags. A
     /// change [pos st] of a state that plain marks is set here, and when
-    /// a block beside it is not deaf, shaped runs its shape updates as
-    /// (shaped run pos old). other sets any other change as
+    /// a block beside it is not deaf, or reshaping marks the state it
+    /// replaced, shaped runs its shape updates as (shaped run pos old). other sets any other change as
     /// (other run change). Each change set here that alters its block
     /// joins the placed cells.
     public Neighbors command(
@@ -262,6 +262,7 @@ public final class Neighbors {
             long flags,
             boolean[] plain,
             boolean[] deaf,
+            boolean[] reshaping,
             IFn shaped,
             IFn other,
             int minY,
@@ -284,7 +285,7 @@ public final class Neighbors {
                 continue;
             }
             addPlaced(p, old);
-            if (!deafAround(x, y, z, deaf, minY, maxY)) {
+            if (reshaping[(int) old] || !deafAround(x, y, z, deaf, minY, maxY)) {
                 shaped.invoke(this, p, old);
             }
         }

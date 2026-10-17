@@ -18,6 +18,7 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.held :as held]
             [collider.game.systems.blocks.place :as place]
+            [collider.game.systems.blocks.redstone :as redstone]
             [collider.game.systems.blocks.switch :as switch]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
@@ -190,7 +191,8 @@
       (switch/switch-deltas world eid pos (changes/block-at world pos))
       (door/opens? world pos)
       (door/toggle-deltas world eid pos (changes/block-at world pos))
-      (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos))))
+      (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos)
+      :else (redstone/turned-deltas world eid pos))))
 
 (defn- play-deltas [world [eid pos face item cursor _ _ hand]]
   (let [hand (or hand :main)
