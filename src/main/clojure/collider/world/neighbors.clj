@@ -97,14 +97,14 @@
   "Returns the ops that block old at p runs when it goes."
   [p ^long old moved?]
   (let [t (block/type-of old)
-        {:keys [facing powered]} (block/props-of old)]
+        {:keys [powered]} (block/props-of old)]
     (cond
       (contains? emptied-types t) [[:output-signal p]]
       (lectern/lectern? old)
       (when (= :true powered) [[:notify (dir/toward p :down) nil old]])
       (rod/rod? old)
       (when (= :true powered)
-        [[:notify (dir/toward p (dir/opposite facing)) nil old]])
+        [[:notify (rod/front p old) nil old]])
       moved? nil
       (button/switch? old)
       (when (button/powered? old) (button/told p old))

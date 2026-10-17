@@ -19,6 +19,11 @@
   ^long [^long st on?]
   (block/with st :powered (block/flag on?)))
 
+(defn front
+  "Returns the cell the rod st at p powers, the one behind its tip."
+  [p ^long st]
+  (direction/toward p (direction/opposite (:facing (block/props-of st)))))
+
 (defn axis-id
   "Returns 0, 1 or 2 for the axis x, y or z the rod st points along."
   ^long [^long st]
@@ -38,4 +43,6 @@
    :wake   wake
    :due    (fn [chunks p _ctx]
              (let [st (chunk/at chunks p)]
-               (when (rod? st) [[p (powered st false)]])))})
+               (when (rod? st)
+                 [[p (powered st false)]
+                  [:notify (front p st) nil st]])))})

@@ -1,7 +1,8 @@
 (ns collider.world.blocks.lectern
   "Lectern with its book and its redstone pulse."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -37,5 +38,6 @@
    :wake   (fn [_chunks _dim _tick _p _old _side] nil)
    :due    (fn [chunks p _ctx]
              (let [st (chunk/at chunks p)]
-               (when (and (lectern? st) (powered? st))
-                 [[p (powered st false)]])))})
+               (when (lectern? st)
+                 [[p (powered st false)]
+                  [:notify (dir/toward p :down) nil st]])))})

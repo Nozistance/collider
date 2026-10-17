@@ -18,7 +18,8 @@
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.support :as support]
-            [collider.world.env.difficulty :as difficulty]))
+            [collider.world.env.difficulty :as difficulty]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -109,8 +110,16 @@
       [{} []])))
 
 (defn- struck-deltas [world eid p]
-  (let [[cur fx] (copper world eid p (rod world p))]
-    (concat (when (seq cur) (changes/set-deltas world (vec cur)))
+  (let [[powered fx] (rod world p)
+        st (get powered p)
+        rod-ds (when st
+                 (changes/flagged-deltas world [[p st]] update/all
+                                         [(lightning-rod/front p st)]
+                                         (:tick world)))
+        w (if (seq rod-ds) (first (apply/applied world rod-ds)) world)
+        [cur fx] (copper w eid p [{} fx])]
+    (concat rod-ds
+            (when (seq cur) (changes/set-deltas w (vec cur)))
             fx)))
 
 (defn- struck-cell [[x y z]]
