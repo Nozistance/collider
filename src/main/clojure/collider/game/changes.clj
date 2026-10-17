@@ -158,8 +158,8 @@
    :event (fn [_ pos [_ id]] [(out/all (out/level-event id pos 0))])
    :note (fn [_ pos [_ st]] (instrument/played-deltas pos st nil))
    :ring (fn [_ pos [_ st]]
-           (into [(out/all (out/block-event pos 1 (dir/index
-                                                    (block/facing-of st))))
+           (into [[:block-event-queued pos (block/block-of st) 1
+                   (dir/index (block/facing-of st))]
                   (out/all (out/block-sound :bell/use pos 2.0 1.0))]
                  (signal/game-event :block-change pos nil)))
    :game-event (fn [_ pos [_ kind source]]

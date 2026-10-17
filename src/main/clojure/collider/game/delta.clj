@@ -90,6 +90,15 @@
    :shulker-anim
    {:scope :level :schema [:cat Pos [:maybe :map]]
     :apply writes/shulker-anim}
+   :block-event-queued
+   {:scope :level :schema [:cat Pos :keyword :int :int]
+    :apply (fn [w [_ p b x y]]
+             (let [e [p b x y]]
+               (update w :block-events
+                       #(if (some #{e} %) % (conj (or % []) e)))))}
+   :block-events-ran
+   {:scope :level :schema [:cat Coll]
+    :apply (fn [w [_ kept]] (assoc w :block-events (not-empty kept)))}
    :changed-blocks-flushed
    {:scope :level :schema [:cat]
     :apply (fn [w _] (assoc w :changed-blocks nil))}

@@ -483,12 +483,14 @@
          (not (> (/ cursor-y 16.0) bell-hit-top))
          (bell-side? st side))))
 
-(defn- bell-use-deltas [{:keys [world pos face cursor]}]
+(defn- bell-use-deltas [{:keys [world eid pos face cursor]}]
   (let [st (changes/block-at world pos)
         side (get dir/index (dir/from-index (long face)))]
     (when (bell-hit? st face (double (nth cursor 1)))
-      [(out/all (out/block-event pos 1 side))
-       (out/all (out/block-sound :bell/use pos 2.0 1.0))])))
+      (concat [[:block-event-queued pos (block/block-of st) 1 side]
+               (out/all (out/block-sound :bell/use pos 2.0 1.0))]
+              (signal/game-event :block-change pos eid)
+              [[:award eid :custom/bell-ring 1]]))))
 
 (defn- dragon-egg-deltas [{:keys [world pos]}]
   (let [st (changes/block-at world pos)

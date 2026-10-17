@@ -9,6 +9,7 @@
             [collider.game.level :as level]
             [collider.game.schema :as schema]
             [collider.game.systems.block.entities :as block-entities]
+            [collider.game.systems.block.triggers :as triggers]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.containers :as containers]
@@ -64,6 +65,7 @@
     #'random-tick/random-ticks
     #'chunks/chunk-views]
    [#'block-updates/block-flush #'tracker/tracker]
+   [#'triggers/block-events]
    entity-systems
    [#'block-entities/block-entities]
    [#'player-tick/player-tick]

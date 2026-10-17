@@ -301,10 +301,13 @@
   (let [b (get (data/blocks) (block/block-of st))]
     [(:instrument b :harp) (:instrument-above? b)]))
 
-(defn- note-state [_self ^long st at]
-  (let [[up up?] (instrument (at [0 1 0]))
-        [down down?] (instrument (at [0 -1 0]))]
-    (block/with st :instrument (cond up? up down? :harp :else down))))
+(defn- note-state [chunks pos ^long st sides]
+  (if (some #(contains? #{:up :down nil} %) sides)
+    (let [at #(chunk/at chunks (mapv + pos %))
+          [up up?] (instrument (at [0 1 0]))
+          [down down?] (instrument (at [0 -1 0]))]
+      (block/with st :instrument (cond up? up down? :harp :else down)))
+    st))
 
 (defn- unless-bare ^long [^long st ^long new]
   (if (seq (block/faces-of new)) new st))
@@ -378,6 +381,7 @@
    :mossy-carpet            carpet-reshaped
    :chorus-plant            chorus-reshaped
    :bell                    bell-reshaped
+   :note                    note-state
    :mangrove-leaves          leaves-state
    :tinted-particle-leaves   leaves-state
    :untinted-particle-leaves leaves-state})
@@ -400,8 +404,7 @@
    :fence-gate               gate-state
    :stair                    stair-state
    :weathering-copper-stair  stair-state
-   :tripwire                 tripwire-state
-   :note                     note-state})
+   :tripwire                 tripwire-state})
 
 (defn- reshaped-state [t chunks pos st at tick sides]
   (let [self (block/block-of st)]
