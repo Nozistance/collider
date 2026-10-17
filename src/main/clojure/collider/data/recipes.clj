@@ -36,7 +36,10 @@
         pick (fn [json]
                (when (want? json)
                  (let [i (pack/ingredient (get json field))]
-                   (if (map? i) (or (tags (:tag i)) []) i))))]
+                   (if (map? i)
+                     (or (tags (:tag i))
+                         (throw (ex-info "unknown item tag" {:tag (:tag i)})))
+                     i))))]
     (into (sorted-set) (mapcat pick) recipes)))
 
 (def ^:private crafting-types

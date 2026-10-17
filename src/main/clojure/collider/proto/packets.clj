@@ -182,7 +182,9 @@
     (c/write-uuid buf uuid)
     (c/write-string buf name)
     (write-properties! buf (:properties p))
-    (c/write-varint buf (long (or gamemode 1)))
+    (c/write-varint buf (long (or gamemode
+                                  (throw (ex-info "player entry without mode"
+                                                  {:uuid uuid})))))
     (buf/write-boolean! buf true)
     (c/write-varint buf (long (or ping 0)))))
 
@@ -994,16 +996,17 @@
            {:state state :packet (:packet m)}))
 
 (defn decode
-  "Returns the packet read from buf in the connection state, or nil
+  "Returns the packet read from buf in the connection state. Throws
   for an id the state does not know."
   [state ^Buf buf]
   (let [id (c/read-varint buf)]
-    (when-let [e (get (get @inbound state) id)]
+    (if-let [e (get (get @inbound state) id)]
       (if-let [r (:read e)]
         (let [m (r buf)]
           (when-let [check (:check e)] (check m))
           (assoc m :packet (:packet e)))
-        {:packet (:packet e)}))))
+        {:packet (:packet e)})
+      (throw (ex-info "unknown packet id" {:state state :id id})))))
 
 (defn encode!
   "Writes packet m into buf with its id in the connection state.

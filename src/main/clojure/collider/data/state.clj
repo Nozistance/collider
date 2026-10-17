@@ -33,13 +33,15 @@
       a)))
 
 (defn each-run!
-  "Calls f with each state id and its value in table t.
-  States past the last known one are skipped."
+  "Calls f with each state id and its value in table t. Throws for a
+  run past the last known state."
   [{:keys [palette runs]} f]
   (let [n (data/block-state-count)]
     (doseq [[from to i] runs
             :let [v (nth palette i)]
-            id (range from (inc (min (long to) (dec n))))]
+            id (range from (inc (long to)))]
+      (when (>= (long id) n)
+        (throw (ex-info "state run past last state" {:to to :count n})))
       (f id v))))
 
 (defn- object-table [t]

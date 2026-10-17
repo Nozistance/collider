@@ -39,8 +39,11 @@
                (fingerprint (io/file root "tools/tables/src"))))))
 
 (defn- stamp-of [d]
-  (try (edn/read-string (slurp (io/file d "stamp.edn")))
-       (catch Exception _ nil)))
+  (let [f (io/file d "stamp.edn")]
+    (when (.exists f)
+      (try (edn/read-string (slurp f))
+           (catch Exception e
+             (throw (ex-info "unreadable stamp" {:dir (str d)} e)))))))
 
 (defn complete?
   "Returns true when d holds a set of tables of this game made by the

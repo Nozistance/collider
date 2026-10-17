@@ -164,8 +164,7 @@
         (let [raw (frame/read-frame! (:in @(:props conn)) buf)
               thr (long (:threshold @(:props conn)))
               frame (frame/decompress! raw thr infl)]
-          (when-let [m (decode-logged conn frame)]
-            ((:on-packet io) conn io m)))
+          ((:on-packet io) conn io (decode-logged conn frame)))
         (recur))
       (finally (.end infl)))))
 
@@ -187,7 +186,7 @@
           (catch InterruptedException _ nil)
           (catch SocketException _ nil)
           (catch Throwable t
-            (log/warn "writer failed for" (who conn) "-" (str t))))))
+            (log/error-with (str "writer failed for " (who conn)) t)))))
 
 (defn- new-props [^Socket sock]
   (atom {:state :handshake :threshold -1
@@ -207,7 +206,7 @@
     (catch SocketException _ nil)
     (catch Throwable t
       (when-not (.isClosed sock)
-        (log/warn "reader failed for" (who conn) "-" (str t))))))
+        (log/error-with (str "reader failed for " (who conn)) t)))))
 
 (defn- serve-conn! [^Socket sock io]
   (let [conn (new-conn sock)]

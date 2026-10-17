@@ -5,7 +5,6 @@
             [collider.game.gamerules :as rules]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
-            [collider.log :as log]
             [collider.net.render.join :as join]
             [collider.net.render.sounds :as sounds]
             [collider.net.render.tracked :as tracked]
@@ -42,10 +41,6 @@
      :pos      (:pos m) :count (:count m) :speed (:speed m)
      :dx (double dx) :dy (double dy) :dz (double dz)}))
 
-(defn- once! [kind]
-  (log/once! [::unrendered kind]
-             log/warn "render:" kind "not rendered yet"))
-
 (defn- section-index ^long [[x y z]]
   (bit-or (bit-shift-left (bit-and (long x) 15) 8)
           (bit-shift-left (bit-and (long z) 15) 4)
@@ -71,8 +66,10 @@
    :poof 60 :fireworks 17 :potion-puff 0})
 
 (defn- status-packet [m]
-  (when-let [ev (entity-events (:kind m))]
-    {:packet :entity-event :eid (:eid m) :event ev}))
+  (if-let [ev (entity-events (:kind m))]
+    {:packet :entity-event :eid (:eid m) :event ev}
+    (throw (ex-info "unknown entity event"
+                    {:kind (:kind m) :eid (:eid m)}))))
 
 (defn- entity-ref ^long [eid] (if eid (inc (long eid)) 0))
 
@@ -102,7 +99,7 @@
       (if-let [eid (:entity m)]
         (assoc p :packet :sound-entity :eid eid)
         (assoc p :packet :sound :pos (:pos m))))
-    (once! [:sound (:kind m)])))
+    (throw (ex-info "unknown sound" {:kind (:kind m)}))))
 
 (def ^:private anchors {:feet 0 :eyes 1})
 
@@ -476,7 +473,7 @@
    :animation (fn [_ m]
                 [{:packet :animate :eid (:eid m)
                   :action (animate-action (:kind m))}])
-   :status    (fn [_ m] (when-let [p (status-packet m)] [p]))
+   :status    (fn [_ m] [(status-packet m)])
    :damage-event (fn [_ m] [(damage-event-packet m)])
    :collect   (fn [_ m] [(collect-packet m)])
    :attributes (fn [_ m]
@@ -491,4 +488,4 @@
   [world m]
   (if-let [f (fx-table (:msg m))]
     (f world m)
-    (once! (:msg m))))
+    (throw (ex-info "unrendered effect" {:msg (:msg m) :fx m}))))

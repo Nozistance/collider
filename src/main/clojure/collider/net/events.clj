@@ -10,8 +10,14 @@
   "Returns the settings of a player that client information m holds."
   [m]
   {:view-distance (:view-distance m) :skin-parts (:skin-parts m)
-   :main-hand (if (= 0 (:main-hand m)) :left :right)
-   :chat-visibility (get chat-modes (:chat-visibility m) :full)
+   :main-hand (case (long (:main-hand m))
+                0 :left
+                1 :right
+                (throw (ex-info "bad main hand" {:id (:main-hand m)})))
+   :chat-visibility
+   (or (get chat-modes (:chat-visibility m))
+       (throw (ex-info "bad chat visibility"
+                       {:id (:chat-visibility m)})))
    :allows-listing (:allows-listing m true)})
 
 (defn- on-ground? [m] (bit-test (long (:flags m)) 0))
@@ -112,7 +118,7 @@
     0 [:respawn eid]
     1 [:stats-request eid]
     2 [:rules-request eid]
-    nil))
+    (throw (ex-info "bad client command action" {:action (:action m)}))))
 
 (defn- command-event [eid m]
   [:chat eid (str "/" (:command m))])

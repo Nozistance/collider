@@ -252,9 +252,7 @@
 
 (defn- watched! [io eid m ev]
   (doseq [f (some-> (:world io) deref (get-in [:hooks :packets-in]))]
-    (try (f eid m ev)
-         (catch Throwable t
-           (log/once! :packets-in log/warn "packet watcher failed:" (str t))))))
+    (f eid m ev)))
 
 (defn- play-packet! [conn {:keys [^Queue queue] :as io} m]
   (when (= :play (server/conn-state conn))
@@ -268,7 +266,7 @@
             (log-unhandled! (:packet m))))))))
 
 (defn- disconnect-generic! [conn t]
-  (log/warn "bad packet from" (:addr (server/info conn)) "-" (str t))
+  (log/error-with (str "bad packet from " (:addr (server/info conn))) t)
   (case (server/conn-state conn)
     :play (server/send! conn (disconnect-packet generic-reason))
     :login (server/send! conn (login-kick-packet generic-reason))

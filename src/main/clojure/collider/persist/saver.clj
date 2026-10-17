@@ -20,7 +20,9 @@
   ticks go on."
   []
   {:agent   (agent {:last nil :meta nil :writes 0 :held 0 :built 0}
-                   :error-mode :continue)
+                   :error-mode :fail
+                   :error-handler
+                   (fn [_ e] (log/error-with "snapshot saver failed" e)))
    :pending (atom {})
    :wanted  (atom false)})
 
@@ -150,9 +152,8 @@
   (try
     (records/commit! store m changed)
     (update state :writes inc)
-    (catch Throwable t
-      (log/warn "snapshot: commit failed, the next one retries -"
-                (ex-message t))
+    (catch java.io.IOException e
+      (log/error-with "snapshot: commit failed, the next one retries" e)
       nil)))
 
 (defn- all-changes [state world moved?]
@@ -215,8 +216,8 @@
 
 (defn- fetched [state saver store dim id deliver]
   (let [v (try (read-chunk saver store dim id)
-               (catch Throwable t
-                 (retried! saver store dim id deliver t)
+               (catch java.io.IOException e
+                 (retried! saver store dim id deliver e)
                  ::failed))]
     (when-not (identical? ::failed v) (deliver v))
     state))

@@ -210,7 +210,7 @@
     [(merge (spawn-info lv e) (rule-flags lv)
             {:packet              :login :eid eid
              :levels              schema/dims
-             :max-players         (min 255 (long max-players))
+             :max-players         (long max-players)
              :view-distance       view-distance
              :simulation-distance simulation-distance})
      difficulty-packet
