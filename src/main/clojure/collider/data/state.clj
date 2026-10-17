@@ -118,8 +118,7 @@
   @flag-table)
 
 (defn flag-states
-  "Returns which states have bit set in their flags, past the byte
-  that flags keeps."
+  "Returns which states have bit set in their flags."
   ^booleans [^long bit]
   (let [a (boolean-array (data/block-state-count))]
     (each-run! @flag-runs
@@ -127,11 +126,12 @@
                  (aset a (int id) (pos? (bit-and v bit)))))
     a))
 
-(defn signals
-  "Returns the signals of every state on the six sides, the direct
-  ones last, twelve bytes a state, -1 where it reads the level."
-  ^bytes []
-  @signal-table)
+(defn signal
+  "Returns the signal of st on side, the direct one when direct? is
+  true, -1 where it reads the level."
+  ^long [^long st ^long side direct?]
+  (long (aget ^bytes @signal-table
+              (+ (* 12 st) (if direct? 6 0) side))))
 
 (defn- default-of [b]
   (decode-props b (- (long (:default b)) (long (:first b)))))

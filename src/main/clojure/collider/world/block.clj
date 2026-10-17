@@ -752,20 +752,19 @@
   [^long st]
   (aget ^booleans @analog-arr st))
 
-(defn- signal-at ^long [^long st face ^long from]
-  (+ (* 12 st) from (long (dir/index face))))
-
 (defn signal
   "Returns the signal st gives to the neighbor that looks at it toward
-  face, -1 when the level decides."
+  face, -1 when the level decides. Redstone wire gives it only while
+  it is not working out its own power."
   ^long [^long st face]
-  (long (aget (states/signals) (signal-at st face 0))))
+  (states/signal st (long (dir/index face)) false))
 
 (defn direct-signal
   "Returns the signal st gives through the neighbor that looks at it
-  toward face, -1 when the level decides."
+  toward face, -1 when the level decides. Redstone wire gives it only
+  while it is not working out its own power."
   ^long [^long st face]
-  (long (aget (states/signals) (signal-at st face 6))))
+  (states/signal st (long (dir/index face)) true))
 
 (def face-props [:up :north :south :west :east :down])
 
