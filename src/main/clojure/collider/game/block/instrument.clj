@@ -25,7 +25,7 @@
   [pos ^long st]
   (let [props (block/props-of st)
         {:keys [tunable? custom? sound]}
-        (get (data/instruments) (:instrument props))
+        (data/instrument (:instrument props))
         p (if tunable? (pitch (block/prop-long st :note)) 1.0)]
     (when-not custom?
       [(out/all (out/block-sound sound pos 3.0 p :records))])))

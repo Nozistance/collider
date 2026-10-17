@@ -6,14 +6,23 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- known ^long [^long s] (max s 0))
+(defn- known
+  "Returns s, the signal of st toward side, or throws when the level
+  decides it, which is not read yet."
+  ^long [^long s st side]
+  (if (neg? s)
+    (throw (ex-info "signal the level decides is not read yet"
+                    {:state st :block (block/block-of st)
+                     :side side}))
+    s))
 
 (defn direct-signal-to
   "Returns the strongest direct signal the blocks around p give it."
   ^long [chunks p]
   (reduce (fn [^long m d]
             (let [q (dir/toward p d)
-                  s (known (block/direct-signal (chunk/at chunks q) d))]
+                  n (chunk/at chunks q)
+                  s (known (block/direct-signal n d) n d)]
               (if (>= s 15) (reduced s) (max m s))))
           0 dir/six))
 
@@ -23,7 +32,7 @@
   it as well."
   ^long [chunks p side]
   (let [st (chunk/at chunks p)
-        s (known (block/signal st side))]
+        s (known (block/signal st side) st side)]
     (if (block/conductor? st)
       (max s (direct-signal-to chunks p))
       s)))

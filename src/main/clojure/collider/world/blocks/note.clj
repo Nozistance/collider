@@ -14,7 +14,7 @@
   "Returns true when the note block st at p sounds, which it does
   under air or when its instrument plays under anything."
   [chunks p ^long st]
-  (or (:above? (get (data/instruments) (:instrument (block/props-of st))))
+  (or (:above? (data/instrument (:instrument (block/props-of st))))
       (block/air-type? (chunk/at chunks (dir/toward p :up)))))
 
 (defn- powered? [^long st] (= :true (:powered (block/props-of st))))

@@ -189,6 +189,13 @@
   tuned, plays under any block and takes the sound of the head above."
   [] (:instruments @tables))
 
+(defn instrument
+  "Returns what instruments holds for note block instrument k. Throws
+  for one it does not know."
+  [k]
+  (or (get (instruments) k)
+      (throw (ex-info "unknown instrument" {:instrument k}))))
+
 (defn entities
   "Returns the width, height and eye height of each entity type.
   The sizes of its baby are under :baby."
@@ -531,7 +538,9 @@
 (defn pressed-ticks
   "Returns how many ticks a pressed button of block stays pressed."
   ^long [block]
-  (long (get (info block) :pressed 0)))
+  (if-some [n (:pressed (info block))]
+    (long n)
+    (throw (ex-info "no pressed ticks" {:block block}))))
 
 (defn by-hand?
   "Returns true when block drops when broken without a tool."
