@@ -367,6 +367,18 @@
       (call i "worksAboveNoteBlock")
       (assoc :instrument-above? true))))
 
+(defn- instruments []
+  (into (sorted-map)
+        (for [i (call-static "world.level.block.state.properties.NoteBlockInstrument"
+                             "values")
+              :let [ev (call i "getSoundEvent")]]
+          [(keyword (call i "getSerializedName"))
+           (cond-> {:tunable? (boolean (call i "isTunable"))
+                    :above? (boolean (call i "worksAboveNoteBlock"))
+                    :custom? (boolean (call i "hasCustomSound"))}
+             ev (assoc :sound
+                       (kw (str (call (call ev "value") "location")))))])))
+
 (defn- level-stub [access]
   (Proxy/newProxyInstance
     *loader* (into-array Class [(cls "world.level.LevelReader")])
@@ -614,7 +626,8 @@
               :entities (entities/entities)
               :version (version-facts) :growers (growers)
               :attributes (attributes/attributes) :lang (translations)
-              :transient-components (transient-components)}
+              :transient-components (transient-components)
+              :instruments (instruments)}
              (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j

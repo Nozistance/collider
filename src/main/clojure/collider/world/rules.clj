@@ -2,6 +2,7 @@
   "Registry of the block rules and their tick hooks."
   (:require [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.blocks.bell :as bell]
             [collider.world.blocks.button :as button]
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -15,6 +16,7 @@
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.note :as note]
             [collider.world.blocks.powered :as powered]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
@@ -35,6 +37,7 @@
    water/coral-rule
    rail/rule
    button/rule
+   bell/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule
@@ -47,7 +50,8 @@
    leaves/rule
    lamp/rule
    powered/rule
-   fuse/rule])
+   fuse/rule
+   note/rule])
 
 (defn- find-rule [st]
   (some (fn [r] (when ((:match? r) nil st nil) r)) rules))

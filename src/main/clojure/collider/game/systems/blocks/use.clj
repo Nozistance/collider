@@ -4,6 +4,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.campfire :as campfire]
             [collider.game.block.container :as container]
+            [collider.game.block.instrument :as instrument]
             [collider.game.block.jukebox :as jukebox]
             [collider.game.block.lectern :as lectern]
             [collider.game.block.sign :as sign]
@@ -23,6 +24,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.lectern :as block-lectern]
+            [collider.world.blocks.note :as note]
             [collider.world.direction :as dir]
             [collider.world.env.signal :as signal]))
 
@@ -495,8 +497,30 @@
                         (:chunks world) pos roll)]
       (changes/change-deltas world [[pos 0] [target st]]))))
 
+(def ^:private ^:table top-instruments
+  (delay (set (data/tag-values "item" "noteblock_top_instruments"))))
+
+(defn- note-played [world eid pos st stat]
+  (concat (when (note/plays? (:chunks world) pos st)
+            (instrument/played-deltas pos st eid))
+          [[:award eid stat 1]]))
+
+(defn- note-use-deltas [{:keys [world eid pos face item]}]
+  (when-not (or (and (= 1 (long face)) (@top-instruments item))
+                (not (main-hand? world eid)))
+    (let [st (changes/block-at world pos)
+          n (rem (inc (block/prop-long st :note)) 25)
+          st' (block/with-long st :note n)]
+      (concat (set-at world pos st')
+              (note-played world eid pos st' :custom/tune-noteblock)))))
+
+(defn- note-attack-deltas [{:keys [world eid pos]}]
+  (note-played world eid pos (changes/block-at world pos)
+               :custom/play-noteblock))
+
 (def ^:private attacks
-  {:dragon-egg dragon-egg-deltas})
+  {:dragon-egg dragon-egg-deltas
+   :note note-attack-deltas})
 
 (defn attack-deltas
   "Returns the deltas of player eid hitting the block at pos as it
@@ -559,6 +583,7 @@
    :bell bell-use-deltas
    :lectern lectern-use-deltas
    :dragon-egg dragon-egg-deltas
+   :note note-use-deltas
    :light light-deltas})
 
 (defn- game-master-use

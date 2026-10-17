@@ -2,6 +2,7 @@
   "Block changes as deltas, with their updates and effects."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.instrument :as instrument]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
             [collider.game.inventory :as inventory]
@@ -17,6 +18,7 @@
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.env.attribute :as attribute]
             [collider.world.env.signal :as signal]
             [collider.world.neighbors :as neighbors]))
@@ -154,6 +156,12 @@
            [(out/all (out/level-event (drip-events fluid) pos 0))])
    :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])
    :event (fn [_ pos [_ id]] [(out/all (out/level-event id pos 0))])
+   :note (fn [_ pos [_ st]] (instrument/played-deltas pos st nil))
+   :ring (fn [_ pos [_ st]]
+           (into [(out/all (out/block-event pos 1 (dir/index
+                                                    (block/facing-of st))))
+                  (out/all (out/block-sound :bell/use pos 2.0 1.0))]
+                 (signal/game-event :block-change pos nil)))
    :game-event (fn [_ pos [_ kind source]]
                  (signal/game-event kind pos source))
    :trail (fn [_ pos [_ target color ticks]]

@@ -116,7 +116,7 @@
   (into [:packets :registries :blocks :synced :light :fire :fuel
          :brewing :dyes :sounds :potions :effects :entities
          :version :block-entities :growers
-         :attributes :spawns :lang :transient-components]
+         :attributes :spawns :lang :transient-components :instruments]
         item-facts))
 
 (def ^:private ^:table tables
@@ -183,6 +183,11 @@
   [] (:entity-drops @loot-tables))
 
 (defn sounds [] (:sounds @tables))
+
+(defn instruments
+  "Returns the sound of each note block instrument and whether it is
+  tuned, plays under any block and takes the sound of the head above."
+  [] (:instruments @tables))
 
 (defn entities
   "Returns the width, height and eye height of each entity type.
