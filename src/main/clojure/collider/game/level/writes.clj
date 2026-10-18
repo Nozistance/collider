@@ -161,9 +161,7 @@
 (defn set-signal
   "Returns level w after the delta [:set-signal pos v]."
   [w [_ pos v]]
-  (update w :chunks #(-> (chunk/editable %)
-                         (chunk/chunks-set-signal pos v)
-                         chunk/frozen)))
+  (update w :chunks chunk/chunks-set-signal pos v))
 
 (defn schedule-ticks
   "Returns level w after the delta [:schedule-ticks at-ids]."

@@ -25,7 +25,9 @@
 (defn- subtract? [^long st] (= :subtract (:mode (block/props-of st))))
 
 (defn- analog ^long [p ^long st]
-  (let [v (block/analog-signal st)]
+  (let [v (if (#{:copper-bulb :weathering-copper-bulb} (block/type-of st))
+            (if (= :true (:lit (block/props-of st))) 15 0)
+            (block/analog-signal st))]
     (if (neg? v)
       (throw (ex-info "analog output the level decides is not read yet"
                       {:pos p :block (block/block-of st)}))

@@ -709,6 +709,9 @@ public final class Section {
         if (tag == 1) {
             return FULL;
         }
+        if (tag != 2) {
+            throw new IOException("section nibbles tag " + tag);
+        }
         byte[] a = new byte[LIGHT];
         in.readFully(a);
         return canon(a);

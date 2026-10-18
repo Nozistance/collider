@@ -15,8 +15,10 @@
 (defn- refreshed [pos]
   (fn [chunks]
     (let [st (chunk/at chunks pos)]
-      (when (comparator/comparator? st)
-        (comparator/refreshed chunks pos st)))))
+      (if (comparator/comparator? st)
+        (comparator/refreshed chunks pos st)
+        (throw (ex-info "the switched comparator is gone"
+                        {:pos pos :state st}))))))
 
 (defn- switched-deltas [world eid pos st]
   (let [st' (comparator/stepped st)
@@ -26,8 +28,8 @@
           (changes/change-deltas world [[pos st' nil 2] (refreshed pos)]))))
 
 (defn turned-deltas
-  "Returns the deltas of player eid turning the wire or the repeater
-  at pos, nil when it does not turn."
+  "Returns the deltas of player eid turning the wire, the repeater or
+  the comparator at pos, nil when it does not turn."
   [world eid pos]
   (let [chunks (:chunks world)
         st (changes/block-at world pos)]

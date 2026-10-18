@@ -441,6 +441,15 @@
   ^long [c ^long flags]
   (long (get c 3 flags)))
 
+(defn- unkept
+  "Returns s after the output kept for comparator old at p goes, as its
+  block entity goes when another block takes its place."
+  [s p old st]
+  (if (and (comparator? old) (not (comparator? st))
+           (pos? (chunk/signal-at (chunks s) p)))
+    (op-run s nil [:signal p 0])
+    s))
+
 (defn- stored
   [s ctx [p st fx] flags limit]
   (let [old (block-at s p)]
@@ -450,6 +459,7 @@
       (let [fx (shown fx)]
         (cond-> s (seq fx) (add-record! [p st fx])))
       :else (let [s (-> (written s p old st fx flags)
+                        (unkept p old st)
                         (removed ctx p old st flags))]
               (if (kept? s p st)
                 (-> (updated s ctx p old st flags limit)
@@ -460,7 +470,9 @@
   (let [old (place! s p st flags)
         flags (long flags)
         limit (long limit)
-        s (if (neg? old) s (removed s ctx p old st flags))]
+        s (if (neg? old)
+            s
+            (-> (unkept s p old st) (removed ctx p old st flags)))]
     (if (or (neg? old) (not (kept? s p st)))
       s
       (cond-> s
