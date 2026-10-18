@@ -12,6 +12,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.systems.brewing :as brewing]
             [collider.game.systems.campfires :as campfires]
+            [collider.game.systems.daylight :as daylight]
             [collider.game.systems.furnaces :as furnaces]
             [collider.game.systems.geysers :as geysers]
             [collider.game.systems.jukebox :as jukebox]
@@ -28,6 +29,7 @@
     :potent-sulfur geysers/tick-deltas
     :jukebox jukebox/tick-deltas
     :piston piston/tick-deltas
+    :daylight-detector daylight/tick-deltas
     (:sign :hanging-sign) signs/tick-deltas
     nil))
 

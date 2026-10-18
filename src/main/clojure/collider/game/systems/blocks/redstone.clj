@@ -5,6 +5,7 @@
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.systems.daylight :as daylight]
             [collider.world.block :as block]
             [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.diode :as diode]
@@ -44,4 +45,6 @@
                         (wire/told-on-turn chunks pos st st'))))
         (= :repeater (block/type-of st))
         (changes/change-deltas world [[pos (diode/stepped st) nil 3]])
-        (comparator/comparator? st) (switched-deltas world eid pos st)))))
+        (comparator/comparator? st) (switched-deltas world eid pos st)
+        (= :daylight-detector (block/type-of st))
+        (daylight/inverted-deltas world eid pos st)))))

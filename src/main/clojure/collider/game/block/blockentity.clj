@@ -20,6 +20,7 @@
    :player-head         :skull :player-wall-head :skull
    :decorated-pot       :decorated-pot
    :jukebox             :jukebox
+   :daylight-detector   :daylight-detector
    :shelf               :shelf
    :chiseled-book-shelf :chiseled-bookshelf
    :bell                :bell

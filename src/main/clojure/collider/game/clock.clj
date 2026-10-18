@@ -178,3 +178,110 @@
           (let [t (timeline-of (data/wire k))]
             (some->> (get-in t [:tracks id]) (held-value world t))))
         (rseq (vec (:timelines (dimension/type-of dim))))))
+
+(defn- f* ^double [^double a ^double b] (num/f32 (* a b)))
+
+(defn- f+ ^double [^double a ^double b] (num/f32 (+ a b)))
+
+(defn- curve [^double v1 ^double v2]
+  [(f+ (f+ (f* 3.0 v1) (- (f* 3.0 v2))) 1.0)
+   (f+ (f* -6.0 v1) (f* 3.0 v2))
+   (f* 3.0 v1)])
+
+(defn- at-t ^double [[^double a ^double b ^double c] ^double t]
+  (f* (f+ (f* (f+ (f* a t) b) t) c) t))
+
+(defn- slope ^double [[^double a ^double b ^double c] ^double t]
+  (f+ (f* (f+ (f* (f* 3.0 a) t) (f* 2.0 b)) t) c))
+
+(def ^:private near (num/f32 1.0E-5))
+
+(defn- off ^double [xs ^double x ^double t]
+  (num/f32 (- (at-t xs t) x)))
+
+(defn- mid ^double [^double a ^double b]
+  (num/f32 (/ (num/f32 (+ b a)) 2.0)))
+
+(defn- bisected ^double [xs ^double x ^double t]
+  (loop [t0 0.0 t1 1.0 t t]
+    (if (< t0 t1)
+      (let [e (off xs x t)]
+        (cond (< (Math/abs e) (double near)) t
+              (neg? e) (recur t t1 (mid t t1))
+              :else (recur t0 t (mid t0 t))))
+      t)))
+
+(defn- step ^double [^double e ^double g]
+  (max -0.25 (min 0.25 (num/f32 (/ e g)))))
+
+(defn- solved ^double [xs ^double x]
+  (loop [i 0 t x]
+    (let [e (off xs x t)
+          g (slope xs t)]
+      (cond (= 4 i) (bisected xs x t)
+            (< (Math/abs e) (double near)) t
+            (< g (double near)) (bisected xs x t)
+            :else (recur (inc i) (num/f32 (- t (step e g))))))))
+
+(defn- eased
+  "Returns alpha eased as the ease of a track names it."
+  ^double [ease ^double alpha]
+  (cond
+    (or (nil? ease) (= "linear" ease)) alpha
+    (= "constant" ease) 0.0
+    (get ease "cubic_bezier")
+    (let [[x1 y1 x2 y2] (map num/f32 (get ease "cubic_bezier"))]
+      (at-t (curve y1 y2) (solved (curve x1 x2) alpha)))
+    :else (throw (ex-info "no such ease" {:ease ease}))))
+
+(defn- segments [frames period]
+  (let [fs (mapv (fn [k] [(long (get k "ticks"))
+                          (num/f32 (get k "value"))])
+                 frames)
+        [t0 v0] (first fs)
+        [tn vn] (peek fs)
+        inner (vec (partition 2 1 fs))]
+    (if period
+      (-> [[[(- tn (long period)) vn] [t0 v0]]]
+          (into inner)
+          (conj [[tn vn] [(+ t0 (long period)) v0]]))
+      inner)))
+
+(defn- lerped ^double [[[from fv] [to tv]] ease ^long at]
+  (let [from (long from) to (long to) fv (double fv) tv (double tv)]
+    (cond (<= at from) fv
+          (>= at to) tv
+          :else (let [a (num/f32 (/ (double (- at from))
+                                    (double (- to from))))
+                      d (num/f32 (- tv fv))]
+                  (num/f32 (+ fv (num/f32 (* (eased ease a) d))))))))
+
+(defn- blended
+  "Returns the value of track at n ticks of a clock, as a keyframe
+  track sampler of period gives it."
+  ^double [track period ^long n]
+  (let [frames (get track "keyframes")
+        at (if period (mod n (long period)) n)
+        segs (segments frames period)]
+    (if (== 1 (count frames))
+      (num/f32 (get (first frames) "value"))
+      (lerped (or (first (filter (fn [[_ [to]]] (< at (long to)))
+                                 segs))
+                  (peek segs))
+              (get track "ease") at))))
+
+(defn sampled
+  "Returns the float value the timelines of level dim give attribute
+  id in world, blended between keyframes by their ease, or nil when
+  none has a track for it. The last timeline of the level wins, and
+  a track that modifies the value beneath it throws."
+  [world dim id]
+  (some (fn [k]
+          (let [t (timeline-of (data/wire k))]
+            (when-let [track (get-in t [:tracks id])]
+              (when-let [m (get track "modifier")]
+                (when-not (= "override" m)
+                  (throw (ex-info "a track that modifies"
+                                  {:id id :modifier m}))))
+              (blended track (:period t) (ticks world (:clock t))))))
+        (rseq (vec (:timelines (dimension/type-of dim))))))
