@@ -2,8 +2,8 @@
   "The observer, which pulses from its back when the cell it faces
   changes its shape."
   (:require [collider.world.block :as block]
+            [collider.world.blocks.diode :as diode]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
             [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
@@ -18,14 +18,6 @@
   (= :observer (block/type-of st)))
 
 (defn- powered? [^long st] (= :true (:powered (block/props-of st))))
-
-(defn front
-  "Returns the ops of observer st at p that tell the cell behind it,
-  and the cells around that cell, of a change."
-  [p ^long st]
-  (let [f (block/facing-of st)
-        q (dir/toward p (dir/opposite f))]
-    [[:changed q st f] [:notify q f st]]))
 
 (defn- scheduled? [{:keys [scheduled?]} p]
   (if scheduled?
@@ -45,7 +37,7 @@
              (not (scheduled? ctx p)))
     (let [off (block/with st :powered :false)]
       (into [[p off nil (bit-or update/known-shape update/clients)]]
-            (front p off)))))
+            (diode/front p off)))))
 
 (defn- due [chunks p {:keys [tick]}]
   (let [st (chunk/at chunks p)
@@ -53,7 +45,7 @@
     (-> [[p (block/with st :powered (block/flag (not on))) nil
           update/clients]]
         (cond-> (not on) (conj (pulse p tick)))
-        (into (front p st)))))
+        (into (diode/front p st)))))
 
 (def rule
   "The block rule of the observer. Its tick reads only its own cell."
@@ -67,4 +59,6 @@
                 (case (:pass ctx)
                   :shape (started p st ctx)
                   :place (placed p st ctx))))
+   :command-shape (fn [_chunks p st ctx]
+                    (started p st (assoc ctx :side (block/facing-of st))))
    :due     due})

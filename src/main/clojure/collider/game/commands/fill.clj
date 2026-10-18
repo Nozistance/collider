@@ -133,7 +133,7 @@
         [adds ds n placed] (edited world changes opts)
         n (+ (long n) (count (remove placed tagged)))]
     (if (zero? n)
-      (concat adds (fail eid "commands.fill.failed"))
+      (concat adds ds (fail eid "commands.fill.failed"))
       (concat adds ds
               (targets/in-level world (targets/source-dim world) tds)
               (say eid "commands.fill.success" n)))))
@@ -286,7 +286,7 @@
         opts (mode-opts mode nil)
         [_ ds _ placed] (edited world [[p (when put? (:state block))]] opts)]
     (if (and put? (empty? placed) (empty? tagged))
-      (fail eid "commands.setblock.failed")
+      (concat ds (fail eid "commands.setblock.failed"))
       (concat ds
               (targets/in-level world (targets/source-dim world) tds)
               (say eid "commands.setblock.success" x y z)))))

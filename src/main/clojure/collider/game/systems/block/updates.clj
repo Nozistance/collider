@@ -211,7 +211,7 @@
 
 (defn- ticks-run [world k ticks taken]
   (let [ctx (level/level-ctx world)
-        firsts (first-runs world ctx k ticks)
+        firsts (first-runs world (dissoc ctx :scheduled?) k ticks)
         ctx (cond-> ctx
               (= :block-ticks k) (assoc :will-tick? (will-tick ticks)))
         w (update world :chunks chunk/editable)

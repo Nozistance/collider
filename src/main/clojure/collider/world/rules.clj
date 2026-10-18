@@ -138,6 +138,13 @@
   (when-let [r (rule-for st)]
     (when-let [f (:reshape r)] (f chunks pos ctx))))
 
+(defn command-shape-changes
+  "Returns the ops that the rule owning st makes as a command shapes st
+  at p from its neighbours before it sets st."
+  [chunks st p ctx]
+  (when-let [r (rule-for st)]
+    (when-let [f (:command-shape r)] (f chunks p st ctx))))
+
 (def ^:const light-reach
   "How far a change moves light across.
   Block light fades in 15 steps and so does sky light that leaves

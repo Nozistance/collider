@@ -90,10 +90,7 @@
   "Returns the ops of a diode st at p that tell the cell it faces
   away from, or nil when st is no diode."
   [p ^long st]
-  (when (diode/diode? st)
-    (let [f (:facing (block/props-of st))
-          q (dir/toward p (dir/opposite f))]
-      [[:changed q st f] [:notify q f st]])))
+  (when (diode/diode? st) (diode/front p st)))
 
 (defn- placed-ops
   "Returns the ops that block st set at p runs, or nil."
@@ -110,7 +107,7 @@
       (contains? emptied-types t) [[:output-signal p]]
       (observer/observer? old)
       (when (and (= :true powered) (scheduled? p :observer))
-        (observer/front p (block/with old :powered :false)))
+        (diode/front p (block/with old :powered :false)))
       (lectern/lectern? old)
       (when (= :true powered) [[:notify (dir/toward p :down) nil old]])
       (rod/rod? old)
@@ -207,7 +204,7 @@
   [^Neighbors s ctx]
   (let [queued? (:scheduled? ctx unread)]
     (fn [p ty]
-      (or (.ticked s :block-ticks (cell/pack p) ty)
+      (or (.ticked s (cell/pack p) ty)
           (boolean (queued? p ty))))))
 
 (defn- rule-woken [s ctx p old side flags-for limit pass]
@@ -217,7 +214,7 @@
         at (rules/wake-tick cs dim st tick p old side)]
     (if (= :neighbor at)
       (let [ctx' (assoc ctx :side side :old old :pass pass
-                        :scheduled? (scheduled-in s ctx))]
+                        :scheduled? (.scheduled ^Neighbors s))]
         (reacted s (dissoc ctx :moved? :given)
                  (rules/reshape-changes cs st p ctx')
                  flags-for limit))
@@ -432,7 +429,7 @@
             (indirect-shaped ctx p st flags (dec limit)))))))
 
 (defn- after-removal [s ctx p old moved?]
-  (hooked s ctx (removal-ops p old moved? (scheduled-in s ctx))))
+  (hooked s ctx (removal-ops p old moved? (.scheduled ^Neighbors s))))
 
 (defn- removed
   "Returns s after block old that st replaced at p tells the cells
@@ -539,11 +536,13 @@
   "How many neighbour updates a chain runs by default."
   1000000)
 
-(defn- opened [chunks ctx]
-  (Neighbors.
-    (if (chunk/editing? chunks) chunks (chunk/editable chunks))
-    (long (:max-chained-neighbor-updates ctx chain-limit))
-    (boolean (:trace-updates ctx))))
+(defn- opened ^Neighbors [chunks ctx]
+  (let [s (Neighbors.
+            (if (chunk/editing? chunks) chunks (chunk/editable chunks))
+            (long (:max-chained-neighbor-updates ctx chain-limit))
+            (boolean (:trace-updates ctx)))]
+    (set! (.scheduled s) (scheduled-in s ctx))
+    s))
 
 (defn- run-each
   "Returns the level after f runs over changes in one edit window of
@@ -661,9 +660,19 @@
               (connect/reshape chunks p st (:tick ctx)))]
     [p (if (and st' (not (zero? (long st')))) st' st) fx]))
 
+(defn- command-shaped-first
+  "Returns s after the rule of the state of change c shapes it from
+  its neighbours before a command sets it."
+  [s ctx [p st]]
+  (reduce #(op-run %1 ctx %2) s
+          (rules/command-shape-changes (chunks s) st p
+                                       (assoc ctx :scheduled?
+                                              (.scheduled ^Neighbors s)))))
+
 (defn- command-placed
   [s ctx [p :as c]]
-  (let [n (write-count s)
+  (let [s (command-shaped-first s ctx c)
+        n (write-count s)
         c' (command-state (chunks s) ctx c)
         s' (set-block s ctx c' update/silent update-limit)]
     (if (< n (write-count s'))
@@ -696,7 +705,8 @@
         [s (< n (write-count s))]))))
 
 (defn- cell-placed [s ctx [p :as c] strict?]
-  (let [n (write-count s)
+  (let [s (if strict? s (command-shaped-first s ctx c))
+        n (write-count s)
         c (if strict? c (command-state (chunks s) ctx c))
         f (if strict? update/strict update/silent)
         s (set-block s ctx c f update-limit)

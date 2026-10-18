@@ -33,6 +33,14 @@
       s
       (max s (block/prop-long there :power)))))
 
+(defn front
+  "Returns the ops of st at p that tell the cell it faces away from,
+  and the cells around that cell, of a change."
+  [p ^long st]
+  (let [f (block/facing-of st)
+        q (dir/toward p (dir/opposite f))]
+    [[:changed q st f] [:notify q f st]]))
+
 (defn- turns-on? [chunks p st] (pos? (input chunks p st)))
 
 (defn- side-signal ^long [chunks p d]

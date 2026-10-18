@@ -96,11 +96,6 @@
       [[:tick p (+ (long tick) delay-ticks)
         (if (diode/prioritized? chunks p st) -1 0) :comparator]])))
 
-(defn- front [p ^long st]
-  (let [f (block/facing-of st)
-        q (dir/toward p (dir/opposite f))]
-    [[:changed q st f] [:notify q f st]]))
-
 (defn refreshed
   "Returns the changes of comparator st at p as it takes the output
   its inputs give, frames as level/frame-signals gives them."
@@ -114,7 +109,7 @@
                 (not= on (on? st))
                 (conj [p (block/with st :powered (block/flag on)) nil
                        update/clients])
-                true (into (front p st))))))))
+                true (into (diode/front p st))))))))
 
 (defn stepped
   "Returns comparator st with its mode switched."

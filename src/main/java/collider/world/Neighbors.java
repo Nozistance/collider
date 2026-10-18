@@ -4,6 +4,7 @@ import clojure.lang.Counted;
 import clojure.lang.IFn;
 import clojure.lang.ITransientCollection;
 import clojure.lang.Indexed;
+import clojure.lang.Keyword;
 import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
@@ -22,6 +23,7 @@ import java.util.HashSet;
 public final class Neighbors {
 
     private static final long CLIENTS = 2;
+    private static final Keyword BLOCK_TICKS = Keyword.intern("block-ticks");
 
     /// The x offsets of the six sides in the order of updates, which is
     /// west, east, down, up, north, south. Shape updates share the x
@@ -34,6 +36,9 @@ public final class Neighbors {
 
     /// The chunks of the window as the run left them so far.
     public ChunkIndex chunks;
+    /// The fn of p and ty that tells whether a block tick of type ty
+    /// waits at p, asked for by this run or queued before it.
+    public IFn scheduled;
     private ITransientCollection records, writes, ticks, sent, updates;
     private final HashSet<Object> ticked = new HashSet<>();
     private final ArrayList<Object> placed = new ArrayList<>();
@@ -78,18 +83,20 @@ public final class Neighbors {
     /// Adds tick x, which is [k at id ty priority].
     public Neighbors tick(Object x) {
         ticks = conj(ticks, x);
-        ticked.add(key(RT.nth(x, 0), RT.nth(x, 2), RT.nth(x, 3)));
+        if (RT.nth(x, 0) == BLOCK_TICKS) {
+            ticked.add(key(RT.nth(x, 2), RT.nth(x, 3)));
+        }
         return this;
     }
 
-    private static Object key(Object k, Object id, Object ty) {
-        return LazilyPersistentVector.createOwning(k, id, ty);
+    private static Object key(Object id, Object ty) {
+        return LazilyPersistentVector.createOwning(id, ty);
     }
 
-    /// Returns true when the run asked for a tick of list k and type
-    /// ty at block id.
-    public boolean ticked(Object k, long id, Object ty) {
-        return ticked.contains(key(k, id, ty));
+    /// Returns true when the run asked for a block tick of type ty at
+    /// block id.
+    public boolean ticked(long id, Object ty) {
+        return ticked.contains(key(id, ty));
     }
 
     /// Adds x to what the clients are told.
