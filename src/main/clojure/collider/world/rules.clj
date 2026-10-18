@@ -22,6 +22,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.note :as note]
             [collider.world.blocks.observer :as observer]
+            [collider.world.blocks.piston :as piston]
             [collider.world.blocks.plate :as plate]
             [collider.world.blocks.powered :as powered]
             [collider.world.blocks.rail :as rail]
@@ -55,6 +56,8 @@
    tripwire/hook-rule
    tripwire/wire-rule
    plate/rule
+   piston/rule
+   piston/head-rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule

@@ -7,6 +7,7 @@
             [collider.game.areas :as areas]
             [collider.game.block.blockentity :as be]
             [collider.game.block.lid :as lid]
+            [collider.game.block.piston :as piston]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.systems.brewing :as brewing]
@@ -26,6 +27,7 @@
     :brewing-stand brewing/tick-deltas
     :potent-sulfur geysers/tick-deltas
     :jukebox jukebox/tick-deltas
+    :piston piston/tick-deltas
     (:sign :hanging-sign) signs/tick-deltas
     nil))
 

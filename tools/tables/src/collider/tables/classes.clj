@@ -474,11 +474,14 @@
 (defn- dig-props [st]
   (let [air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
         zero (static-field "core.BlockPos" "ZERO")]
-    (cond-> {:hardness (flt (call st "getDestroySpeed" air zero))
-             :push (kw (str/lower-case
-                         (call (call st "getPistonPushReaction")
-                               "name")))}
+    (cond-> {:hardness (flt (call st "getDestroySpeed" air zero))}
       (call st "requiresCorrectToolForDrops") (assoc :needs-tool? true))))
+
+(defn- push-props [b st]
+  (let [r (call (call st "getPistonPushReaction") "name")]
+    (cond-> {:push (kw (str/lower-case r))}
+      (Class/.isInstance (cls "world.level.block.EntityBlock") b)
+      (assoc :entity? true))))
 
 (defn- own-props [by-type env reg b]
   (let [field #(hidden-field (class b) b %)
@@ -488,6 +491,7 @@
             :class      (block-class b)}
            (motion-props field)
            (dig-props st)
+           (push-props b st)
            (instrument st)
            (toggle b)
            (pressed b)

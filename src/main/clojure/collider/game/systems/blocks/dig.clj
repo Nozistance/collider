@@ -21,6 +21,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.halves :as halves]
+            [collider.world.blocks.piston :as piston]
             [collider.world.chunk :as chunk]
             [collider.world.env.attribute :as attribute]
             [collider.world.env.signal :as signal]
@@ -41,8 +42,9 @@
         (and (= :bed t) (= :foot part)))))
 
 (defn- kept-partner [world e pos old]
-  (when (and (player/infinite-materials? e) (first-half? old))
-    (halves/partner (:chunks world) pos old)))
+  (when (player/infinite-materials? e)
+    (cond (first-half? old) (halves/partner (:chunks world) pos old)
+          (piston/head? old) (piston/base-broken pos old false))))
 
 (defn- shulker-drop [world pos e]
   (let [item (block/block-of (changes/block-at world pos))
@@ -73,16 +75,18 @@
     [pos (block/with old :disarmed :true) nil update/quiet]))
 
 (defn- gone-deltas
-  [world e eid pos old [ppos pst :as kept]]
+  [world e eid pos old kept]
   (let [cut (cut e pos old)
+        [ppos pst :as pair] (when (vector? kept) kept)
         gone (cond->> [[pos (block/emptied old)]]
-               kept (cons [ppos (block/emptied pst)])
+               pair (cons [ppos (block/emptied pst)])
+               (fn? kept) (cons kept)
                cut (cons cut))]
     (concat
       (when cut (signal/game-event :shear pos eid))
       (break-shown eid pos old)
       (changes/change-deltas world gone)
-      (when kept [(out/except eid (out/break-effect ppos pst))]))))
+      (when pair [(out/except eid (out/break-effect ppos pst))]))))
 
 (defn- break-deltas [world eid pos]
   (let [old (changes/block-at world pos)

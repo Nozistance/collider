@@ -23,6 +23,7 @@
    :shelf               :shelf
    :chiseled-book-shelf :chiseled-bookshelf
    :bell                :bell
+   :moving-piston       :piston
    :chest               :chest :copper-chest :chest
    :weathering-copper-chest :chest
    :trapped-chest       :trapped-chest

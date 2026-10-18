@@ -15,7 +15,7 @@
   [e st]
   (case (:kind e)
     (:furnace :blast-furnace :smoker :campfire :brewing-stand
-     :sign :hanging-sign) true
+     :sign :hanging-sign :piston) true
     :jukebox (= :true (:has-record (block/props-of st)))
     :potent-sulfur
     (not= :dry (:potent-sulfur-state (block/props-of st)))

@@ -254,6 +254,7 @@
           (select-keys w [:trace-updates :torch-toggles
                           :max-chained-neighbor-updates])
           {:rules (:rules w)
+           :block-entities (:block-entities w)
            :analog (partial analog/signal (:block-entities w))
            :dim (:dim w)
            :tick (long t)

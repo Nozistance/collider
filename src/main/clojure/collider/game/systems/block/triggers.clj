@@ -3,6 +3,7 @@
   (:require [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.block.instrument :as instrument]
+            [collider.game.block.piston :as piston]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.world.block :as block]
@@ -10,21 +11,26 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- sent [f]
+  (fn [_ pos st x y]
+    (when-let [ds (f pos st)]
+      (conj ds (out/all (out/block-event pos x y))))))
+
 (def ^:private taken
-  "What a block does on its event, by type. It gives the deltas, or
-  nil when the block takes no event."
-  {:note (fn [pos st _ _] (instrument/sounded pos st))
-   :bell (fn [_ _ _ _] [])})
+  "What a block does on its event, by type. It gives the deltas, the
+  packet of the event among them when the block takes it, or nil."
+  {:note (sent instrument/sounded)
+   :bell (sent (fn [_ _] []))
+   :piston-base piston/triggered})
 
 (defn- ran [w taken [pos b x y]]
   (let [st (chunk/at (:chunks w) pos)
         f (taken (block/type-of st))]
     (when (and f (= b (block/block-of st)))
-      (when-let [ds (f pos st x y)]
-        (conj ds (out/all (out/block-event pos x y)))))))
+      (f w pos st x y))))
 
 (defn- popped [acc]
-  (let [[e & es] (:block-events (first acc))]
+  (when-let [[e & es] (:block-events (first acc))]
     [e (apply/then acc [[:block-events-ran (vec es)]])]))
 
 (defn drained
@@ -35,7 +41,7 @@
   [w taken]
   (let [active (areas/ticking-chunks w)]
     (loop [acc [w deltas/empty-deltas] later []]
-      (if-let [[e acc] (when (:block-events (first acc)) (popped acc))]
+      (if-let [[e acc] (popped acc)]
         (if (areas/active-at? active (first e))
           (recur (apply/then acc (ran (first acc) taken e)) later)
           (recur acc (conj later e)))

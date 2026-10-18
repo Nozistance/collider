@@ -12,6 +12,7 @@
             [collider.world.blocks.lightning-rod :as rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.observer :as observer]
+            [collider.world.blocks.piston :as piston]
             [collider.world.blocks.plate :as plate]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.torch :as torch]
@@ -115,6 +116,7 @@
       (rod/rod? old)
       (when (= :true powered)
         [[:notify (rod/front p old) nil old]])
+      (piston/head? old) [(piston/base-broken p old true)]
       moved? nil
       (tripwire/hook? old) [(fn [_] (tripwire/removed p old tick))]
       (tripwire/wire? old)
