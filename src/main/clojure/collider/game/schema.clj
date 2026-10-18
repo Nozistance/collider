@@ -98,10 +98,22 @@
       (ticks-back :block-ticks t (:block-ticks payload))
       (ticks-back :fluid-ticks t (:fluid-ticks payload))))
 
+(defn- shut
+  "Returns chunks with the trapped chests of bes giving no signal, as
+  nobody has them open when they load."
+  [chunks bes]
+  (reduce-kv (fn [cs pos e]
+               (if (and (= :trapped-chest (:kind e))
+                        (pos? (chunk/signal-at cs pos)))
+                 (chunk/chunks-set-signal cs pos 0)
+                 cs))
+             chunks bes))
+
 (defn- with-block-entities [w id bes]
   (let [st #(chunk/at (:chunks w) %)]
     (-> w
         (assoc-in [:block-entities id] bes)
+        (update :chunks shut bes)
         (update :tickers tickers/loaded bes st))))
 
 (defn with-chunk

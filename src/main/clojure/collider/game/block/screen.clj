@@ -106,8 +106,7 @@
   the openers of the blocks of menu m."
   [world e m step]
   (when-not (game-mode/spectator? e)
-    (mapcat #(lid/opener-deltas world % step)
-            (lid/positions m))))
+    (lid/opener-deltas world (lid/positions m) step)))
 
 (defn close-deltas
   "Returns the deltas that close the menu of player eid.

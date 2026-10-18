@@ -13,10 +13,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private sizes
-  {:chest 27 :trapped-chest 27 :barrel 27 :shulker-box 27
-   :furnace 3 :blast-furnace 3 :smoker 3 :brewing-stand 5})
-
 (def ^:private ^:table outputs
   (delay (update-keys (update-vals (data/pack "jukebox_song")
                                    #(get % "comparator_output"))
@@ -34,11 +30,12 @@
         f (num/f32 (/ sum (double (count items))))]
     (+ (num/floor (num/f32 (* f 14.0))) (if (pos? f) 1 0))))
 
-(defn- slots [e]
-  (let [n (long (sizes (:kind e)))]
-    (vec (take n (concat (:items e) (repeat nil))))))
-
-(defn- entity [bes p] (get-in bes [(chunk/block-chunk p) p]))
+(defn- entity
+  "Returns the block entity of kind k at p in bes, nil when the block
+  there changed kind since bes was taken."
+  [bes p k]
+  (let [e (get-in bes [(chunk/block-chunk p) p])]
+    (when (= k (:kind e)) e)))
 
 (defn- blocked? [chunks p]
   (block/conductor? (chunk/at chunks (dir/toward p :up))))
@@ -47,17 +44,18 @@
   "Returns the signal of the chest st at p, read with its other half
   when it pairs, none when a block sits on either half."
   ^long [bes chunks p ^long st]
-  (let [e (entity bes p)
+  (let [k (be/kind st)
+        e (entity bes p k)
         q (chest/partner chunks p st)
-        f (when q (entity bes q))]
+        f (when q (entity bes q k))]
     (cond
       (or (nil? e) (blocked? chunks p)) 0
-      (nil? q) (filled (slots e))
+      (nil? q) (filled (:items e))
       (blocked? chunks q) 0
-      (nil? f) (filled (slots e))
+      (nil? f) (filled (:items e))
       (= :right (:type (block/props-of st)))
-      (filled (into (slots e) (slots f)))
-      :else (filled (into (slots f) (slots e))))))
+      (filled (into (:items e) (:items f)))
+      :else (filled (into (:items f) (:items e))))))
 
 (defn page-count
   "Returns the pages of book."
@@ -73,8 +71,8 @@
         f (if (> n 1)
             (num/f32 (/ (double (:page e 0)) (double (dec n))))
             1.0)]
-    (if (and book (lectern/has-book? st))
-      (inc (num/floor (num/f32 (* f 14.0))))
+    (if (lectern/has-book? st)
+      (+ (num/floor (num/f32 (* f 14.0))) (if book 1 0))
       0)))
 
 (defn- shelf-signal ^long [e ^long st side]
@@ -96,11 +94,12 @@
     :jukebox (song-signal e)
     :chiseled-bookshelf (inc (long (:last-slot e)))
     :shelf (shelf-signal e st side)
-    (filled (slots e))))
+    (filled (:items e))))
 
 (def ^:private read-kinds
-  (into #{:decorated-pot :lectern :jukebox :chiseled-bookshelf :shelf}
-        (keys sizes)))
+  #{:decorated-pot :lectern :jukebox :chiseled-bookshelf :shelf
+    :chest :trapped-chest :barrel :shulker-box :furnace :blast-furnace
+    :smoker :brewing-stand})
 
 (defn signal
   "Returns the signal block st at p gives a comparator on side, as
@@ -108,7 +107,7 @@
   not read yet."
   [bes chunks p st side]
   (let [k (be/kind (long st))
-        e (entity bes p)]
+        e (entity bes p k)]
     (cond
       (not (contains? read-kinds k))
       (throw (ex-info "analog output the level decides is not read yet"

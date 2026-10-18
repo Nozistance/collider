@@ -402,6 +402,15 @@
                   world ds)]
     (concat ds (when (seq ops) (change-deltas w ops base)))))
 
+(defn be-signaled
+  "Returns the deltas that set the block entity at pos between ticks,
+  wake the comparators that read it and show it."
+  [world pos e]
+  (concat (entities-changed-deltas world [[:set-block-entity pos e]]
+                                   [[:output-signal pos]]
+                                   (dec (long (:tick world))))
+          [(out/all (out/block-entity pos))]))
+
 (defn be-changed
   "Returns the deltas that set the block entity at pos and show it."
   [pos e]

@@ -317,7 +317,7 @@
              (and (= (:item cur) item)
                   (< (long (:count cur)) (data/max-stack item)))))))
 
-(defn- pot-insert-deltas [pos e item]
+(defn- pot-insert-deltas [world pos e item]
   (let [stack (if (:item e)
                 (update (:item e) :count inc)
                 {:item item :count 1})
@@ -327,7 +327,7 @@
         plume [(+ (long x) 0.5) (+ (long y) 1.2) (+ (long z) 0.5)]
         dust (out/particles
                :dust-plume nil plume dust-plume-particles 0.0)]
-    (concat (changes/be-changed pos (assoc e :item stack))
+    (concat (changes/be-signaled world pos (assoc e :item stack))
             [(out/all (out/block-event pos 1 0))
              (heard :decorated-pot/insert pos pitch)
              (out/all dust)])))
@@ -335,7 +335,7 @@
 (defn- pot-use-deltas [{:keys [world eid pos item]}]
   (when-let [e (be/at world pos)]
     (if (pot-insertable? e item)
-      (concat (pot-insert-deltas pos e item) (spent world eid))
+      (concat (pot-insert-deltas world pos e item) (spent world eid))
       [(heard :decorated-pot/insert-fail pos 1.0)
        (out/all (out/block-event pos 1 1))])))
 
@@ -383,12 +383,12 @@
         e' (assoc-in e [:items slot] stack)
         taken (if stack :shelf/single-swap :shelf/take-item)]
     (cond
-      removed (concat (changes/be-changed pos e')
+      removed (concat (changes/be-signaled world pos e')
                       [[:set-slot eid (player/use-slot world eid)
                         removed]
                        (heard taken pos 1.0)])
       (nil? stack) nil
-      :else (concat (changes/be-changed pos e')
+      :else (concat (changes/be-signaled world pos e')
                     [(heard :shelf/place-item pos 1.0)]
                     (emptied-hand world eid)))))
 
