@@ -543,14 +543,15 @@
 (defn- support-changes
   "Returns the block player e rests on after a move by vel to pos,
   looked for where it came from when none is under it, and whether
-  none is."
+  none is. A move up or down forgets that none was."
   [w e pos vel on-ground]
   (if on-ground
     (let [half (double (first (size/box e)))
           c (phys/context e)
           at #(phys/supporting-block (:chunks w) % half c)
           s (or (at pos)
-                (when (and vel (not (:no-blocks? e)))
+                (when (and vel (not (and (:no-blocks? e)
+                                         (zero? (v/y vel)))))
                   (at (v/v3 (- (v/x pos) (v/x vel)) (v/y pos)
                             (- (v/z pos) (v/z vel))))))]
       {:support s :no-blocks? (nil? s)})
