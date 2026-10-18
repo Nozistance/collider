@@ -207,7 +207,8 @@
       (cond
         (.ticked s :block-ticks (cell/pack p) ty) true
         queued? (boolean (queued? p ty))
-        :else (throw (ex-info "no scheduled ticks to read" {:pos p}))))))
+        :else (throw (ex-info "no scheduled ticks to read"
+                              {:pos p}))))))
 
 (defn- rule-woken [s ctx p old side flags-for limit pass]
   (let [cs (chunks s)
