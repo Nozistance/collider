@@ -198,7 +198,8 @@
 (defn- due [chunks p {:keys [tick bodies]}]
   (let [st (chunk/at chunks p)]
     (when (and (wire? st) (on? st :powered))
-      (checked p st (pos? (long (bodies (bounds p st) false))) tick))))
+      (checked p st (pos? (long (bodies (bounds p st) false)))
+               tick))))
 
 (defn- placed [chunks p {:keys [old tick]}]
   (when-not (wire? (long old))

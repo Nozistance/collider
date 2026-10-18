@@ -17,8 +17,8 @@
 
 (def ^:table pressables
   "The states bodies press, plates and string."
-  (delay (block/state-table :boolean
-                            #(or (plate/plate? %) (tripwire/wire? %)))))
+  (delay (block/state-table
+           :boolean #(or (plate/plate? %) (tripwire/wire? %)))))
 
 (def ^:private ^:table wires
   (delay (block/state-table :boolean tripwire/wire?)))
@@ -52,17 +52,14 @@
   "Returns the deltas of the plates and string at cells pressed one by
   one in world."
   [world cells]
-  (second (reduce pressed [world deltas/empty-deltas] (distinct cells))))
+  (second (reduce pressed [world deltas/empty-deltas]
+                  (distinct cells))))
 
 (defn tripped
-  "Returns the deltas of the string body e trips on its move from point
-  from to point to."
+  "Returns the deltas of the string body e trips on its move from
+  point from to point to."
   [world e from to]
-  (let [[half height] (size/box e)]
-    (deltas/as-vec
-      (pressed-at world
-                  (for [[x y z st] (inside/met (:chunks world)
-                                               [[from to nil]] half height
-                                               @wires)
-                        :when (up? world [x y z] st)]
-                    [x y z])))))
+  (let [[half height] (size/box e)
+        met (inside/met (:chunks world) [[from to nil]] half height
+                        @wires)]
+    (deltas/as-vec (pressed-at world (map #(subvec % 0 3) met)))))
