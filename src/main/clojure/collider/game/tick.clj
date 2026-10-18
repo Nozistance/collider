@@ -172,13 +172,13 @@
 (defn- awake-in [lv d dim phase]
   (filterv #(and (runs-in? dim %) (awake? % lv d)) phase))
 
+(defn- phase-of ^long [s]
+  (or (first (keep-indexed #(when (some #{s} %2) %1) phases))
+      (throw (ex-info "no phase runs the system" {:system s}))))
+
 (def ^:private handling
-  #{#'daynight/daynight #'weather-system/weather #'sleep/sleep
-    #'block-updates/block-updates #'block-updates/fluid-updates
-    #'chunks/unloading #'natural/natural-spawns
-    #'random-tick/random-ticks #'chunks/chunk-views
-    #'block-updates/block-flush #'tracker/tracker
-    #'triggers/block-events})
+  (into #{} cat (subvec phases (phase-of #'daynight/daynight)
+                        (inc (phase-of #'triggers/block-events)))))
 
 (defn- level-deltas [world ds phase dim]
   (let [lv (get (:levels world) dim)

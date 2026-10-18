@@ -43,11 +43,14 @@
 
 (defn- reaction [st d destroy? along]
   (let [{:keys [hardness push entity?]} (info st)]
-    (cond (== -1.0 (double hardness)) false
-          (= :block push) false
-          (= :destroy push) destroy?
-          (= :push-only push) (= d along)
-          :else (not entity?))))
+    (if (== -1.0 (double hardness))
+      false
+      (case push
+        :block false
+        :destroy destroy?
+        :push-only (= d along)
+        :normal (not entity?)
+        (throw (ex-info "unknown push reaction" {:state st}))))))
 
 (defn pushable?
   "Returns true when a piston can move st at p toward d. A block that
@@ -71,19 +74,16 @@
              (hash-set (block/block-of a) (block/block-of b)))
        (or (sticky? a) (sticky? b))))
 
-(defn- at ^long [r q]
-  (if (chunk/in-range? (long (q 1))) (chunk/at (:chunks r) q) 0))
-
 (defn- tail
   "Returns how many blocks the line from start takes, start and the
   sticky ones behind it, or nil past the limit."
   [{:keys [p d] :as r} s start]
   (let [back (dir/opposite d)]
-    (loop [n 1 prev (at r start)]
+    (loop [n 1 prev (chunk/at (:chunks r) start)]
       (if-not (sticky? prev)
         n
         (let [q (dir/toward start back n)
-              st (at r q)]
+              st (chunk/at (:chunks r) q)]
           (cond (or (block/air-type? st) (not (stick? prev st))
                     (not (pushable? st q d false back)) (= q p)) n
                 (> (+ n 1 (count (:push s))) limit) nil
@@ -100,11 +100,12 @@
 (defn- across? [d side]
   (and (not= side d) (not= side (dir/opposite d))))
 
-(defn- branched [{:keys [d] :as r} s q]
-  (let [st (at r q)]
+(defn- branched [{:keys [chunks d] :as r} s q]
+  (let [st (chunk/at chunks q)]
     (reduce (fn [s side]
-              (let [n (dir/toward q side)]
-                (if (and (across? d side) (stick? (at r n) st))
+              (let [n (dir/toward q side)
+                    nst (chunk/at chunks n)]
+                (if (and (across? d side) (stick? nst st))
                   (or (line r s n side) (reduced nil))
                   s)))
             s dir/six)))
@@ -112,7 +113,7 @@
 (defn- collided [r s ^long c ^long added]
   (reduce (fn [s j]
             (let [q (nth (:push s) j)]
-              (if (sticky? (at r q))
+              (if (sticky? (chunk/at (:chunks r) q))
                 (or (branched r s q) (reduced nil))
                 s)))
           (reordered s added c) (range (inc (+ c added)))))
@@ -122,7 +123,7 @@
     (let [q (dir/toward start d i)
           ps (:push s)
           c (.indexOf ^java.util.List ps q)
-          st (at r q)]
+          st (chunk/at (:chunks r) q)]
       (cond (> c -1) (collided r s c added)
             (block/air-type? st) s
             (or (not (pushable? st q d true d)) (= q p)) nil
@@ -136,7 +137,7 @@
        (range (dec (long n)) -1 -1)))
 
 (defn- line [{:keys [p d] :as r} s start side]
-  (let [st (at r start)]
+  (let [st (chunk/at (:chunks r) start)]
     (cond (or (block/air-type? st) (= start p)
               (.contains ^java.util.List (:push s) start)
               (not (pushable? st start d false side))) s
@@ -150,7 +151,9 @@
     (if (or (nil? s) (>= i (count (:push s))))
       s
       (let [q (nth (:push s) i)]
-        (recur (inc i) (if (sticky? (at r q)) (branched r s q) s))))))
+        (recur (inc i) (if (sticky? (chunk/at (:chunks r) q))
+                         (branched r s q)
+                         s))))))
 
 (defn resolved
   "Returns the cells the piston at p facing f moves, as it extends
@@ -210,14 +213,16 @@
                         (placed? chunks p ctx))
                 (checked chunks p ctx)))})
 
+(defn type-of
+  "Returns the type the head and the moving block of piston st take."
+  [^long st]
+  (if (= :sticky-piston (block/block-of st)) :sticky :normal))
+
 (defn fits?
   "Returns true when base is the extended piston behind head."
   [^long head ^long base]
   (and (base? base) (extended? base)
-       (= (:type (block/props-of head))
-          (if (= :sticky-piston (block/block-of base))
-            :sticky
-            :normal))
+       (= (:type (block/props-of head)) (type-of base))
        (= (block/facing-of head) (block/facing-of base))))
 
 (defn- behind [p st]

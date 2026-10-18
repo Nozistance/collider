@@ -23,6 +23,17 @@
   [hashes]
   (order (filled hashes)))
 
+(defn removed
+  "Returns the indices of keys with hash codes hashes, put into a
+  hash map in that order, in the order the map iterates them once the
+  keys of indices gone are removed in turn."
+  [hashes gone]
+  (let [ks (mapv key-of hashes)
+        m (HashMap.)]
+    (dotimes [i (count ks)] (.put m (ks i) i))
+    (doseq [i gone] (.remove m (ks i)))
+    (order m)))
+
 (defn copied
   "Returns the indices of keys with hash codes hashes, put into a
   hash map in that order, in the order a copy of the map iterates

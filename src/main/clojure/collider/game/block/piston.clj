@@ -14,9 +14,6 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- kind [^long st]
-  (if (= :sticky-piston (block/block-of st)) :sticky :normal))
-
 (defn- moving [f t]
   (block/state :moving-piston {:facing f :type t}))
 
@@ -38,19 +35,20 @@
 (defn- sent [deltas pos b0 b1]
   (conj (vec deltas) (out/all (out/block-event pos b0 b1))))
 
-(defn- reshaped [w pos st]
-  (or (connect/reshape (:chunks w) pos st (:tick w)) st))
+(defn- reshaped [chunks tick pos st]
+  (or (connect/reshape chunks pos st tick) st))
 
 (defn- left
   "Returns [cell st] of the cells of push no block moves into, in the
-  order a hash map keyed by them iterates. The arm, when given, is
-  taken."
+  order a hash map keyed by push iterates once the cells taken go.
+  The arm, when given, is taken."
   [chunks push d arm]
-  (let [taken (cond-> (set (map #(dir/toward % d) push))
+  (let [index (into {} (map-indexed (fn [i q] [q i])) push)
+        taken (cond-> (mapv #(dir/toward % d) (rseq push))
                 arm (conj arm))
-        ks (filterv (complement taken) push)]
-    (mapv #(let [q (ks %)] [q (chunk/at chunks q)])
-          (hash-order/of (map cell/hashed ks)))))
+        kept (hash-order/removed (map cell/hashed push)
+                                 (keep index taken))]
+    (mapv #(let [q (push %)] [q (chunk/at chunks q)]) kept)))
 
 (defn- left-ops
   "Returns the ops that empty the cells of left and afterwards tell
@@ -96,14 +94,14 @@
   yet, so that the run of ops reads them."
   [w ops]
   (reduce (fn [w [q _ fx]]
-            (let [k [:block-entities (chunk/block-chunk q) q]
-                  e (some #(when (= :carry (first %)) (second %)) fx)]
-              (if (or (nil? e) (get-in w k)) w (assoc-in w k e))))
+            (if-let [e (some #(when (= :carry (% 0)) (% 1)) fx)]
+              (assoc-in w [:block-entities (chunk/block-chunk q) q] e)
+              w))
           w (keep #(when (= :set (first %)) (second %)) ops)))
 
 (defn- extended [w pos st f]
   (when-let [r (piston/resolved (:chunks w) pos f true)]
-    (let [ops (move-ops (:chunks w) pos f (kind st) true r)
+    (let [ops (move-ops (:chunks w) pos f (piston/type-of st) true r)
           on (block/with st :extended :true)]
       (concat
         (changes/set-deltas
@@ -116,7 +114,9 @@
   [w p e]
   (fn [chunks]
     (when (piston/moving? (chunk/at chunks p))
-      (let [st (if (:source? e) 0 (reshaped w p (:moved e)))]
+      (let [st (if (:source? e)
+                 0
+                 (reshaped chunks (:tick w) p (:moved e)))]
         [[p st nil 3] [:changed p st nil]]))))
 
 (defn- early? [e]
@@ -157,7 +157,7 @@
 (defn- retracted [w pos st f b0 b1]
   (let [arm (dir/toward pos f)
         e (block-entity w arm)
-        t (kind st)
+        t (piston/type-of st)
         m (moving f t)
         to (dir/from-index (bit-and (long b1) 7))
         base (moved (block/state (block/block-of st) {:facing to})
@@ -196,7 +196,8 @@
 (defn- finished [w pos e]
   (if (piston/moving? (chunk/at (:chunks w) pos))
     (changes/set-deltas
-      w (placed pos (:moved e) (reshaped w pos (:moved e))))
+      w (placed pos (:moved e)
+                (reshaped (:chunks w) (:tick w) pos (:moved e))))
     [[:set-block-entity pos nil]]))
 
 (defn tick-deltas
