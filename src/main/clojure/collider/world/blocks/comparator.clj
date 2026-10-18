@@ -2,6 +2,7 @@
   "The comparator, a diode that passes on, compares or subtracts the
   signal behind it against the signals at its sides."
   (:require [collider.world.block :as block]
+            [collider.world.blocks.bulb :as bulb]
             [collider.world.blocks.diode :as diode]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
@@ -26,9 +27,8 @@
 
 (defn- analog [ctx chunks p st side]
   (let [st (long st)
-        v (if (#{:copper-bulb-block :weathering-copper-bulb}
-               (block/type-of st))
-            (if (= :true (:lit (block/props-of st))) 15 0)
+        v (if (bulb/bulb? st)
+            (if (bulb/lit? st) 15 0)
             (block/analog-signal st))]
     (if (neg? (long v))
       ((:analog ctx) chunks p st side)

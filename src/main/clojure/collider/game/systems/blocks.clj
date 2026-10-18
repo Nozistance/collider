@@ -198,7 +198,10 @@
   "Returns the deltas of a block use, and after them those of the item
   when the use lets the item act too."
   [ds ctx]
-  (if (:pass (meta ds)) (concat ds (item-deltas ctx)) ds))
+  (if (:pass (meta ds))
+    (let [its (item-deltas ctx)]
+      (with-meta (concat ds its) {:item its}))
+    ds))
 
 (defn- play-deltas [world [eid pos face item cursor _ _ hand]]
   (let [hand (or hand :main)
@@ -228,12 +231,18 @@
            (data/mob-bucket item))
        (not (player/on-cooldown? e item (:tick world)))))
 
-(defn- consumed? [deltas]
-  (or (:consumed (meta deltas))
-      (some (fn [[tag m]]
-              (not (and (= :fx tag)
-                        (#{:blocks-changed :overlay} (:msg m)))))
-            deltas)))
+(defn- consumed?
+  "Returns true when a use took the action. After a block use that
+  passes, the item alone decides."
+  [deltas]
+  (let [m (meta deltas)]
+    (if (contains? m :item)
+      (recur (:item m))
+      (or (:consumed m)
+          (some (fn [[tag m]]
+                  (not (and (= :fx tag)
+                            (#{:blocks-changed :overlay} (:msg m)))))
+                deltas)))))
 
 (def ^:private ^:const hit-slack 1.0000001)
 

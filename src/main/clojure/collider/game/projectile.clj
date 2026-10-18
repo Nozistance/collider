@@ -314,7 +314,15 @@
   (into (changes/change-deltas world [[cell 0]])
         (changes/primed-deltas world cell (primer world e))))
 
-(def ^:private arrows #{:arrow :spectral-arrow :trident})
+(defn- held-ticks
+  "Returns how long a hit of projectile e keeps a target powered."
+  ^long [e]
+  (let [t (:type e)]
+    (cond
+      (#{:arrow :spectral-arrow} t) 20
+      (contains? entity/thrown-types t) 8
+      :else (throw (ex-info "a target hit by a projectile not known"
+                            {:type t})))))
 
 (defn- target-deltas [world e {:keys [at face cell]} st]
   (let [t (long (:tick world))
@@ -325,7 +333,7 @@
         (changes/change-deltas
           world
           (target/hit cell st (target/strength at face)
-                      (if (arrows (:type e)) 20 8) t)
+                      (held-ticks e) t)
           t))
       (when (= :player (get-in world [:entities o :type]))
         [[:award o :custom/target-hit 1]]))))

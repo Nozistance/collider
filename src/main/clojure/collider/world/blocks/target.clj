@@ -9,6 +9,7 @@
 (set! *warn-on-reflection* true)
 
 (defn target?
+  "Returns true when st is a target."
   [^long st]
   (= :target (block/type-of st)))
 
