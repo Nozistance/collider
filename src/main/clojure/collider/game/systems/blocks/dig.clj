@@ -84,6 +84,7 @@
                cut (cons cut))]
     (concat
       (when cut (signal/game-event :shear pos eid))
+      (signal/game-event :block-destroy pos eid)
       (break-shown eid pos old)
       (changes/change-deltas world gone)
       (when pair [(out/except eid (out/break-effect ppos pst))]))))

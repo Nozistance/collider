@@ -402,7 +402,7 @@
   "Returns the change of block st at p when it loses its support."
   [p ^long st]
   (if (contains? dirt-types (block/type-of st))
-    [p (block/state :dirt)]
+    [p (block/state :dirt) [[:game-event :block-change nil]]]
     (block/destroyed p st)))
 
 (def ^:private tick-sides

@@ -66,6 +66,7 @@
                (contains? (data/blocks) cake))
       (concat (consume-deltas world eid)
               (set-at world pos (block/state cake))
+              (signal/game-event :block-change pos eid)
               [(heard :cake/add-candle pos 1.0)
                [:award eid (keyword "used" (name item)) 1]]))))
 
@@ -115,7 +116,11 @@
       (list* [:award eid :custom/eat-cake-slice 1]
              [:merge-entity eid
               (food/eaten e slice-food slice-saturation)]
-             (changes/change-deltas world [[pos (bitten cake) fx]])))))
+             (concat
+               (signal/game-event :eat pos eid)
+               (changes/change-deltas world [[pos (bitten cake) fx]])
+               (when (zero? (bitten cake))
+                 (signal/game-event :block-destroy pos eid)))))))
 
 (defn- cake-use [{:keys [world eid pos item]}]
   (or (when (candle-item? item)

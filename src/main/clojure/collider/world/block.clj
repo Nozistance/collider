@@ -351,8 +351,8 @@
   [p ^long st]
   [p (emptied st)
    (if (contains? #{:fire :soul-fire} (type-of st))
-     [[:drop st]]
-     [[:break st] [:drop st]])])
+     [[:drop st] [:game-event :block-destroy nil]]
+     [[:break st] [:drop st] [:game-event :block-destroy nil]])])
 
 (defn falls?
   [^long st]

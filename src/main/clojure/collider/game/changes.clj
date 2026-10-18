@@ -380,6 +380,7 @@
                                 pos base))
          (into (placed-by-fx pos state))
          (conj (place-sound world eid pos state))
+         (into (signal/game-event :block-place pos eid))
          (into (spent world eid))))))
 
 (defn placed-deltas

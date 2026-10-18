@@ -610,7 +610,8 @@
       (assoc Flow/FIZZ [:fizz]
              Flow/FIZZ_TWICE [:fizz :fizz]
              Flow/FILL [:fluid-tick]
-             Flow/DOUSE [extinguished :fluid-tick]
+             Flow/DOUSE [extinguished [:game-event :block-change nil]
+                         :fluid-tick]
              Flow/SOAK [soaked-ghast :fluid-tick])))
 
 (defn- found-fx [^ints found ^long k]
