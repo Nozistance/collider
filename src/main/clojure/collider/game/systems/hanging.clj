@@ -119,9 +119,11 @@
 (defn- in-attack-range? [p e]
   (<= (Math/sqrt (gap-sq p (hanging/box e))) (range-of p)))
 
+(defn- base ^long [world] (dec (long (:tick world))))
+
 (defn- changed-deltas [world eid e']
   (drops/signal-deltas (assoc-in world [:entities eid] e') e'
-                       (dec (long (:tick world)))))
+                       (base world)))
 
 (defn- put-deltas [world peid p eid e hand stack]
   (let [e' (assoc e :stack (assoc stack :count 1))]
@@ -167,8 +169,7 @@
     (when (in-attack-range? p e)
       (if (and (:stack e) (hanging/frames (:type e)))
         (emptied-deltas world peid p eid e)
-        (drops/kill-deltas world eid e p peid
-                           (dec (long (:tick world))))))))
+        (drops/kill-deltas world eid e p peid (base world))))))
 
 (defn- event-deltas [world ev]
   (case (nth ev 0)

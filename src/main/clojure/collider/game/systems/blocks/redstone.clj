@@ -17,7 +17,8 @@
   (fn [chunks]
     (let [st (chunk/at chunks pos)]
       (if (comparator/comparator? st)
-        (comparator/refreshed chunks (level/frame-signals world) pos st)
+        (comparator/refreshed chunks (level/frame-signals world)
+                              pos st)
         (throw (ex-info "the switched comparator is gone"
                         {:pos pos :state st}))))))
 

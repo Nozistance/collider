@@ -335,7 +335,8 @@
   (when-let [at (let [st (chunk/at chunks pos)
                       fs (level/frame-signals world)]
                   (or (diode/placed-tick chunks pos st base)
-                      (comparator/placed-tick chunks fs pos st base)))]
+                      (comparator/placed-tick
+                        chunks fs pos st base)))]
     [[:schedule-ticks {at [(cell/pack pos)]}]]))
 
 (defn- placed-by-fx [pos ^long state]
