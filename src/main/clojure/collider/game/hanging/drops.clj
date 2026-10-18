@@ -46,16 +46,12 @@
         (conj (spawned world eid e {:item (:type e) :count 1} 0))
         s (conj (spawned world eid e s 1))))))
 
-(defn- idle? [d]
-  (and (= :set-blocks (nth d 0)) (= 3 (count d))
-       (empty? (nth d 1)) (empty? (nth d 2))))
-
 (defn signal-deltas
   "Returns the deltas of the comparators that read the cell of frame e
   hearing of its change. Level w holds the frame as it is after, and
   base is the tick the change comes after."
   [w e base]
-  (remove idle? (changes/change-deltas
+  (remove changes/idle? (changes/change-deltas
                   w [[:output-signal (:block-pos e)]] base)))
 
 (defn gone-deltas

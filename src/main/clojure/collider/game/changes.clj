@@ -209,6 +209,12 @@
 (defn- with-fx? [recs]
   (reduce (fn [_ r] (if (get r 2) (reduced true) false)) false recs))
 
+(defn idle?
+  "Returns true when d writes no block and asks for no tick."
+  [d]
+  (and (= :set-blocks (nth d 0)) (= 3 (count d))
+       (empty? (nth d 1)) (empty? (nth d 2))))
+
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates.
   Given by, it is the author of the changes, or runs [by n] of the
