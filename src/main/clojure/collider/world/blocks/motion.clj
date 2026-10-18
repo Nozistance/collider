@@ -5,6 +5,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.inside :as inside]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
             [collider.vec :as v]))
 
@@ -87,8 +88,10 @@
      (reduce (fn [found [_ _ _ st]] (or (holds st snow? berry?) found))
              nil met))))
 
-(def ^:private ^:table honeyed
-  (delay (block/state-table :boolean #(= :honey (block/type-of %)))))
+(def ^:private ^:table pushing
+  (delay (block/state-table
+           :boolean #(or (= :honey (block/type-of %))
+                         (liquid/bubble-column? %)))))
 
 (def ^:private honey-drag (double (float 0.98)))
 
@@ -114,27 +117,42 @@
          (or (off-centre? (double x) (v/x pos) reach)
              (off-centre? (double z) (v/z pos) reach)))))
 
+(defn- like [vel x y z]
+  (if (v/v3? vel) (v/v3 x y z) [x y z]))
+
 (defn- slide [vel]
   (let [old (unfallen (v/y vel))
-        k (if (< old -0.13) (/ -0.05 old) 1.0)
-        out [(* (v/x vel) k) slide-vy (* (v/z vel) k)]]
-    (if (v/v3? vel) (v/v3 out) out)))
+        k (if (< old -0.13) (/ -0.05 old) 1.0)]
+    (like vel (* (v/x vel) k) slide-vy (* (v/z vel) k))))
 
-(defn honey-slid
+(defn- met-step
+  "Returns [vel slid?] after the block st of cell c, met on a pass
+  that is precise? there, acts on a body at pos, on the ground when
+  og is true."
+  [chunks pos half og [vel slid? :as acc] [x y z st _ _ precise?]]
+  (cond
+    (liquid/bubble-column? st)
+    (if precise?
+      [(like vel (v/x vel)
+             (liquid/column-pushed chunks st [x y z] (v/y vel))
+             (v/z vel))
+       slid?]
+      acc)
+    (and (not og) (sliding? [x y z] pos half (v/y vel)))
+    [(slide vel) true]
+    :else acc))
+
+(defn met-speed
   "Returns [vel slid?] of a body of half width half and height after
-  its moves this tick, with speed vel and its ground flag. Each honey
-  block it met whose side it slides down sets its speed down and
-  slows it across, and slid? is true when one did."
+  its moves this tick, with speed vel and its ground flag. The honey
+  blocks and bubble columns it met act on it in the order it met
+  them. A bubble column pushes it up or down when it met it precisely,
+  and a honey block whose side it slides down sets its speed down and
+  slows it across. slid? is true when one did."
   [chunks moves half height on-ground vel]
   (let [pos (nth (peek (vec moves)) 1)]
-    (if on-ground
-      [vel false]
-      (reduce (fn [[vel slid?] [x y z]]
-                (if (sliding? [x y z] pos half (v/y vel))
-                  [(slide vel) true]
-                  [vel slid?]))
-              [vel false]
-              (inside/met chunks moves half height @honeyed)))))
+    (reduce #(met-step chunks pos half on-ground %1 %2) [vel false]
+            (inside/met chunks moves half height @pushing))))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))

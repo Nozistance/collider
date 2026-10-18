@@ -294,7 +294,7 @@
 (defn- slid [world e mv]
   (let [moves [[(:pos e) (phys/pos mv) (:vel e)]]
         vel (if (:stuck e) [0.0 0.0 0.0] (phys/vel mv))]
-    (motion/honey-slid (:chunks world) moves (half) (height)
+    (motion/met-speed (:chunks world) moves (half) (height)
                        (phys/on-ground? mv) vel)))
 
 (defn- step-deltas [world eid e]

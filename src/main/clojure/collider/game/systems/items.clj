@@ -82,13 +82,13 @@
 
 (def ^:private ^:const gravity 0.04)
 
-(def ^:private ^:const water-drag 0.99)
+(def ^:private water-drag (double (float 0.99)))
 
-(def ^:private ^:const lava-drag 0.95)
+(def ^:private lava-drag (double (float 0.95)))
 
-(def ^:private ^:const buoyancy 5.0E-4)
+(def ^:private buoyancy (double (float 5.0E-4)))
 
-(def ^:private ^:const buoyancy-below 0.06)
+(def ^:private buoyancy-below (double (float 0.06)))
 
 (def ^:private ^:const fluid-depth 0.1)
 
@@ -194,8 +194,8 @@
         w (if (:stuck e)
             [0.0 0.0 0.0]
             (moved-speed chunks mv sup og (vel 1)))
-        [w] (motion/honey-slid chunks [[(:pos e) p vel]] half height
-                               og w)]
+        [w] (motion/met-speed chunks [[(:pos e) p vel]] half height
+                              og w)]
     [p (dragged chunks p sup og w) og sup nb?]))
 
 (defn- jolt-of ^double [vel' old]
@@ -234,13 +234,13 @@
                     wall-inset)))
 
 (defn- met-blocks
-  "Returns [vy stuck] of an item that moved from pos to pos' by push
-  at vertical speed vy, after bubbles push it and the blocks it met
-  hold it."
-  [chunks pos pos' push vy]
-  [(liquid/bubble-push chunks pos' (double vy))
-   (motion/stuck-speed chunks [[pos pos' push]]
-                       (item-half) (item-height))])
+  "Returns [v stuck] of an item that moved from pos to pos' by push
+  with speed v, after the blocks it met hold it. The blocks push an
+  item at rest here, a moving item as it moves."
+  [chunks pos pos' push v rest?]
+  (let [moves [[pos pos' push]] h (item-half) ht (item-height)]
+    [(if rest? (nth (motion/met-speed chunks moves h ht true v) 0) v)
+     (motion/stuck-speed chunks moves h ht)]))
 
 (defn- felt
   "Returns the step of item e that blocks act on. An item at rest in
@@ -250,11 +250,10 @@
         push (if stuck (mapv * drift stuck) drift)
         [pos' v on-ground sup nb?]
         (moved-or-resting chunks e drift rest? push)
-        v (if (and stuck (not rest?)) [0.0 0.0 0.0] v)
-        [vy st] (if (and rest? air?)
-                  [(double (v 1)) nil]
-                  (met-blocks chunks (:pos e) pos' push (v 1)))]
-    {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
+        [v st] (if (and rest? air?)
+                 [v nil]
+                 (met-blocks chunks (:pos e) pos' push v rest?))]
+    {:pos pos' :vel v :on-ground on-ground
      :support sup :no-blocks? nb?
      :stuck (if rest? (or st stuck) st)}))
 

@@ -56,13 +56,15 @@
         sup (when on-ground
               (phys/supporting-block chunks pos (tnt-half)))
         vy (- (double (v/y (:vel e))) 0.04)
-        vel (fall/landed-vel chunks mv sup vy 0.04 drag false)]
+        w (fall/landed-vel chunks mv sup vy 0.04 drag false)
+        sf (motion/block-speed-factor chunks pos sup)
+        vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (cond stuck [0.0 0.0 0.0]
           on-ground (motion/stepped-speed (:chunks world) pos vel)
           :else vel)))
 
 (defn- honey-speed [world e pos on-ground vel]
-  (motion/honey-slid (:chunks world) [[(:pos e) pos (:vel e)]]
+  (motion/met-speed (:chunks world) [[(:pos e) pos (:vel e)]]
                      (tnt-half) (tnt-height) on-ground vel))
 
 (defn- stepped

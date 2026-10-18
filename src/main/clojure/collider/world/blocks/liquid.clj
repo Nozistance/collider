@@ -550,6 +550,14 @@
   (and (empty? (block/collision-boxes st))
        (nil? (block/liquid-class st))))
 
+(defn column-pushed
+  "Returns the vertical speed vy of a body after bubble column st in
+  cell c pushes it."
+  ^double [chunks ^long st [x y z] ^double vy]
+  (column-push (= :true (:drag (block/props-of st)))
+               (open-above? (raw-at chunks x (inc (long y)) z))
+               vy))
+
 (defn bubble-push
   "Returns the vertical speed vy of a body at pos after bubbles push."
   ^double [chunks pos ^double vy]
@@ -558,9 +566,7 @@
         z (num/floor (v/z pos))
         st (raw-at chunks x y z)]
     (if (bubble-column? st)
-      (column-push (= :true (:drag (block/props-of st)))
-                   (open-above? (raw-at chunks x (inc y) z))
-                   vy)
+      (column-pushed chunks st [x y z] vy)
       vy)))
 
 (defn open-column

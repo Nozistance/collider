@@ -70,31 +70,47 @@
           bs)
     true))
 
+(def ^:private far-sq
+  (let [d 0.9999900000002526] (* d d)))
+
+(defn- meets-cell? [[x0 y0 z0 x1 y1 z1] [x y z]]
+  (let [x (double x) y (double y) z (double z)]
+    (and (< (double x0) (+ x 1.0)) (> (double x1) x)
+         (< (double y0) (+ y 1.0)) (> (double y1) y)
+         (< (double z0) (+ z 1.0)) (> (double z1) z))))
+
+(defn- joined
+  "Returns acc with the block of cell c met on step s when the box of
+  a body passing from point from to point to touches its inside or
+  fluid. precise? tells whether that pass counts as precise in it."
+  [chunks acc from to half height precise? [x y z s]]
+  (let [st (state-at chunks x y z) k [x y z]]
+    (if (or (aget ^booleans @airy st) (contains? (:seen acc) k))
+      acc
+      (let [cls (block/liquid-class st)
+            wet (when (and cls (in-fluid? chunks cls k from to half
+                                          height))
+                  cls)]
+        (if (or wet (in-block? st k from to half height))
+          {:seen (conj (:seen acc) k)
+           :met (conj (:met acc) [x y z st s wet (precise? k)])}
+          acc)))))
+
 (defn- walked
   "Returns acc after the box of a body passes from point from to point
   to, meeting no more than steps cells, and the steps it took. Each
   block whose inside or fluid the box touches joins acc once a tick,
-  with the step it met it on and the fluid it was in there, nil for
-  none. A block crossed untouched may join on a later move."
+  with the step it met it on, the fluid it was in there, nil for
+  none, and whether the pass was far or ends in its cell. A block
+  crossed untouched may join on a later move."
   [chunks acc from to half height steps]
-  (let [cs (take-while #(< (long (nth % 3)) (long steps))
-                       (crossed/cells from to
-                                      (box-at to half height shrink)))
-        ^booleans air @airy
-        acc (reduce
-              (fn [{:keys [seen] :as acc} [x y z s]]
-                (let [st (state-at chunks x y z) k [x y z]]
-                  (if (or (aget air st) (contains? seen k))
-                    acc
-                    (let [cls (block/liquid-class st)
-                          wet (when (and cls (in-fluid? chunks cls k from
-                                                        to half height))
-                                cls)]
-                      (if (or wet (in-block? st k from to half height))
-                        {:seen (conj seen k)
-                         :met (conj (:met acc) [x y z st s wet])}
-                        acc)))))
-              acc cs)]
+  (let [target (box-at to half height shrink)
+        cs (take-while #(< (long (nth % 3)) (long steps))
+                       (crossed/cells from to target))
+        far? (> (v/dist-sq from to) far-sq)
+        precise? #(or far? (meets-cell? target %))
+        acc (reduce #(joined chunks %1 from to half height precise? %2)
+                    acc cs)]
     [acc (inc (long (if-let [c (last cs)] (nth c 3) 0)))]))
 
 (defn- walked-move
@@ -145,7 +161,8 @@
 
 (defn met
   "Returns the blocks a body of half width half and height met on its
-  moves this tick, in the order it met them, as [x y z st step fluid].
+  moves this tick, in the order it met them, as
+  [x y z st step fluid precise?].
   Each move is [from to d], d the move it asked for or nil. A block
   counts once a tick, and fluid is the fluid it was in there, nil for
   none. Empty when no state that marks holds lies near the moves."

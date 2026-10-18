@@ -502,9 +502,8 @@
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
         [pos w ground? sup nb? h d mv]
-        (travelled world e v half height og? f)
-        vy (liquid/bubble-push (:chunks world) pos (v/y w))]
-    {:pos pos :vel (v/v3 (v/x w) vy (v/z w)) :on-ground ground?
+        (travelled world e v half height og? f)]
+    {:pos pos :vel (v/v3 w) :on-ground ground?
      :jump-cd (jump-delay e t jumped?) :support sup :no-blocks? nb?
      :fluid f :fluid-after h :movement d :move mv}))
 
@@ -700,7 +699,7 @@
                 (conj [(:pos tr) pos nil]))
         st (motion/stuck-speed (:chunks world) moves half height
                                (:type e))
-        [v slid?] (motion/honey-slid (:chunks world) moves half height
+        [v slid?] (motion/met-speed (:chunks world) moves half height
                                      (:on-ground tr) (:vel tr))
         fall (landing/kept e (if (or st slid? (:on-ground tr))
                                0.0
@@ -731,8 +730,10 @@
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
         tr (physics-move world e (:vel e) h ht f)
-        pos (:pos tr)]
-    {:pos pos :vel (:vel tr) :on-ground (:on-ground tr)
+        pos (:pos tr)
+        vy (liquid/bubble-push (:chunks world) pos (v/y (:vel tr)))]
+    {:pos pos :vel (v/v3 (v/x (:vel tr)) vy (v/z (:vel tr)))
+     :on-ground (:on-ground tr)
      :stuck (when-not (:flying e)
               (motion/stuck-speed (:chunks world)
                                   (conj (vec moves)

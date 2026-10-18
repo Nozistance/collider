@@ -67,9 +67,8 @@
 (defn- travelled [world e vel pid sync?]
   (let [chunks (:chunks world)
         [p w og sup] (orb/moved chunks (:pos e) vel (:stuck e))
-        [w] (motion/honey-slid chunks [[(:pos e) p vel]] (orb/half)
-                               (orb/height) og w)
-        w (assoc w 1 (liquid/bubble-push chunks p (double (w 1))))
+        [w] (motion/met-speed chunks [[(:pos e) p vel]] (orb/half)
+                              (orb/height) og w)
         st (motion/stuck-speed chunks [[(:pos e) p vel]]
                                (orb/half) (orb/height))]
     {:pos p :vel (orb/slowed chunks p w og sup (v/y vel))
