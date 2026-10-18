@@ -14,7 +14,8 @@
 
 (def ^:private ^:table steppables
   (delay (block/state-table
-           :boolean #(#{:redstone-ore :turtle-egg} (block/type-of %)))))
+           :boolean
+           #(#{:redstone-ore :turtle-egg} (block/type-of %)))))
 
 (defn stepped-state
   "Returns the state of the block body e stands on, air when it is
@@ -45,7 +46,8 @@
       (into [sound broken] (changes/change-deltas world [[p 0]] t))
       (-> [sound]
           (into (changes/change-deltas
-                  world [[p (block/with-long st :eggs (dec n)) nil 2]] t))
+                  world
+                  [[p (block/with-long st :eggs (dec n)) nil 2]] t))
           (conj broken)))))
 
 (defn- egg-deltas [world eid e p st]

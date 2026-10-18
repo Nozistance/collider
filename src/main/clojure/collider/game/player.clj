@@ -540,6 +540,9 @@
   (and new (:on-ground e) (false? (:on-ground changes))
        (> (v/y new) (v/y (:pos e)))))
 
+(defn- came-from [pos vel]
+  (v/v3 (- (v/x pos) (v/x vel)) (v/y pos) (- (v/z pos) (v/z vel))))
+
 (defn- support-changes
   "Returns the block player e rests on after a move by vel to pos,
   looked for where it came from when none is under it, and whether
@@ -552,8 +555,7 @@
           s (or (at pos)
                 (when (and vel (not (and (:no-blocks? e)
                                          (zero? (v/y vel)))))
-                  (at (v/v3 (- (v/x pos) (v/x vel)) (v/y pos)
-                            (- (v/z pos) (v/z vel))))))]
+                  (at (came-from pos vel))))]
       {:support s :no-blocks? (nil? s)})
     {:support nil :no-blocks? false}))
 
