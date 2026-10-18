@@ -315,8 +315,8 @@
 
 (defn- signal-ops
   "Returns the ops that wake the comparators of the blocks of menu m
-  for each slot that changed from old to items: the block of the slot
-  first, then every block of the menu."
+  for each slot that changed from old to items, the block of the slot
+  ahead of every block of the menu."
   [m old items]
   (let [n (cell-size m)
         cells (:cells m)

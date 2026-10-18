@@ -24,7 +24,7 @@
 
 (defn- wakes
   "Returns the ops of the stand at pos that wake its comparators as e
-  turns to e': once as it takes fuel, once as it brews or starts."
+  turns to e', once as it takes fuel and once as it brews or starts."
   [pos e e']
   (let [fuel #(long (:fuel % 0))
         brew #(long (:brew % 0))

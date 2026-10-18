@@ -395,9 +395,8 @@
   (assoc-in world [:block-entities (chunk/block-chunk pos) pos] e))
 
 (defn entities-changed-deltas
-  "Returns the deltas that set the block entities of the deltas ds
-  [:set-block-entity pos e] and then run ops, made on base, as they
-  see the block entities set."
+  "Returns the deltas ds that set block entities, followed by the
+  deltas of ops made on base, which see those block entities."
   [world ds ops base]
   (let [w (reduce (fn [w [_ pos e]] (with-block-entity w pos e))
                   world ds)]
