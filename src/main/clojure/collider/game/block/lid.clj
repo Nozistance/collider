@@ -173,8 +173,21 @@
 (defn- lid-event [pos ^long n]
   (out/all (out/block-event pos 1 n)))
 
-(defn- changed-deltas [pos t ^long n]
-  (when (not= :barrel t) [(lid-event pos n)]))
+(defn- signal-deltas
+  "Returns the deltas of a trapped chest st at pos that n players
+  have open, at most 15 of them powering its neighbours and the
+  block below, made on base."
+  [world pos st n base]
+  (let [below (mapv + pos [0 -1 0])]
+    (changes/change-deltas world [[:signal pos (min (long n) 15)]
+                                  [:notify pos nil st]
+                                  [:notify below nil st]]
+                           base)))
+
+(defn- changed-deltas [world pos st t prev n base]
+  (concat (when (not= :barrel t) [(lid-event pos n)])
+          (when (and (= :trapped-chest t) (not= (long prev) (long n)))
+            (signal-deltas world pos st n base))))
 
 (defn- recheck-at [pos ^long base]
   (let [id (cell/pack pos)]
@@ -191,7 +204,7 @@
         (and (neg? step) (zero? n))
         (edge-deltas world pos st t false))
       (when opened? [(recheck-at pos (dec (long (:tick world))))])
-      (changed-deltas pos t n))))
+      (changed-deltas world pos st t prev n (dec (long (:tick world)))))))
 
 (defn- shulker-deltas [world pos ^long step]
   (let [prev (opener-count world pos)
@@ -221,7 +234,7 @@
 (defn- recount-deltas [world pos st t prev n open?]
   (concat (when (not= prev n) [[:openers pos (- n prev)]])
           (when (some? open?) (edge-sound world pos st t open?))
-          (changed-deltas pos t n)
+          (changed-deltas world pos st t prev n (:tick world))
           (when (pos? n) [(recheck-at pos (:tick world))])))
 
 (defn recheck

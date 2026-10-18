@@ -14,7 +14,9 @@
             [collider.game.block.smithing :as smithing]
             [collider.game.block.stonecutter :as stonecutter]
             [collider.game.bundle :as bundle]
+            [collider.game.changes :as changes]
             [collider.game.out :as out]
+            [collider.game.stack :as stack]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.chest :as chest]
@@ -287,16 +289,14 @@
         roll #(random/of-key t pos :furnace-xp %)]
     (furnace/award-deltas old at roll [:furnace eid])))
 
-(defn- furnace-store [world eid m items]
+(defn- furnace-store [world m items]
   (let [pos (first (:cells m))
         old (be/at world pos)
-        got (taken old items)
         e (-> (furnace/input-changed old (nth items 0))
               (assoc-in [:items 1] (nth items 1))
               (assoc-in [:items 2] (nth items 2))
-              (cond-> got (assoc :used {})))]
-    (concat (when (not= old e) [[:set-block-entity pos e]])
-            (when got (furnace-paid world eid pos old)))))
+              (cond-> (taken old items) (assoc :used {})))]
+    (when (not= old e) [[:set-block-entity pos e]])))
 
 (defn- cell-store [world items n i pos]
   (let [old (be/at world pos)
@@ -305,18 +305,53 @@
     (when (not= (padded (:items old) n) part)
       [:set-block-entity pos (assoc old :items part)])))
 
+(defn- own-signal?
+  "Returns true when the block that holds slot i wakes its comparators
+  as the slot takes b over a. A furnace does for its input only, when
+  the kind of stack changes."
+  [m i a b]
+  (or (not (furnace? m))
+      (and (zero? (long i)) (not (stack/same-kind? a b)))))
+
+(defn- signal-ops
+  "Returns the ops that wake the comparators of the blocks of menu m
+  for each slot that changed from old to items: the block of the slot
+  first, then every block of the menu."
+  [m old items]
+  (let [n (cell-size m)
+        cells (:cells m)
+        all (mapv (fn [c] [:output-signal c]) cells)
+        own (fn [i] [:output-signal (nth cells (quot (long i) n))])
+        slot (fn [i a b]
+               (when (not= a b)
+                 (cond->> all (own-signal? m i a b) (cons (own i)))))]
+    (into [] cat (map slot (range) old items))))
+
+(defn- cells-store [world eid m stacks]
+  (let [ds (if (furnace? m)
+             (furnace-store world m stacks)
+             (keep-indexed #(cell-store world stacks (cell-size m) %1 %2)
+                           (:cells m)))
+        ops (signal-ops m (items world eid m) stacks)
+        base (dec (long (:tick world)))]
+    (changes/entities-changed-deltas world ds ops base)))
+
 (defn store-deltas
   "Returns the deltas that store items back into the blocks of menu
-  m of player eid."
+  m of player eid. Each slot that changed wakes the comparators that
+  read them."
   [world eid m items]
   (cond
     (lectern? m) nil
     (bench? m) nil
     (= :ender (:kind m))
     [[:merge-entity eid {:ender-items (vec items)}]]
-    (furnace? m) (furnace-store world eid m items)
-    :else (keep-indexed #(cell-store world items (cell-size m) %1 %2)
-                        (:cells m))))
+    :else
+    (let [pos (first (:cells m))
+          old (be/at world pos)]
+      (concat (cells-store world eid m items)
+              (when (and (furnace? m) (taken old items))
+                (furnace-paid world eid pos old))))))
 
 (defn- may-place? [_ stack]
   (bundle/fits-inside? (:item stack)))

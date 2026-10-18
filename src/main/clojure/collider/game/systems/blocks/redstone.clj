@@ -13,12 +13,11 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- refreshed [world pos]
+(defn- refreshed [ctx pos]
   (fn [chunks]
     (let [st (chunk/at chunks pos)]
       (if (comparator/comparator? st)
-        (comparator/refreshed chunks (level/frame-signals world)
-                              pos st)
+        (comparator/refreshed ctx chunks pos st)
         (throw (ex-info "the switched comparator is gone"
                         {:pos pos :state st}))))))
 
@@ -27,7 +26,8 @@
         pitch (if (= :subtract (:mode (block/props-of st'))) 0.55 0.5)]
     (into [(out/except eid (out/block-sound :block.comparator.click pos
                                             0.3 pitch))]
-          (changes/change-deltas world [[pos st' nil 2] (refreshed world pos)]))))
+          (changes/change-deltas
+            world [[pos st' nil 2] (refreshed (level/level-ctx world) pos)]))))
 
 (defn turned-deltas
   "Returns the deltas of player eid turning the wire, the repeater or

@@ -10,10 +10,17 @@
 (defn- lit? [^long st] (= :true (:lit (block/props-of st))))
 
 (defn tick-deltas
+  "Returns the deltas of one tick of the furnace e at pos. When it
+  lights, goes out, burns fuel or cooks, it wakes the comparators
+  that read it after it shows whether it is lit."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
-        [e' burns?] (furnace/tick e)]
-    (concat (when (not= e e') [[:set-block-entity pos e']])
-            (when (not= burns? (lit? st))
-              (let [st' (block/with st :lit (block/flag burns?))]
-                (changes/set-deltas world [[pos st']]))))))
+        [e' burns?] (furnace/tick e)
+        lit (when (not= burns? (lit? st))
+              [[pos (block/with st :lit (block/flag burns?))]])
+        ops (cond-> lit
+              (or lit (not= (:items e) (:items e')))
+              (conj [:output-signal pos]))]
+    (changes/entities-changed-deltas
+      world (when (not= e e') [[:set-block-entity pos e']]) ops
+      (:tick world))))

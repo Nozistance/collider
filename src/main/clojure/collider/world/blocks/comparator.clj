@@ -24,38 +24,40 @@
 
 (defn- subtract? [^long st] (= :subtract (:mode (block/props-of st))))
 
-(defn- analog ^long [p ^long st]
-  (let [v (if (#{:copper-bulb :weathering-copper-bulb} (block/type-of st))
+(defn- analog [ctx chunks p st side]
+  (let [st (long st)
+        v (if (#{:copper-bulb :weathering-copper-bulb} (block/type-of st))
             (if (= :true (:lit (block/props-of st))) 15 0)
             (block/analog-signal st))]
-    (if (neg? v)
-      (throw (ex-info "analog output the level decides is not read yet"
-                      {:pos p :block (block/block-of st)}))
+    (if (neg? (long v))
+      ((:analog ctx) chunks p st side)
       v)))
 
-(defn- framed [frames r f]
-  (let [fs (or (force frames)
+(defn- framed [ctx r f]
+  (let [fs (or (force (:frames ctx))
                (throw (ex-info "the frames of the level are not given"
                                {:pos r})))
         vs (keep (fn [[facing v]] (when (= f facing) v)) (get fs r))]
     (when (= 1 (count vs)) (first vs))))
 
-(defn- behind [chunks frames q f s]
+(defn- behind [ctx chunks q f s]
   (let [r (dir/toward q f)
         st (chunk/at chunks r)
-        v (framed frames r f)
-        a (when (block/analog-output? st) (analog r st))]
+        v (framed ctx r f)
+        a (when (block/analog-output? st)
+            (long (analog ctx chunks r st (dir/opposite f))))]
     (if (and v a) (max (long v) a) (or v a s))))
 
-(defn- input ^long [chunks frames p ^long st]
+(defn- input ^long [ctx chunks p ^long st]
   (let [s (diode/input chunks p st)
         f (block/facing-of st)
         q (dir/toward p f)
         there (chunk/at chunks q)]
     (cond
-      (block/analog-output? there) (analog q there)
+      (block/analog-output? there)
+      (analog ctx chunks q there (dir/opposite f))
       (and (< s 15) (block/conductor? there))
-      (behind chunks frames q f s)
+      (behind ctx chunks q f s)
       :else s)))
 
 (defn- side ^long [chunks p d]
@@ -72,8 +74,8 @@
     (max (side chunks p (dir/clockwise f))
          (side chunks p (dir/counter-clockwise f)))))
 
-(defn- output ^long [chunks frames p ^long st]
-  (let [in (input chunks frames p st)]
+(defn- output ^long [ctx chunks p ^long st]
+  (let [in (input ctx chunks p st)]
     (if (zero? in)
       0
       (let [s (sides chunks p st)]
@@ -81,30 +83,31 @@
               (subtract? st) (- in s)
               :else in)))))
 
-(defn- turns-on? [chunks frames p ^long st]
-  (let [in (input chunks frames p st)]
+(defn- turns-on? [ctx chunks p ^long st]
+  (let [in (input ctx chunks p st)]
     (and (pos? in)
          (let [s (sides chunks p st)]
            (or (> in s) (and (= in s) (not (subtract? st))))))))
 
-(defn- checked [chunks p {:keys [tick will-tick? frames]}]
+(defn- checked [chunks p {:keys [tick will-tick?] :as ctx}]
   (let [st (chunk/at chunks p)]
     (when (and (not (and will-tick? (will-tick? p :comparator)))
-               (or (not= (output chunks frames p st)
+               (or (not= (output ctx chunks p st)
                          (chunk/signal-at chunks p))
-                   (not= (on? st) (turns-on? chunks frames p st))))
+                   (not= (on? st) (turns-on? ctx chunks p st))))
       [[:tick p (+ (long tick) delay-ticks)
         (if (diode/prioritized? chunks p st) -1 0) :comparator]])))
 
 (defn refreshed
   "Returns the changes of comparator st at p as it takes the output
-  its inputs give, frames as level/frame-signals gives them."
-  [chunks frames p ^long st]
-  (let [out (output chunks frames p st)
+  its inputs give. ctx holds the frames and the blocks whose block
+  entity decides their signal, as level/level-ctx gives them."
+  [ctx chunks p ^long st]
+  (let [out (output ctx chunks p st)
         old (chunk/signal-at chunks p)]
     (into [[:signal p out]]
           (when (or (not= old out) (not (subtract? st)))
-            (let [on (turns-on? chunks frames p st)]
+            (let [on (turns-on? ctx chunks p st)]
               (cond-> []
                 (not= on (on? st))
                 (conj [p (block/with st :powered (block/flag on)) nil
@@ -119,8 +122,8 @@
 (defn placed-tick
   "Returns the tick that block st a player set at p asks for, at once
   when it is a comparator its inputs turn on, else nil."
-  [chunks frames p st tick]
-  (when (and (comparator? st) (turns-on? chunks frames p st))
+  [ctx chunks p st tick]
+  (when (and (comparator? st) (turns-on? ctx chunks p st))
     (inc (long tick))))
 
 (defn- changed [chunks p ctx]
@@ -148,4 +151,4 @@
                       :neighbor (changed chunks p ctx)
                       :shape (shaped chunks p ctx)))
          :due (fn [chunks p ctx]
-                (refreshed chunks (:frames ctx) p (chunk/at chunks p)))))
+                (refreshed ctx chunks p (chunk/at chunks p)))))

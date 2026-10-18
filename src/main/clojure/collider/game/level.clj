@@ -2,6 +2,7 @@
   "A level of the world with its view and its entities."
   (:require [collider.cell :as cell]
             [collider.data.long-map :as lm]
+            [collider.game.block.analog :as analog]
             [collider.game.clock :as clock]
             [collider.game.entity.stamp :as stamp]
             [collider.game.hanging :as hanging]
@@ -252,6 +253,7 @@
           (select-keys w [:trace-updates :torch-toggles
                           :max-chained-neighbor-updates])
           {:rules (:rules w)
+           :analog (partial analog/signal (:block-entities w))
            :dim (:dim w)
            :tick (long t)
            :frames (frame-signals w)

@@ -1,0 +1,118 @@
+(ns collider.game.block.analog
+  "The signal a comparator reads from a block whose block entity
+  decides it."
+  (:require [collider.data :as data]
+            [collider.game.block.blockentity :as be]
+            [collider.game.stack :as stack]
+            [collider.num :as num]
+            [collider.world.block :as block]
+            [collider.world.blocks.chest :as chest]
+            [collider.world.blocks.lectern :as lectern]
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]))
+
+(set! *warn-on-reflection* true)
+
+(def ^:private sizes
+  {:chest 27 :trapped-chest 27 :barrel 27 :shulker-box 27
+   :furnace 3 :blast-furnace 3 :smoker 3 :brewing-stand 5})
+
+(def ^:private ^:table outputs
+  (delay (update-keys (update-vals (data/pack "jukebox_song")
+                                   #(get % "comparator_output"))
+                      data/kebab)))
+
+(defn- part ^double [s]
+  (num/f32 (/ (double (stack/size s)) (double (stack/max-size s)))))
+
+(defn filled
+  "Returns the signal of a container that holds items in its slots,
+  by how full they are on average."
+  ^long [items]
+  (let [add (fn [^double a s] (if s (num/f32 (+ a (part s))) a))
+        sum (reduce add 0.0 items)
+        f (num/f32 (/ sum (double (count items))))]
+    (+ (num/floor (num/f32 (* f 14.0))) (if (pos? f) 1 0))))
+
+(defn- slots [e]
+  (let [n (long (sizes (:kind e)))]
+    (vec (take n (concat (:items e) (repeat nil))))))
+
+(defn- entity [bes p] (get-in bes [(chunk/block-chunk p) p]))
+
+(defn- blocked? [chunks p]
+  (block/conductor? (chunk/at chunks (dir/toward p :up))))
+
+(defn- chest-signal
+  "Returns the signal of the chest st at p, read with its other half
+  when it pairs, none when a block sits on either half."
+  ^long [bes chunks p ^long st]
+  (let [e (entity bes p)
+        q (chest/partner chunks p st)
+        f (when q (entity bes q))]
+    (cond
+      (or (nil? e) (blocked? chunks p)) 0
+      (nil? q) (filled (slots e))
+      (blocked? chunks q) 0
+      (nil? f) (filled (slots e))
+      (= :right (:type (block/props-of st)))
+      (filled (into (slots e) (slots f)))
+      :else (filled (into (slots f) (slots e))))))
+
+(defn page-count
+  "Returns the pages of book."
+  ^long [book]
+  (let [c (:components book)]
+    (if-let [w (:written-book-content c)]
+      (count (:pages w))
+      (count (:writable-book-content c)))))
+
+(defn- lectern-signal ^long [e ^long st]
+  (let [book (:book e)
+        n (page-count book)
+        f (if (> n 1)
+            (num/f32 (/ (double (:page e 0)) (double (dec n))))
+            1.0)]
+    (if (and book (lectern/has-book? st))
+      (inc (num/floor (num/f32 (* f 14.0))))
+      0)))
+
+(defn- shelf-signal ^long [e ^long st side]
+  (if (= side (dir/opposite (block/facing-of st)))
+    (reduce (fn [^long m ^long i]
+              (if (nth (:items e) i nil) (bit-set m i) m))
+            0 (range 3))
+    0))
+
+(defn- song-signal ^long [e]
+  (if-let [song (data/jukebox-song (:item (:record e)))]
+    (long (get @outputs song))
+    0))
+
+(defn- of-entity ^long [e ^long st side k]
+  (case k
+    :decorated-pot (filled [(:item e)])
+    :lectern (lectern-signal e st)
+    :jukebox (song-signal e)
+    :chiseled-bookshelf (inc (long (:last-slot e)))
+    :shelf (shelf-signal e st side)
+    (filled (slots e))))
+
+(def ^:private read-kinds
+  (into #{:decorated-pot :lectern :jukebox :chiseled-bookshelf :shelf}
+        (keys sizes)))
+
+(defn signal
+  "Returns the signal block st at p gives a comparator on side, as
+  the block entities bes hold it. Throws for a block whose signal is
+  not read yet."
+  [bes chunks p st side]
+  (let [k (be/kind (long st))
+        e (entity bes p)]
+    (cond
+      (not (contains? read-kinds k))
+      (throw (ex-info "analog output the level decides is not read yet"
+                      {:pos p :block (block/block-of st)}))
+      (#{:chest :trapped-chest} k) (chest-signal bes chunks p (long st))
+      e (of-entity e (long st) side k)
+      :else 0)))

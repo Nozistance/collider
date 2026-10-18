@@ -337,12 +337,10 @@
                :block.dried-ghast.place)]
     [(out/all (out/block-sound kind pos 1.0 1.0))]))
 
-(defn- placed-by-ticks [world chunks pos base]
-  (when-let [at (let [st (chunk/at chunks pos)
-                      fs (level/frame-signals world)]
+(defn- placed-by-ticks [ctx chunks pos base]
+  (when-let [at (let [st (chunk/at chunks pos)]
                   (or (diode/placed-tick chunks pos st base)
-                      (comparator/placed-tick
-                        chunks fs pos st base)))]
+                      (comparator/placed-tick ctx chunks pos st base)))]
     [[:schedule-ticks {at [(cell/pack pos)]}]]))
 
 (defn- placed-by-fx [pos ^long state]
@@ -375,7 +373,8 @@
          [deltas s] (run-deltas world changes base neighbors/set-blocks)
          [[pos state]] (first (dried world changes))]
      (-> deltas
-         (into (placed-by-ticks world (:chunks s) pos base))
+         (into (placed-by-ticks (level/level-ctx world base) (:chunks s)
+                                pos base))
          (into (placed-by-fx pos state))
          (conj (place-sound world eid pos state))
          (into (spent world eid))))))
@@ -389,6 +388,20 @@
      (if-let [item (:item (player/use-stack world eid))]
        (conj ds [:award eid (keyword "used" (name item)) 1])
        ds))))
+
+(defn with-block-entity
+  "Returns level world with e as the block entity at pos."
+  [world pos e]
+  (assoc-in world [:block-entities (chunk/block-chunk pos) pos] e))
+
+(defn entities-changed-deltas
+  "Returns the deltas that set the block entities of the deltas ds
+  [:set-block-entity pos e] and then run ops, made on base, as they
+  see the block entities set."
+  [world ds ops base]
+  (let [w (reduce (fn [w [_ pos e]] (with-block-entity w pos e))
+                  world ds)]
+    (concat ds (when (seq ops) (change-deltas w ops base)))))
 
 (defn be-changed
   "Returns the deltas that set the block entity at pos and show it."

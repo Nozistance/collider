@@ -457,10 +457,12 @@
   (long (get c 3 flags)))
 
 (defn- unkept
-  "Returns s after the output kept for comparator old at p goes, as its
-  block entity goes when another block takes its place."
+  "Returns s after the signal kept for comparator or trapped chest old
+  at p goes, as its block entity goes when another block takes its
+  place."
   [s p old st]
-  (if (and (comparator? old) (not (comparator? st))
+  (if (and (#{:comparator :trapped-chest} (block/type-of old))
+           (not= (block/block-of old) (block/block-of st))
            (pos? (chunk/signal-at (chunks s) p)))
     (op-run s nil [:signal p 0])
     s))

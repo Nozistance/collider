@@ -421,9 +421,9 @@
 (defn- shelved [world pos e slot stack]
   (let [items (assoc (:items e) slot stack)
         st (bookshelf-state (changes/block-at world pos) items)]
-    (concat (set-at world pos st)
-            [[:set-block-entity pos
-              (assoc e :items items :last-slot slot)]])))
+    (changes/entities-changed-deltas
+      world [[:set-block-entity pos (assoc e :items items :last-slot slot)]]
+      [[pos st]] (dec (long (:tick world))))))
 
 (defn- one-held [world eid item]
   (let [held (player/use-stack world eid)]

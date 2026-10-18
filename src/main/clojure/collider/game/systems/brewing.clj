@@ -22,12 +22,26 @@
         (when spill
           [[:spawn-entity (item/popped world pos spill :brew)]])))
 
+(defn- wakes
+  "Returns the ops of the stand at pos that wake its comparators as e
+  turns to e': once as it takes fuel, once as it brews or starts."
+  [pos e e']
+  (let [fuel #(long (:fuel % 0))
+        brew #(long (:brew % 0))
+        wake [:output-signal pos]]
+    (cond-> []
+      (> (fuel e') (fuel e)) (conj wake)
+      (or (pos? (brew e)) (pos? (brew e'))) (conj wake))))
+
 (defn tick-deltas
+  "Returns the deltas of one tick of the brewing stand e at pos."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
         [e' brewed? spill] (brewing/tick e)
-        st' (with-bottles st (:items e'))]
-    (concat (when (not= e e') [[:set-block-entity pos e']])
-            (when (not= st st')
-              (changes/set-deltas world [[pos st']]))
+        st' (with-bottles st (:items e'))
+        ops (cond-> (wakes pos e e')
+              (not= st st') (conj [:set [pos st'] 2]))]
+    (concat (changes/entities-changed-deltas
+              world (when (not= e e') [[:set-block-entity pos e']]) ops
+              (:tick world))
             (when brewed? (brew-deltas world pos spill)))))
