@@ -11,6 +11,7 @@
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.lightning-rod :as rod]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.observer :as observer]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.torch :as torch]
             [collider.world.blocks.wire :as wire]
@@ -100,12 +101,16 @@
   (if (torch/torch? st) (torch/told p st) (front-ops p st)))
 
 (defn- removal-ops
-  "Returns the ops that block old at p runs when it goes."
-  [p ^long old moved?]
+  "Returns the ops that block old at p runs when it goes. scheduled?
+  tells whether a tick of a type waits at p."
+  [p ^long old moved? scheduled?]
   (let [t (block/type-of old)
         {:keys [powered]} (block/props-of old)]
     (cond
       (contains? emptied-types t) [[:output-signal p]]
+      (observer/observer? old)
+      (when (and (= :true powered) (scheduled? p :observer))
+        (observer/front p (block/with old :powered :false)))
       (lectern/lectern? old)
       (when (= :true powered) [[:notify (dir/toward p :down) nil old]])
       (rod/rod? old)
@@ -121,7 +126,7 @@
       (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
 
 (defn- hooked? [^long st]
-  (boolean (seq (removal-ops [0 0 0] st false))))
+  (boolean (seq (removal-ops [0 0 0] st false (constantly true)))))
 
 (defn- plain?
   "Returns true when placing st needs no reply from st."
@@ -193,13 +198,25 @@
                       (set-block s ctx c f limit))))
           s changes))
 
+(defn- scheduled-in
+  "Returns the fn of p and ty that tells whether a block tick of type
+  ty waits at p, asked for by run s or queued before it."
+  [^Neighbors s ctx]
+  (let [queued? (:scheduled? ctx)]
+    (fn [p ty]
+      (cond
+        (.ticked s :block-ticks (cell/pack p) ty) true
+        queued? (boolean (queued? p ty))
+        :else (throw (ex-info "no scheduled ticks to read" {:pos p}))))))
+
 (defn- rule-woken [s ctx p old side flags-for limit pass]
   (let [cs (chunks s)
         {:keys [dim tick]} ctx
         st (block-at s p)
         at (rules/wake-tick cs dim st tick p old side)]
     (if (= :neighbor at)
-      (let [ctx' (assoc ctx :side side :old old :pass pass)]
+      (let [ctx' (assoc ctx :side side :old old :pass pass
+                        :scheduled? (scheduled-in s ctx))]
         (reacted s (dissoc ctx :moved? :given)
                  (rules/reshape-changes cs st p ctx')
                  flags-for limit))
@@ -414,7 +431,7 @@
             (indirect-shaped ctx p st flags (dec limit)))))))
 
 (defn- after-removal [s ctx p old moved?]
-  (hooked s ctx (removal-ops p old moved?)))
+  (hooked s ctx (removal-ops p old moved? (scheduled-in s ctx))))
 
 (defn- removed
   "Returns s after block old that st replaced at p tells the cells

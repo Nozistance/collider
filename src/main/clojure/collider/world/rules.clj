@@ -20,6 +20,7 @@
             [collider.world.blocks.lightning-rod :as lightning-rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.note :as note]
+            [collider.world.blocks.observer :as observer]
             [collider.world.blocks.powered :as powered]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
@@ -46,6 +47,7 @@
    diode/rule
    comparator/rule
    torch/rule
+   observer/rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule

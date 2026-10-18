@@ -98,11 +98,17 @@
     (assoc pass :out (reduce changes/joined-into (:out pass) ds))
     pass))
 
+(defn- queued-after [q ticks]
+  (let [es (for [[k at id ty priority] ticks :when (= :block-ticks k)]
+             [at id ty priority])]
+    (if (seq es) (delay (schedule/add-all @q es)) q)))
+
 (defn- written [world k pass settled author]
   (let [writes (:writes settled)
         ds (changes/settled-deltas world settled author)]
     (cond-> (-> pass
                 (assoc-in [:w :chunks] (:chunks settled))
+                (update :queue queued-after (:ticks settled))
                 (out-into ds))
       (:dirty pass)
       (update :dirty into (map (comp column first)) (:records settled))
@@ -137,9 +143,13 @@
                              :when (lift/rises? old st)]
                          [p old st]))))
 
+(defn- queued [q]
+  (fn [p ty] (schedule/scheduled? @q (cell/pack p) ty)))
+
 (defn- stepped
   [world ctx k pass [i tick first-run]]
-  (let [ctx (cond-> ctx (:will-tick? ctx) (update :will-tick? partial i))
+  (let [ctx (cond-> (assoc ctx :scheduled? (queued (:queue pass)))
+              (:will-tick? ctx) (update :will-tick? partial i))
         [pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
                    [pass first-run])
@@ -192,14 +202,22 @@
   (let [at (delay (into {} (map-indexed (fn [i [p ty]] [[p ty] i])) ticks))]
     (fn [^long i p ty] (< i (long (get @at [p ty] -1))))))
 
-(defn- ticks-run [world k ticks]
+(defn- unqueued
+  "Returns the block ticks of world without the ticks a run of list k
+  takes, as a delay."
+  [world k taken]
+  (delay (cond-> (:block-ticks world)
+           (= :block-ticks k) (schedule/without taken))))
+
+(defn- ticks-run [world k ticks taken]
   (let [ctx (level/level-ctx world)
         firsts (first-runs world ctx k ticks)
         ctx (cond-> ctx
               (= :block-ticks k) (assoc :will-tick? (will-tick ticks)))
         w (update world :chunks chunk/editable)
         dirty (when (some some? firsts) (lm/long-set))
-        start {:w w :dirty dirty :lit {} :out (transient [])}]
+        start {:w w :dirty dirty :lit {} :out (transient [])
+               :queue (unqueued world k taken)}]
     (persistent!
       (:out (reduce #(stepped world ctx k %1 %2) start
                     (mapv vector (range) ticks firsts))))))
@@ -225,7 +243,7 @@
             taken (into order (unloaded world due))]
         (when (seq taken)
           (into [[:ticks-taken k taken]]
-                (ticks-run world k (mapv at-cell order))))))))
+                (ticks-run world k (mapv at-cell order) taken)))))))
 
 (defn block-updates
   {:wake {:keys [[:block-ticks :queue]]}}

@@ -11,6 +11,7 @@ import clojure.lang.Util;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 
 /// A run of block updates over one window of edits, with the chunks,
 /// what the run collects and the queue of neighbour updates. Updates
@@ -34,6 +35,7 @@ public final class Neighbors {
     /// The chunks of the window as the run left them so far.
     public ChunkIndex chunks;
     private ITransientCollection records, writes, ticks, sent, updates;
+    private final HashSet<Object> ticked = new HashSet<>();
     private final ArrayList<Object> placed = new ArrayList<>();
     private long[] placedOld = new long[16];
     private final ArrayDeque<Object> stack = new ArrayDeque<>();
@@ -73,9 +75,21 @@ public final class Neighbors {
         return this;
     }
 
+    /// Adds tick x, which is [k at id ty priority].
     public Neighbors tick(Object x) {
         ticks = conj(ticks, x);
+        ticked.add(key(RT.nth(x, 0), RT.nth(x, 2), RT.nth(x, 3)));
         return this;
+    }
+
+    private static Object key(Object k, Object id, Object ty) {
+        return LazilyPersistentVector.createOwning(k, id, ty);
+    }
+
+    /// Returns true when the run asked for a tick of list k and type
+    /// ty at block id.
+    public boolean ticked(Object k, long id, Object ty) {
+        return ticked.contains(key(k, id, ty));
     }
 
     /// Adds x to what the clients are told.

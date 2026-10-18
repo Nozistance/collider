@@ -1,9 +1,11 @@
 (ns collider.game.level
   "A level of the world with its view and its entities."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.game.clock :as clock]
             [collider.game.entity.stamp :as stamp]
             [collider.game.hanging :as hanging]
+            [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
             [collider.world.env.dimension :as dimension]
             [collider.world.env.weather :as weather]
@@ -235,6 +237,12 @@
                       [(:facing e) (hanging/analog-output e)]))
             {} (of-types w hanging/frames))))
 
+(defn queued-fn
+  "Returns the fn of p and ty that tells whether block ticks hold a
+  tick of type ty at p."
+  [block-ticks]
+  (fn [p ty] (schedule/scheduled? block-ticks (cell/pack p) ty)))
+
 (defn level-ctx
   "Returns what the block rules of level w read besides its blocks,
   at tick t when given."
@@ -247,6 +255,7 @@
            :dim (:dim w)
            :tick (long t)
            :frames (frame-signals w)
+           :scheduled? (queued-fn (:block-ticks w))
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 
