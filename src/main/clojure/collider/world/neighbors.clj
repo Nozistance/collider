@@ -198,17 +198,17 @@
                       (set-block s ctx c f limit))))
           s changes))
 
+(defn- unread [p _ty]
+  (throw (ex-info "no scheduled ticks to read" {:pos p})))
+
 (defn- scheduled-in
   "Returns the fn of p and ty that tells whether a block tick of type
   ty waits at p, asked for by run s or queued before it."
   [^Neighbors s ctx]
-  (let [queued? (:scheduled? ctx)]
+  (let [queued? (:scheduled? ctx unread)]
     (fn [p ty]
-      (cond
-        (.ticked s :block-ticks (cell/pack p) ty) true
-        queued? (boolean (queued? p ty))
-        :else (throw (ex-info "no scheduled ticks to read"
-                              {:pos p}))))))
+      (or (.ticked s :block-ticks (cell/pack p) ty)
+          (boolean (queued? p ty))))))
 
 (defn- rule-woken [s ctx p old side flags-for limit pass]
   (let [cs (chunks s)
