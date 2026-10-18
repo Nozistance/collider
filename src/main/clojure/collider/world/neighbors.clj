@@ -595,6 +595,26 @@
       true (neighbors-changed ctx p st)
       (marked? :analog st) (output-signaled ctx p))))
 
+(defn- held-water-asked [s {:keys [dim tick]} p ^long st]
+  (if (block/waterlogged? st)
+    (ticked s :fluid-ticks (+ (long tick) (liquid/delay-of dim st)) p
+            (rules/fluid-of st) 0)
+    s))
+
+(defn- neighbour-shaped
+  "Returns [s st'] where st' is st at p shaped from its six
+  neighbours before it is set there, 0 when it cannot stay. s holds
+  the ticks asked for on the way."
+  [^Neighbors s ctx p st]
+  (let [ctx' (assoc ctx :scheduled? (.scheduled s))
+        [st' ops] (rules/neighbour-shaped (chunks s) st p ctx')
+        s (reduce #(op-run %1 ctx %2) (held-water-asked s ctx p st)
+                  ops)
+        st' (long st')]
+    [s (if (and (pos? st') (chunk/in-range? (long (p 1))))
+         (or (connect/reshape (chunks s) p st' (:tick ctx)) st')
+         st')]))
+
 (defn- op-run [s ctx [op x y z ty]]
   (case op
     (:set :put) (set-block s ctx x y update-limit)
@@ -608,6 +628,8 @@
     :edge (edged s ctx x y)
     :send (add-sent! s x)
     :tick (ticked s :block-ticks y x ty z)
+    :shaped (let [[s st] (neighbour-shaped s ctx x y)]
+              (reacted s ctx (z st) told-all update-limit))
     :signal (-> (set-chunks! s (chunk/chunks-set-signal (chunks s) x y))
                 (add-record! [x (block-at s x) [[:signal y]]]))))
 
@@ -649,7 +671,9 @@
   [:removal pos old moved?] runs what block old does when it goes
   from pos, [:output-signal pos] tells the
   comparators that read pos, [:tick pos at priority ty] asks for a
-  tick of type ty at pos at tick at, and [:signal pos v] keeps v as
+  tick of type ty at pos at tick at, [:shaped pos st f] shapes st at
+  pos from its neighbours and runs the changes f gives the shaped
+  state, and [:signal pos v] keeps v as
   the signal of the comparator at pos. A step fn of chunks gives
   the changes that follow the ops before it."
   [chunks ctx ops]
@@ -692,24 +716,16 @@
     (assoc (level s (chunk/editing? chunks)) :authors out)))
 
 (defn- command-state
-  [chunks ctx [p st fx]]
-  (let [st' (when (chunk/in-range? (long (p 1)))
-              (connect/reshape chunks p st (:tick ctx)))]
-    [p (if (and st' (not (zero? (long st')))) st' st) fx]))
-
-(defn- command-shaped-first
-  "Returns s after the rule of the state of change c shapes it from
-  its neighbours before a command sets it."
-  [^Neighbors s ctx [p st]]
-  (let [ctx' (assoc ctx :scheduled? (.scheduled s))
-        ops (rules/command-shape-changes (chunks s) st p ctx')]
-    (reduce #(op-run %1 ctx %2) s ops)))
+  "Returns [s c'] where c' is change c shaped as a command places it.
+  A block that cannot stay keeps the state the command gave."
+  [s ctx [p st fx]]
+  (let [[s st'] (neighbour-shaped s ctx p st)]
+    [s [p (if (zero? (long st')) st st') fx]]))
 
 (defn- command-placed
   [s ctx [p :as c]]
-  (let [s (command-shaped-first s ctx c)
+  (let [[s c'] (command-state s ctx c)
         n (write-count s)
-        c' (command-state (chunks s) ctx c)
         s' (set-block s ctx c' update/silent update-limit)]
     (if (< n (write-count s'))
       (let [[q old] (write-at s' n)]
@@ -741,9 +757,8 @@
         [s (< n (write-count s))]))))
 
 (defn- cell-placed [s ctx [p :as c] strict?]
-  (let [s (if strict? s (command-shaped-first s ctx c))
+  (let [[s c] (if strict? [s c] (command-state s ctx c))
         n (write-count s)
-        c (if strict? c (command-state (chunks s) ctx c))
         f (if strict? update/strict update/silent)
         s (set-block s ctx c f update-limit)
         [q old] (when (< n (write-count s)) (write-at s n))]

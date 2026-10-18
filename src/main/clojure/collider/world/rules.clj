@@ -150,12 +150,14 @@
   (when-let [r (rule-for st)]
     (when-let [f (:reshape r)] (f chunks pos ctx))))
 
-(defn command-shape-changes
-  "Returns the ops that the rule owning st makes as a command shapes
-  st at p from its neighbours before it sets st."
+(defn neighbour-shaped
+  "Returns [st ops], the state the rule owning st gives st at p from
+  its six neighbours before st is set there, and the ops it makes on
+  the way."
   [chunks st p ctx]
-  (when-let [r (rule-for st)]
-    (when-let [f (:command-shape r)] (f chunks p st ctx))))
+  (if-let [f (:shaped (rule-for st))]
+    (f chunks p st ctx)
+    [st nil]))
 
 (def ^:const light-reach
   "How far a change moves light across.

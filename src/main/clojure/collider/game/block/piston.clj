@@ -7,7 +7,6 @@
             [collider.hash-order :as hash-order]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.connect :as connect]
             [collider.world.blocks.piston :as piston]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -35,9 +34,6 @@
 
 (defn- sent [deltas pos b0 b1]
   (conj (vec deltas) (out/all (out/block-event pos b0 b1))))
-
-(defn- reshaped [chunks tick pos st]
-  (or (connect/reshape chunks pos st tick) st))
 
 (defn- left
   "Returns [cell st] of the cells of push no block moves into, in the
@@ -114,13 +110,13 @@
 (defn- final-step
   "The step that puts the block a moving piston at p carries in place
   at once, as its block entity e ends early."
-  [w p e]
+  [p e]
   (fn [chunks]
     (when (piston/moving? (chunk/at chunks p))
-      (let [st (if (:source? e)
-                 0
-                 (reshaped chunks (:tick w) p (:moved e)))]
-        [[p st nil 3] [:changed p st nil]]))))
+      (let [put #(vector [p % nil 3] [:changed p % nil])]
+        (if (:source? e)
+          (put 0)
+          [[:shaped p (:moved e) put]])))))
 
 (defn- early? [e]
   (and (= :piston (:kind e)) (< (long (:progress-o e)) 2)))
@@ -151,7 +147,7 @@
       (cond
         (and (piston/moving? st) (= :piston (:kind e))
              (= f (:facing e)) (:extending? e))
-        [(final-step w two e)]
+        [(final-step two e)]
         (or (not= 1 b0) (block/air-type? st)
             (not (piston/pushable? st two (dir/opposite f) false f)))
         [(cleared (dir/toward pos f))]
@@ -167,7 +163,7 @@
                     f false true)]
     (concat
       (changes/set-deltas
-        w (concat (when (early? e) [(final-step w arm e)])
+        w (concat (when (early? e) [(final-step arm e)])
                   [[:set [pos m [[:carry base]]] 276]
                    [:notify pos nil m] [:shapes pos m 2]
                    (if (= :sticky t)
@@ -200,8 +196,7 @@
 (defn- finished [w pos e]
   (if (piston/moving? (chunk/at (:chunks w) pos))
     (changes/set-deltas
-      w (placed pos (:moved e)
-                (reshaped (:chunks w) (:tick w) pos (:moved e))))
+      w [[:shaped pos (:moved e) #(placed pos (:moved e) %)]])
     [[:set-block-entity pos nil]]))
 
 (defn tick-deltas
