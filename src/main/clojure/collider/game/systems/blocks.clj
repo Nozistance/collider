@@ -194,6 +194,12 @@
       (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos)
       :else (redstone/turned-deltas world eid pos))))
 
+(defn- passed
+  "Returns the deltas of a block use, and after them those of the item
+  when the use lets the item act too."
+  [ds ctx]
+  (if (:pass (meta ds)) (concat ds (item-deltas ctx)) ds))
+
 (defn- play-deltas [world [eid pos face item cursor _ _ hand]]
   (let [hand (or hand :main)
         e (get-in world [:entities eid])
@@ -202,9 +208,10 @@
         world (assoc-in world [:entities eid] at)
         ctx (place-ctx world at [eid pos face item cursor])]
     (if (= :main hand)
-      (or (without-item-deltas ctx) (hand-deltas ctx)
+      (or (without-item-deltas ctx) (passed (hand-deltas ctx) ctx)
           (item-deltas ctx))
-      (when item (or (hand-deltas ctx) (item-deltas ctx))))))
+      (when item
+        (or (passed (hand-deltas ctx) ctx) (item-deltas ctx))))))
 
 (defn- spectator-deltas [world eid pos face]
   (when-not (no-face? face)

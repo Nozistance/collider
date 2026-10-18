@@ -438,7 +438,7 @@
 (defn- hit-deltas [world eid e d at hit]
   (concat
     (when (= :block (:kind hit))
-      (projectile/block-hit-deltas world e (:cell hit)))
+      (projectile/block-hit-deltas world e hit))
     (own-hit-deltas world eid e d at hit)))
 
 (def ^:private ^:const wind-ceiling (+ chunk/max-y 30))

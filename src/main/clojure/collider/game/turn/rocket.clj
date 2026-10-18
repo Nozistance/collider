@@ -178,7 +178,7 @@
         boost
         (when met? (explosion world eid e at))
         (when (= :block (:kind hit))
-          (projectile/block-hit-deltas world e (:cell hit)))
+          (projectile/block-hit-deltas world e hit))
         (launch e at)
         (cond met? nil
               (>= (long (:life e 0)) (long (:lifetime e 0)))

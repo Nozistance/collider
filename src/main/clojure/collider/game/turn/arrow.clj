@@ -280,7 +280,8 @@
     (let [cell (nth b 2) e (stuck world e at (:vel e) cell)]
       (ended world eid e
              (into [(hit-sound world eid e)]
-                   (projectile/block-hit-deltas world e cell))))
+                   (projectile/block-hit-deltas
+                     world e {:at at :face (nth b 1) :cell cell}))))
     (ended world eid (assoc e :pos at :needs-sync? false) nil)))
 
 (defn- block-flight [world eid e at b]

@@ -30,6 +30,10 @@
 (def ^:private crops
   [:crop :carrot :potato :beetroot :torchflower-crop])
 
+(defn- ore-tick [_chunks p st _roll _time _world]
+  (when (= :true (:lit (block/props-of st)))
+    [[p (block/with st :lit :false)]]))
+
 (def ^:private ticks
   (table
    [[crops crop/tick]
@@ -57,7 +61,8 @@
     [[:chorus-flower] flower/chorus-tick]
     [[:mangrove-leaves :tinted-particle-leaves
       :untinted-particle-leaves] leaves/decay-tick]
-    [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
+    [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]
+    [[:redstone-ore] ore-tick]]))
 
 (def ^:private client-only
   #{:vine :mushroom :chorus-flower})

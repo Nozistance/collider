@@ -25,6 +25,7 @@
             [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.lectern :as block-lectern]
             [collider.world.blocks.note :as note]
+            [collider.world.blocks.placement :as placement]
             [collider.world.direction :as dir]
             [collider.world.env.signal :as signal]))
 
@@ -520,9 +521,23 @@
   (note-played world eid pos (changes/block-at world pos)
                :custom/play-noteblock))
 
+(defn- ore-lit-deltas [{:keys [world pos]}]
+  (let [st (changes/block-at world pos)]
+    (if (= :true (:lit (block/props-of st)))
+      []
+      (set-at world pos (block/with st :lit :true)))))
+
+(defn- ore-use-deltas
+  "Returns the deltas of redstone ore lit by a use. With an item that
+  places a block the use goes on to place it."
+  [{:keys [item] :as ctx}]
+  (cond-> (ore-lit-deltas ctx)
+    (placement/item->block item 1) (vary-meta assoc :pass true)))
+
 (def ^:private attacks
   {:dragon-egg dragon-egg-deltas
-   :note note-attack-deltas})
+   :note note-attack-deltas
+   :redstone-ore ore-lit-deltas})
 
 (defn attack-deltas
   "Returns the deltas of player eid hitting the block at pos as it
@@ -586,6 +601,7 @@
    :lectern lectern-use-deltas
    :dragon-egg dragon-egg-deltas
    :note note-use-deltas
+   :redstone-ore ore-use-deltas
    :light light-deltas})
 
 (defn- game-master-use

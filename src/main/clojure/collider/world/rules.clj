@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.blocks.bell :as bell]
+            [collider.world.blocks.bulb :as bulb]
             [collider.world.blocks.button :as button]
             [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.composter :as composter]
@@ -25,6 +26,7 @@
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
+            [collider.world.blocks.target :as target]
             [collider.world.blocks.torch :as torch]
             [collider.world.blocks.water :as water]))
 
@@ -57,8 +59,10 @@
    composter/rule
    lectern/rule
    lightning-rod/rule
+   target/rule
    leaves/rule
    lamp/rule
+   bulb/rule
    powered/rule
    fuse/rule
    note/rule])

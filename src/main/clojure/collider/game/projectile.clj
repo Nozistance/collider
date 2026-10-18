@@ -1,17 +1,20 @@
 (ns collider.game.projectile
   "What every projectile shares, the boxes it meets on its way, its
   owner left behind and its turn towards its motion."
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
             [collider.game.reach :as reach]
+            [collider.game.schedule :as schedule]
             [collider.num :as num]
             [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.blocks.target :as target]
             [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
@@ -311,13 +314,31 @@
   (into (changes/change-deltas world [[cell 0]])
         (changes/primed-deltas world cell (primer world e))))
 
+(def ^:private arrows #{:arrow :spectral-arrow :trident})
+
+(defn- target-deltas [world e {:keys [at face cell]} st]
+  (let [t (long (:tick world))
+        o (:owner e)]
+    (concat
+      (when-not (schedule/scheduled? (:block-ticks world) (cell/pack cell)
+                                     :target)
+        (changes/change-deltas
+          world
+          (target/hit cell st (target/strength at face)
+                      (if (arrows (:type e)) 20 8) t)
+          t))
+      (when (= :player (get-in world [:entities o :type]))
+        [[:award o :custom/target-hit 1]]))))
+
 (defn block-hit-deltas
-  "Returns the deltas of projectile e hitting the block at cell. A
-  chorus flower breaks with its drops. A burning one primes tnt and
-  lights a campfire or a candle."
-  [world e cell]
+  "Returns the deltas of projectile e hitting the block at the :cell of
+  hit, on its :face at point :at. A chorus flower breaks with its
+  drops and a target is powered. A burning one primes tnt and lights
+  a campfire or a candle."
+  [world e {:keys [cell] :as hit}]
   (let [st (changes/block-at world cell)]
     (cond
+      (target/target? st) (target-deltas world e hit st)
       (and (= :chorus-flower (block/type-of st))
            (may-interact? world e) (may-break? world e))
       (changes/change-deltas world
