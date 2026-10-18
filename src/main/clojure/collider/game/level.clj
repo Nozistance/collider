@@ -252,7 +252,8 @@
   ([w t]
    (merge (select-keys w weather/fields)
           (select-keys w [:trace-updates :torch-toggles
-                          :max-chained-neighbor-updates])
+                          :max-chained-neighbor-updates
+                          :handling-tick?])
           {:rules (:rules w)
            :block-entities (:block-entities w)
            :analog (partial analog/signal (:block-entities w))

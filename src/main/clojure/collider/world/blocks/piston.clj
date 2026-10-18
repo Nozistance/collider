@@ -63,27 +63,109 @@
 
 (defn- destroyed? [st] (= :destroy (:push (info st))))
 
-(defn- line [chunks p start d]
-  (loop [q start ps []]
-    (let [st (chunk/at chunks q)]
-      (cond (block/air-type? st) {:push ps :destroy []}
-            (#{:slime-block :honey-block} (block/block-of st))
-            (throw (ex-info "slime and honey do not move yet" {:pos q}))
+(defn- sticky? [^long st]
+  (contains? #{:slime-block :honey-block} (block/block-of st)))
+
+(defn- stick? [^long a ^long b]
+  (and (not= #{:slime-block :honey-block}
+             (hash-set (block/block-of a) (block/block-of b)))
+       (or (sticky? a) (sticky? b))))
+
+(defn- at ^long [r q]
+  (if (chunk/in-range? (long (q 1))) (chunk/at (:chunks r) q) 0))
+
+(defn- tail
+  "Returns how many blocks the line from start takes, start and the
+  sticky ones behind it, or nil past the limit."
+  [{:keys [p d] :as r} s start]
+  (let [back (dir/opposite d)]
+    (loop [n 1 prev (at r start)]
+      (if-not (sticky? prev)
+        n
+        (let [q (dir/toward start back n)
+              st (at r q)]
+          (cond (or (block/air-type? st) (not (stick? prev st))
+                    (not (pushable? st q d false back)) (= q p)) n
+                (> (+ n 1 (count (:push s))) limit) nil
+                :else (recur (inc n) st)))))))
+
+(defn- reordered [{:keys [push] :as s} ^long added ^long c]
+  (let [cut (- (count push) added)]
+    (assoc s :push (-> (subvec push 0 c)
+                       (into (subvec push cut))
+                       (into (subvec push c cut))))))
+
+(declare line)
+
+(defn- across? [d side]
+  (and (not= side d) (not= side (dir/opposite d))))
+
+(defn- branched [{:keys [d] :as r} s q]
+  (let [st (at r q)]
+    (reduce (fn [s side]
+              (let [n (dir/toward q side)]
+                (if (and (across? d side) (stick? (at r n) st))
+                  (or (line r s n side) (reduced nil))
+                  s)))
+            s dir/six)))
+
+(defn- collided [r s ^long c ^long added]
+  (reduce (fn [s j]
+            (let [q (nth (:push s) j)]
+              (if (sticky? (at r q))
+                (or (branched r s q) (reduced nil))
+                s)))
+          (reordered s added c) (range (inc (+ c added)))))
+
+(defn- ahead [{:keys [p d] :as r} s start added]
+  (loop [i 1 s s added (long added)]
+    (let [q (dir/toward start d i)
+          ps (:push s)
+          c (.indexOf ^java.util.List ps q)
+          st (at r q)]
+      (cond (> c -1) (collided r s c added)
+            (block/air-type? st) s
             (or (not (pushable? st q d true d)) (= q p)) nil
-            (destroyed? st) {:push ps :destroy [q]}
+            (destroyed? st) (update s :destroy conj q)
             (>= (count ps) limit) nil
-            :else (recur (dir/toward q d) (conj ps q))))))
+            :else (recur (inc i) (assoc s :push (conj ps q))
+                         (inc added))))))
+
+(defn- tail-cells [start d n]
+  (map #(dir/toward start (dir/opposite d) %)
+       (range (dec (long n)) -1 -1)))
+
+(defn- line [{:keys [p d] :as r} s start side]
+  (let [st (at r start)]
+    (cond (or (block/air-type? st) (= start p)
+              (.contains ^java.util.List (:push s) start)
+              (not (pushable? st start d false side))) s
+          (> (inc (count (:push s))) limit) nil
+          :else (when-let [n (tail r s start)]
+                  (let [ps (into (:push s) (tail-cells start d n))]
+                    (ahead r (assoc s :push ps) start n))))))
+
+(defn- spread [r s]
+  (loop [i 0 s s]
+    (if (or (nil? s) (>= i (count (:push s))))
+      s
+      (let [q (nth (:push s) i)]
+        (recur (inc i) (if (sticky? (at r q)) (branched r s q) s))))))
 
 (defn resolved
-  "Returns the cells the piston at p facing f pushes as it extends,
-  as {:push cells :destroy cells} nearest first, or nil when it
-  cannot."
-  [chunks p f]
-  (let [start (dir/toward p f)
+  "Returns the cells the piston at p facing f moves, as it extends
+  when extending? is true and as it pulls back otherwise, as {:push
+  cells :destroy cells} in the order the piston takes them, or nil
+  when it cannot."
+  [chunks p f extending?]
+  (let [d (if extending? f (dir/opposite f))
+        start (dir/toward p f (if extending? 1 2))
+        r {:chunks chunks :p p :d d}
         st (chunk/at chunks start)]
-    (if (pushable? st start f false f)
-      (line chunks p start f)
-      (when (destroyed? st) {:push [] :destroy [start]}))))
+    (if (pushable? st start d false f)
+      (spread r (line r {:push [] :destroy []} start d))
+      (when (and extending? (destroyed? st))
+        {:push [] :destroy [start]}))))
 
 (defn- block-entity [{:keys [block-entities]} p]
   (get-in block-entities [(chunk/block-chunk p) p]))
@@ -95,7 +177,8 @@
         e (block-entity ctx q)]
     (and (moving? st) (= f (block/facing-of st))
          (= :piston (:kind e)) (:extending? e)
-         (or (zero? (long (:progress-o e))) (= tick (:ticked e))))))
+         (or (zero? (long (:progress-o e))) (= tick (:ticked e))
+             (:handling-tick? ctx)))))
 
 (defn- event [st f b0]
   [:queue (block/block-of st) b0 (dir/index f)])
@@ -105,7 +188,7 @@
         f (block/facing-of st)
         on (powered? chunks p f)]
     (cond
-      (and on (not (extended? st)) (resolved chunks p f))
+      (and on (not (extended? st)) (resolved chunks p f true))
       [[p st [(event st f 0)]]]
       (and (not on) (extended? st))
       (let [b0 (if (still-moving? chunks p f ctx) 2 1)]

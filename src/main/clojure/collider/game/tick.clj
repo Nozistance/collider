@@ -172,12 +172,21 @@
 (defn- awake-in [lv d dim phase]
   (filterv #(and (runs-in? dim %) (awake? % lv d)) phase))
 
+(def ^:private handling
+  #{#'daynight/daynight #'weather-system/weather #'sleep/sleep
+    #'block-updates/block-updates #'block-updates/fluid-updates
+    #'chunks/unloading #'natural/natural-spawns
+    #'random-tick/random-ticks #'chunks/chunk-views
+    #'block-updates/block-flush #'tracker/tracker
+    #'triggers/block-events})
+
 (defn- level-deltas [world ds phase dim]
   (let [lv (get (:levels world) dim)
         d (get ds dim)
         ks (awake-in lv d dim phase)]
     (when (pos? (count ks))
-      (let [lv (assoc lv :server world)
+      (let [lv (cond-> (assoc lv :server world)
+                 (some handling phase) (assoc :handling-tick? true))
             fs (mapv #(thunk world lv d ds %) ks)
             timed (cost/timer (:tick world))]
         (deltas/with-dim
