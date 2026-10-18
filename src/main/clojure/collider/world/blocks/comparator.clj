@@ -26,7 +26,8 @@
 
 (defn- analog [ctx chunks p st side]
   (let [st (long st)
-        v (if (#{:copper-bulb-block :weathering-copper-bulb} (block/type-of st))
+        v (if (#{:copper-bulb-block :weathering-copper-bulb}
+               (block/type-of st))
             (if (= :true (:lit (block/props-of st))) 15 0)
             (block/analog-signal st))]
     (if (neg? (long v))
