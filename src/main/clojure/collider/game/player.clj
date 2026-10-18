@@ -8,6 +8,7 @@
             [collider.game.glide :as glide]
             [collider.game.jump :as jump]
             [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.level :as level :refer [update-entity]]
@@ -22,6 +23,7 @@
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]
             [collider.world.space.column :as column])
   (:import (java.nio.charset StandardCharsets)
            (java.util UUID)))
@@ -538,6 +540,23 @@
   (and new (:on-ground e) (false? (:on-ground changes))
        (> (v/y new) (v/y (:pos e)))))
 
+(defn- support-changes
+  "Returns the block player e rests on after a move by vel to pos,
+  looked for where it came from when none is under it, and whether
+  none is."
+  [w e pos vel on-ground]
+  (if on-ground
+    (let [ch (:chunks w) half (double (first (size/box e)))
+          c (phys/context e)
+          s (or (phys/supporting-block ch pos half c)
+                (when (and vel (not (:no-blocks? e)))
+                  (phys/supporting-block
+                    ch (v/v3 (- (v/x pos) (v/x vel)) (v/y pos)
+                             (- (v/z pos) (v/z vel)))
+                    half c)))]
+      {:support s :no-blocks? (nil? s)})
+    {:support nil :no-blocks? false}))
+
 (defn- free-move [w eid e changes client?]
   (let [new (some-> (:pos changes) clamped v/v3)
         vel (move-vel (:pos e) new)
@@ -548,6 +567,9 @@
                          :needs-sync? true))]
     (update-entity w eid merge changes
                    (when client? (known-move vel))
+                   (when (contains? changes :on-ground)
+                     (support-changes w e (or new (:pos e)) vel
+                                      (:on-ground changes)))
                    (fall-changes e changes vel))))
 
 (defn- sent-back [w eid e changes]

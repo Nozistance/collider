@@ -265,6 +265,15 @@
        st
        (state-at chunks x y z)))))
 
+(defn below-at
+  "Returns the cell of the block below-state reads."
+  [chunks pos sup ^double offset]
+  (if (and sup (holds-support? (chunk/at chunks sup)))
+    sup
+    (let [xz (or sup pos)]
+      [(num/floor (v/x xz)) (num/floor (- (v/y pos) offset))
+       (num/floor (v/z xz))])))
+
 (defn- feet-state ^long [chunks pos]
   (state-at chunks (num/floor (v/x pos)) (num/floor (v/y pos))
             (num/floor (v/z pos))))

@@ -1,8 +1,10 @@
 (ns collider.game.systems.presses
-  "Bodies pressing the plates and string they are in once they have
-  moved."
-  (:require [collider.game.areas :as areas]
+  "Bodies stepping on blocks and pressing the plates and string they
+  are in once they have moved."
+  (:require [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
             [collider.game.block.press :as press]
+            [collider.game.block.step :as step]
             [collider.game.deltas :as deltas]
             [collider.game.entity.bodies :as bodies]
             [collider.game.entity.size :as size]
@@ -86,22 +88,31 @@
                [eid t (:moves t)])]
     (if (seq gone) (sort-by first (concat live gone)) live)))
 
+(defn- affected
+  "Returns acc after body e of eid steps on the block under it, when
+  it is still there, and presses what it met on moves."
+  [[w :as acc] [eid e moves]]
+  (-> (if (contains? (:entities w) eid)
+        (apply/then acc (step/deltas w eid e))
+        acc)
+      (press/pressed-in (touched w e moves))))
+
 (defn presses
-  "Returns the deltas of the plates and string the bodies but the
-  players press after their turns, body by body."
+  "Returns the deltas of the blocks the bodies but the players step on
+  and press after their turns, body by body."
   {:wake {:keys [:entities :trips]}}
   [world _d]
-  (cond-> (press/pressed-at
-            world (mapcat (fn [[_ e moves]] (touched world e moves))
+  (cond-> (second (reduce affected [world deltas/empty-deltas]
                           (bodies-of world)))
     (:trips world) (deltas/merge (deltas/of-vec [[:trips-pressed]]))))
 
 (defn player-deltas
-  "Returns the deltas of the plates and string player e of eid presses
-  in its tick, along the moves its packets made."
+  "Returns the deltas of the block player e of eid steps on and the
+  plates and string it presses in its tick, along the moves its
+  packets made."
   [world [eid e]]
   (when-not (game-mode/spectator? e)
     (let [p (:pos e)
           moves (or (seq (input/moves-of world eid)) [[p p nil]])]
       (deltas/as-vec
-        (press/pressed-at world (touched world e moves))))))
+        (second (affected [world deltas/empty-deltas] [eid e moves]))))))

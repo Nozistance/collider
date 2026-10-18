@@ -45,12 +45,17 @@
         (apply/then acc (changes/change-deltas w (ops w p st) t)))
       acc)))
 
+(defn pressed-in
+  "Returns [world deltas] of acc with the plates and string at cells
+  pressed one by one."
+  [acc cells]
+  (reduce pressed acc (distinct cells)))
+
 (defn pressed-at
   "Returns the deltas of the plates and string at cells pressed one by
   one in world."
   [world cells]
-  (second (reduce pressed [world deltas/empty-deltas]
-                  (distinct cells))))
+  (second (pressed-in [world deltas/empty-deltas] cells)))
 
 (defn trip
   "Returns the delta that queues move from point from to point to of

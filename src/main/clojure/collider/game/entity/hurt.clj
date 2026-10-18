@@ -3,6 +3,7 @@
   that show them."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
+            [collider.game.block.step :as step]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
@@ -1085,10 +1086,9 @@
            a)))
 
 (defn- on-magma? [world e]
-  (and (:on-ground e) (not (:sneaking? e))
+  (and (not (:sneaking? e))
        (= :magma (block/type-of
-                   (motion/below-state (:chunks world) (:pos e)
-                                       (:support e) 0.2)))))
+                   (step/stepped-state (:chunks world) e)))))
 
 (defn- moving? [e]
   (let [[x _ z] (or (:client-vel e) [0.0 0.0 0.0])]
