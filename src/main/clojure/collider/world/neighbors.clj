@@ -595,25 +595,68 @@
       true (neighbors-changed ctx p st)
       (marked? :analog st) (output-signaled ctx p))))
 
-(defn- held-water-asked [s {:keys [dim tick]} p ^long st]
-  (if (block/waterlogged? st)
-    (ticked s :fluid-ticks (+ (long tick) (liquid/delay-of dim st)) p
-            (rules/fluid-of st) 0)
-    s))
+(def ^:private shape-order [:west :east :north :south :down :up])
+
+(defn- held [s p st]
+  (set-chunks! s (chunk/chunks-set-block (chunks s) p st)))
+
+(defn- gone-or ^long [^long st]
+  (if (or (zero? st) (block/liquid? st)) 0 st))
+
+(defn- unheld [p c]
+  (throw (ex-info "a shape off the world changes more than its cell"
+                  {:pos p :change c})))
+
+(defn- shape-taken [ctx p]
+  (fn taken [[s st] c]
+    (cond
+      (fn? c) (reduce taken [s st] (c (chunks s)))
+      (= :tick (c 0)) [(op-run s ctx c) st]
+      (= p (c 0)) [s (gone-or (c 1))]
+      :else (unheld p c))))
+
+(defn- rule-shaped [^Neighbors s ctx p st side old]
+  (let [{:keys [dim tick]} ctx
+        cs (chunks s)
+        at (rules/wake-tick cs dim st tick p old side)]
+    (cond
+      (= :neighbor at)
+      (let [ctx' (assoc ctx :side side :old old :pass :shape
+                        :scheduled? (.scheduled s))]
+        (reduce (shape-taken ctx p) [s st]
+                (rules/reshape-changes cs st p ctx')))
+      at [(ticked s :block-ticks at p (block/block-of st) 0) st]
+      :else [s st])))
+
+(defn- side-shaped [s ctx p st side old]
+  (let [[s st'] (if (hears? st :shape)
+                  (rule-shaped s ctx p st side old)
+                  [s st])]
+    (if (= st st')
+      [(fluid-woken s ctx p old side)
+       (gone-or (or (connect/reshape (chunks s) p st (:tick ctx)
+                                     #{side})
+                    st))]
+      [s st'])))
+
+(defn- shaped-on [ctx p]
+  (fn [[s st] side]
+    (let [old (block-at s (dir/toward p side))
+          s (held s p st)
+          [s st'] (if (block/liquid? st)
+                    [(liquid-shaped s ctx p old side st old) st]
+                    (side-shaped s ctx p st side old))]
+      (cond-> [s st'] (zero? (long st')) reduced))))
 
 (defn- neighbour-shaped
   "Returns [s st'] where st' is st at p shaped from its six
-  neighbours before it is set there, 0 when it cannot stay. s holds
-  the ticks asked for on the way."
-  [^Neighbors s ctx p st]
-  (let [ctx' (assoc ctx :scheduled? (.scheduled s))
-        [st' ops] (rules/neighbour-shaped (chunks s) st p ctx')
-        s (reduce #(op-run %1 ctx %2) (held-water-asked s ctx p st)
-                  ops)
-        st' (long st')]
-    [s (if (and (pos? st') (chunk/in-range? (long (p 1))))
-         (or (connect/reshape (chunks s) p st' (:tick ctx)) st')
-         st')]))
+  neighbours in turn before it is set there, as a shape update from
+  each side would shape it, and 0 once it cannot stay. s holds the
+  ticks asked for on the way."
+  [s ctx p st]
+  (let [was (block-at s p)
+        [s st'] (reduce (shaped-on ctx p) [s st] shape-order)]
+    [(held s p was) st']))
 
 (defn- op-run [s ctx [op x y z ty]]
   (case op

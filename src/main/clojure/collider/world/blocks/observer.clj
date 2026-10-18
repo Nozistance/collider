@@ -47,9 +47,6 @@
         (cond-> (not on) (conj (pulse p tick)))
         (into (diode/front p st)))))
 
-(defn- shaped [_chunks p ^long st ctx]
-  [st (started p st (assoc ctx :side (block/facing-of st)))])
-
 (def rule
   "The block rule of the observer. Its tick reads only its own cell."
   {:name    :observer
@@ -62,5 +59,4 @@
                 (case (:pass ctx)
                   :shape (started p st ctx)
                   :place (placed p st ctx))))
-   :shaped  shaped
    :due     due})

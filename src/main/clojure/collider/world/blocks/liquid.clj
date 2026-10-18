@@ -722,9 +722,7 @@
       (lava-fire-walk chunks p r3 passes)
       (lava-spot-fires chunks p r3))))
 
-(defn delay-of
-  "Returns the ticks the fluid of st waits in dim before it moves."
-  ^long [dim st]
+(defn- delay-of ^long [dim st]
   (long (get-in (liquids-in dim) [(liquid-class st) :delay])))
 
 (defn fluid-wake

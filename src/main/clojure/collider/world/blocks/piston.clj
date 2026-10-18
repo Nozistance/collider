@@ -249,8 +249,6 @@
   neighbour updates to it."
   {:name    :piston-head
    :match?  (fn [_chunks st _p] (head? st))
-   :shaped  (fn [chunks p st _ctx]
-              [(if (survives? chunks p st) st 0) nil])
    :pass    :both
    :place?  false
    :wake    (constantly :neighbor)
