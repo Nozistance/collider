@@ -25,6 +25,7 @@
             [collider.game.systems.players.motion :as motion]
             [collider.game.systems.orbs :as orbs]
             [collider.game.systems.pose :as pose]
+            [collider.game.systems.presses :as presses]
             [collider.game.turn.landing :as landing])
   (:import (clojure.lang MapEntry)))
 
@@ -52,6 +53,7 @@
    effects/player-sync
    compasses/player-deltas
    dripleaf/player-deltas
+   presses/player-deltas
    push/player-shoves
    items/player-pickups
    orbs/player-pickup

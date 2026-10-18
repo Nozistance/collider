@@ -22,6 +22,7 @@
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
             [collider.game.systems.players.tick :as player-tick]
+            [collider.game.systems.presses :as presses]
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
@@ -67,6 +68,7 @@
    [#'block-updates/block-flush #'tracker/tracker]
    [#'triggers/block-events]
    entity-systems
+   [#'presses/presses]
    [#'block-entities/block-entities]
    [#'player-tick/player-tick]
    [#'waypoints/waypoints]

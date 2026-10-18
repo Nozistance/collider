@@ -12,6 +12,7 @@
             [collider.world.blocks.lightning-rod :as rod]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.observer :as observer]
+            [collider.world.blocks.plate :as plate]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.torch :as torch]
             [collider.world.blocks.tripwire :as tripwire]
@@ -120,6 +121,8 @@
       (tripwire/sourced p (block/with old :powered :true) tick)
       (button/switch? old)
       (when (button/powered? old) (button/told p old))
+      (plate/plate? old)
+      (when (pos? (plate/signal-of old)) (plate/told p old))
       (diode/diode? old) (front-ops p old)
       (torch/torch? old) (torch/told p old)
       (= :redstone-wire t) (dust/removed p old)

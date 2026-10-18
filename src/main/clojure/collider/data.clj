@@ -539,7 +539,8 @@
   (get (info block) (if open? :open :close)))
 
 (defn pressed-ticks
-  "Returns how many ticks a pressed button of block stays pressed."
+  "Returns how many ticks a pressed button or plate of block stays
+  pressed."
   ^long [block]
   (if-some [n (:pressed (info block))]
     (long n)

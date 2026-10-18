@@ -19,7 +19,7 @@
              :refer [kw flt sorted-vals unknown]])
   (:import (clojure.lang ExceptionInfo Reflector)
            (java.io File)
-           (java.lang.reflect Field InvocationHandler Proxy)
+           (java.lang.reflect Field InvocationHandler Method Proxy)
            (java.net URI URL URLClassLoader URLConnection)
            (java.util HashMap)
            (java.util.function BiConsumer)
@@ -346,11 +346,33 @@
      ["world.level.block.FenceGateBlock" wood-type
       "fenceGateOpen" "fenceGateClose" false]
      ["world.level.block.ButtonBlock" set-type
-      "buttonClickOn" "buttonClickOff" false]]))
+      "buttonClickOn" "buttonClickOff" false]
+     ["world.level.block.BasePressurePlateBlock" set-type
+      "pressurePlateClickOn" "pressurePlateClickOff" false]]))
+
+(defn- pressed-time [b]
+  (let [m (->> (iterate Class/.getSuperclass (class b))
+               (take-while some?)
+               (mapcat Class/.getDeclaredMethods)
+               (some #(when (= "getPressedTime" (Method/.getName %)) %)))]
+    (long (Method/.invoke (doto ^Method m (Method/.setAccessible true))
+                          b (object-array 0)))))
+
+(defn- plate [b]
+  (let [field #(hidden-field (class b) b %)]
+    (if-some [n (field "maxWeight")]
+      {:pressed (pressed-time b) :max-weight (long n)}
+      {:pressed (pressed-time b)
+       :sensitivity (kw (str/lower-case
+                          (str (call (field "type")
+                                     "pressurePlateSensitivity"))))})))
 
 (defn- pressed [b]
-  (when (Class/.isInstance (cls "world.level.block.ButtonBlock") b)
-    {:pressed (long (hidden-field (class b) b "ticksToStayPressed"))}))
+  (cond
+    (Class/.isInstance (cls "world.level.block.ButtonBlock") b)
+    {:pressed (long (hidden-field (class b) b "ticksToStayPressed"))}
+    (Class/.isInstance (cls "world.level.block.BasePressurePlateBlock") b)
+    (plate b)))
 
 (defn- toggle [b]
   (some (fn [[block type open close hand?]]

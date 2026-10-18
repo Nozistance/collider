@@ -4,6 +4,7 @@
             [collider.data.long-map :as lm]
             [collider.game.block.analog :as analog]
             [collider.game.clock :as clock]
+            [collider.game.entity.bodies :as bodies]
             [collider.game.entity.stamp :as stamp]
             [collider.game.hanging :as hanging]
             [collider.game.schedule :as schedule]
@@ -257,6 +258,7 @@
            :dim (:dim w)
            :tick (long t)
            :frames (frame-signals w)
+           :bodies (bodies/counter w)
            :scheduled? (queued-fn (:block-ticks w))
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
