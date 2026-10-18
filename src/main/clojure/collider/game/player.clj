@@ -546,14 +546,13 @@
   none is."
   [w e pos vel on-ground]
   (if on-ground
-    (let [ch (:chunks w) half (double (first (size/box e)))
+    (let [half (double (first (size/box e)))
           c (phys/context e)
-          s (or (phys/supporting-block ch pos half c)
+          at #(phys/supporting-block (:chunks w) % half c)
+          s (or (at pos)
                 (when (and vel (not (:no-blocks? e)))
-                  (phys/supporting-block
-                    ch (v/v3 (- (v/x pos) (v/x vel)) (v/y pos)
-                             (- (v/z pos) (v/z vel)))
-                    half c)))]
+                  (at (v/v3 (- (v/x pos) (v/x vel)) (v/y pos)
+                            (- (v/z pos) (v/z vel))))))]
       {:support s :no-blocks? (nil? s)})
     {:support nil :no-blocks? false}))
 
