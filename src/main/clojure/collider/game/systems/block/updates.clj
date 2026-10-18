@@ -101,7 +101,7 @@
 (defn- queued-after [q ticks]
   (let [es (for [[k at id ty priority] ticks :when (= :block-ticks k)]
              [at id ty priority])]
-    (if (seq es) (delay (schedule/add-all @q es)) q)))
+    (if (seq es) (schedule/add-all q es) q)))
 
 (defn- written [world k pass settled author]
   (let [writes (:writes settled)
@@ -144,7 +144,7 @@
                          [p old st]))))
 
 (defn- queued [q]
-  (fn [p ty] (schedule/scheduled? @q (cell/pack p) ty)))
+  (fn [p ty] (schedule/scheduled? q (cell/pack p) ty)))
 
 (defn- stepped
   [world ctx k pass [i tick first-run]]
@@ -204,10 +204,10 @@
 
 (defn- unqueued
   "Returns the block ticks of world without the ticks a run of list k
-  takes, as a delay."
+  takes."
   [world k taken]
-  (delay (cond-> (:block-ticks world)
-           (= :block-ticks k) (schedule/without taken))))
+  (cond-> (:block-ticks world)
+    (= :block-ticks k) (schedule/without taken)))
 
 (defn- ticks-run [world k ticks taken]
   (let [ctx (level/level-ctx world)
