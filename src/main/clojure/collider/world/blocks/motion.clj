@@ -164,6 +164,11 @@
 
 (def ^:private ^:const below-offset (double (float 0.500001)))
 
+(def ^:const drop-offset
+  "How far below its feet a dropped item or an orb looks for the
+  block that sets its friction and speed."
+  (double (float 0.999999)))
+
 (def ^:private ^:table supports
   (delay (block/state-table
            :boolean #(#{:wall :fence-gate} (block/type-of %)))))
@@ -200,11 +205,13 @@
 (defn block-speed-factor
   "Returns what the blocks at and under a body at pos multiply its
   horizontal speed by after a move. sup is the block the body rests
-  on, or nil."
-  ^double [chunks pos sup]
-  (let [st (feet-state chunks pos)
-        here (speed-factor st)]
-    (if (or (not (== here 1.0))
-            (flagged? @watery st))
-      here
-      (speed-factor (below-state chunks pos sup)))))
+  on, or nil. offset is as in below-state."
+  (^double [chunks pos sup]
+   (block-speed-factor chunks pos sup below-offset))
+  (^double [chunks pos sup ^double offset]
+   (let [st (feet-state chunks pos)
+         here (speed-factor st)]
+     (if (or (not (== here 1.0))
+             (flagged? @watery st))
+       here
+       (speed-factor (below-state chunks pos sup offset))))))

@@ -217,12 +217,10 @@
                         (num/f32 0.2))]
     [(side :lx) (num/f32 0.2) (side :lz)]))
 
-(def ^:private below-offset (num/f32 0.999999))
-
 (defn- friction ^double [chunks pos sup on-ground]
   (let [air (num/f32 0.98)]
     (if on-ground
-      (let [st (motion/below-state chunks pos sup below-offset)]
+      (let [st (motion/below-state chunks pos sup motion/drop-offset)]
         (num/f32 (* air (motion/friction st))))
       air)))
 
@@ -232,7 +230,7 @@
 
 (defn- sped [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
-        sf (motion/block-speed-factor chunks p sup)
+        sf (motion/block-speed-factor chunks p sup motion/drop-offset)
         drag (num/f32 0.98)
         w (fall/landed-vel chunks mv sup vy gravity drag false)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]

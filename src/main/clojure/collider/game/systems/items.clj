@@ -167,12 +167,13 @@
           [s (nil? s)])))))
 
 (defn- ground-friction ^double [chunks pos sup]
-  (let [f (motion/friction (motion/below-state chunks pos sup))]
+  (let [f (motion/friction (motion/below-state chunks pos sup
+                                                motion/drop-offset))]
     (num/f32 (* air-drag f))))
 
 (defn- moved-speed [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
-        sf (motion/block-speed-factor chunks p sup)
+        sf (motion/block-speed-factor chunks p sup motion/drop-offset)
         w (fall/landed-vel chunks mv sup vy gravity air-drag false)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (if on-ground (motion/stepped-speed chunks p vel) vel)))
