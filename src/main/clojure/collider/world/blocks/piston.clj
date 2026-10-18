@@ -67,6 +67,8 @@
   (loop [q start ps []]
     (let [st (chunk/at chunks q)]
       (cond (block/air-type? st) {:push ps :destroy []}
+            (#{:slime-block :honey-block} (block/block-of st))
+            (throw (ex-info "slime and honey do not move yet" {:pos q}))
             (or (not (pushable? st q d true d)) (= q p)) nil
             (destroyed? st) {:push ps :destroy [q]}
             (>= (count ps) limit) nil
