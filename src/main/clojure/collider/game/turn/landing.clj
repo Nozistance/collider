@@ -189,6 +189,19 @@
                 hs)
     (seq hs) (conj (block-sound e st))))
 
+(defn- one-in-five? [t eid k]
+  (zero? (random/below (random/rnd t eid k) 5)))
+
+(defn slide-deltas
+  "Returns the sound and the show of body eid, e, that slides down
+  honey at tick t, each one time in five."
+  [t eid e]
+  (cond-> []
+    (one-in-five? t eid :honey-sound)
+    (conj (sound e :block.honey-block.slide 1.0 1.0))
+    (one-in-five? t eid :honey-slide)
+    (conj (out/all (out/status eid :honey-slide)))))
+
 (defn- snow-deltas [e ^double f]
   (when (>= f 4.0) [(fall-sound e (>= f 7.0))]))
 

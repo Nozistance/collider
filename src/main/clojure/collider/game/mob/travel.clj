@@ -670,6 +670,14 @@
         e2 (snow-marked e2 (snowed? world (:pos e) pos half height))]
     [(bumped e e2 tr) shoves hit? (when ls (nth ls 1))]))
 
+(defn- slid-move
+  "Returns move m of mob eid with the sound and the show of its slide
+  down honey when slid? is true."
+  [m world eid slid?]
+  (cond-> m
+    slid? (update 3 (fnil into [])
+                  (landing/slide-deltas (:tick world) eid (nth m 0)))))
+
 (def ^:private gap-sq (double (float 9.9999994E-11)))
 
 (defn moved
@@ -692,11 +700,16 @@
                 (conj [(:pos tr) pos nil]))
         st (motion/stuck-speed (:chunks world) moves half height
                                (:type e))
-        fall (landing/kept e (if (or st (:on-ground tr)) 0.0 f1))
-        box [half height pos (:vel tr)]
+        [v slid?] (motion/honey-slid (:chunks world) moves half height
+                                     (:on-ground tr) (:vel tr))
+        fall (landing/kept e (if (or st slid? (:on-ground tr))
+                               0.0
+                               f1))
         [look prev cram live?] more]
-    (conj (shoved-move world index eid e tr box fall ls
-                       [look prev cram live? st])
+    (conj (slid-move (shoved-move world index eid e tr
+                                  [half height pos v] fall ls
+                                  [look prev cram live? st])
+                     world eid slid?)
           moves)))
 
 (defn current-pushed

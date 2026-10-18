@@ -61,7 +61,8 @@
 (def ^:private entity-events
   {:hop 1 :death 3 :break 3 :eat 10 :break-main 47 :break-off 48
    :love 18 :peek 64 :teleport 46 :reduced-debug 22 :full-debug 23
-   :honey-jump 54 :drown-bubbles 67 :lower-head 58 :raise-head 59
+   :honey-jump 54 :honey-slide 53 :drown-bubbles 67 :lower-head 58
+   :raise-head 59
    :break-head 49 :break-chest 50 :break-legs 51 :break-feet 52
    :poof 60 :fireworks 17 :potion-puff 0})
 

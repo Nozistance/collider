@@ -10,6 +10,7 @@
             [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
+            [collider.game.turn.landing :as landing]
             [collider.game.turn.overlay :as overlay]
             [collider.parallel :as par]
             [collider.vec :as v]
@@ -60,19 +61,26 @@
           on-ground (motion/stepped-speed (:chunks world) pos vel)
           :else vel)))
 
+(defn- honey-speed [world e pos on-ground vel]
+  (motion/honey-slid (:chunks world) [[(:pos e) pos (:vel e)]]
+                     (tnt-half) (tnt-height) on-ground vel))
+
 (defn- stepped
-  "Returns the fields of TNT e after its move in its turn."
+  "Returns the fields of TNT e after its move in its turn, and whether
+  it slid down honey."
   [world e]
   (let [mv (tnt-move world e)
         pos (phys/pos mv)
         on-ground (phys/on-ground? mv)
         stuck' (stuck-now world e pos)
-        moved (moved-speed world e mv pos on-ground (:stuck e))]
-    (cond-> {:pos pos :origin nil
-             :vel (stepped-vel world pos moved on-ground)
-             :on-ground on-ground
-             :fuse (dec (long (:fuse e)))}
-      (or stuck' (:stuck e)) (assoc :stuck stuck'))))
+        v (moved-speed world e mv pos on-ground (:stuck e))
+        [moved slid?] (honey-speed world e pos on-ground v)]
+    [(cond-> {:pos pos :origin nil
+              :vel (stepped-vel world pos moved on-ground)
+              :on-ground on-ground
+              :fuse (dec (long (:fuse e)))}
+       (or stuck' (:stuck e)) (assoc :stuck stuck'))
+     slid?]))
 
 (defn- due? [e]
   (and (not (:origin e)) (<= (long (:fuse e)) 1)))
@@ -250,14 +258,22 @@
         s (update (gone s eid) :out conj [:remove-entity eid])]
     (if blasts? (blasted s tw eid e (:pos fields)) s)))
 
+(defn- slid [s t eid e [fields slid?]]
+  (cond-> s
+    slid? (update :out into (landing/slide-deltas
+                              t eid (assoc e :pos (:pos fields))))))
+
 (defn- turn [world s [eid _]]
   (let [s (if (:idx s) (advanced s eid) s)
         e (get (:cur s) eid)
-        tw (overlay/seen (:w s) eid)]
+        tw (overlay/seen (:w s) eid)
+        t (:tick world)
+        [fields :as st] (when e (stepped tw e))
+        s (if e (slid s t eid e st) s)]
     (cond
       (nil? e) s
-      (due? e) (fused s world tw eid e (stepped tw e))
-      :else (moved s (:tick world) eid (stepped tw e)))))
+      (due? e) (fused s world tw eid e fields)
+      :else (moved s t eid fields))))
 
 (defn- finished [{:keys [out cur]}]
   (into [] (keep (fn [d]

@@ -291,11 +291,17 @@
   (let [[e hs] (fell-on world eid e f)]
     (into hs (landed-deltas world eid e l))))
 
+(defn- slid [world e mv]
+  (motion/honey-slid (:chunks world)
+                     [[(:pos e) (phys/pos mv) (:vel e)]] (half) (height) (phys/on-ground? mv)
+                     (if (:stuck e) [0.0 0.0 0.0] (phys/vel mv))))
+
 (defn- step-deltas [world eid e]
   (let [mv (fall-move world e)
-        pos (phys/pos mv) vel (phys/vel mv)
+        pos (phys/pos mv)
+        [vel slid?] (slid world e mv)
         time (inc (long (:time e)))
-        f (fallen world e mv)
+        f (if slid? 0.0 (fallen world e mv))
         [cell _ _ stuck? :as l] (landing world e pos vel)]
     (cond
       (phys/on-ground? mv)

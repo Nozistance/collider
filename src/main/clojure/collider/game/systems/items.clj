@@ -191,9 +191,12 @@
         og (phys/on-ground? mv)
         [sup nb?] (supported chunks e mv)
         p (phys/pos mv)
-        vy (if (:stuck e) 0.0 (double (vel 1)))]
-    [p (dragged chunks p sup og (moved-speed chunks mv sup og vy))
-     og sup nb?]))
+        w (if (:stuck e)
+            [0.0 0.0 0.0]
+            (moved-speed chunks mv sup og (vel 1)))
+        [w] (motion/honey-slid chunks [[(:pos e) p vel]] half height og
+                               w)]
+    [p (dragged chunks p sup og w) og sup nb?]))
 
 (defn- jolt-of ^double [vel' old]
   (let [dx (- (double (vel' 0)) (v/x old))

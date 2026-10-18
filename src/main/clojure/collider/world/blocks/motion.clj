@@ -87,6 +87,55 @@
      (reduce (fn [found [_ _ _ st]] (or (holds st snow? berry?) found))
              nil met))))
 
+(def ^:private ^:table honeyed
+  (delay (block/state-table :boolean #(= :honey (block/type-of %)))))
+
+(def ^:private honey-drag (double (float 0.98)))
+
+(def ^:private slide-vy (* (- -0.05 0.08) honey-drag))
+
+(defn- unfallen
+  "Returns the speed down a living body had before its gravity and
+  drag gave it vy."
+  ^double [^double vy]
+  (+ (/ vy honey-drag) 0.08))
+
+(defn- off-centre? [^double c ^double p ^double reach]
+  (> (+ (Math/abs (- (+ c 0.5) p)) 1.0E-7) reach))
+
+(defn- sliding?
+  "Returns true when a body at pos of half width half, off the
+  ground, with speed down vy, slides down the side of the honey
+  block in cell c."
+  [[x y z] pos ^double half ^double vy]
+  (let [reach (+ 0.4375 half)]
+    (and (not (> (v/y pos) (- (+ (double y) 0.9375) 1.0E-7)))
+         (< (unfallen vy) -0.08)
+         (or (off-centre? (double x) (v/x pos) reach)
+             (off-centre? (double z) (v/z pos) reach)))))
+
+(defn- slide [vel]
+  (let [old (unfallen (v/y vel))
+        k (if (< old -0.13) (/ -0.05 old) 1.0)
+        out [(* (v/x vel) k) slide-vy (* (v/z vel) k)]]
+    (if (v/v3? vel) (v/v3 out) out)))
+
+(defn honey-slid
+  "Returns [vel slid?] of a body of half width half and height after
+  its moves this tick, with speed vel and its ground flag. Each honey
+  block it met whose side it slides down sets its speed down and
+  slows it across, and slid? is true when one did."
+  [chunks moves half height on-ground vel]
+  (let [pos (nth (peek (vec moves)) 1)]
+    (if on-ground
+      [vel false]
+      (reduce (fn [[vel slid?] [x y z]]
+                (if (sliding? [x y z] pos half (v/y vel))
+                  [(slide vel) true]
+                  [vel slid?]))
+              [vel false]
+              (inside/met chunks moves half height @honeyed)))))
+
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))
             (num/floor (- (double y) step-offset))
