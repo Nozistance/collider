@@ -15,19 +15,25 @@
 
 (def ^:private sky-level "minecraft:gameplay/sky_light_level")
 
+(defn- base
+  "Returns attribute k of the dimension of level lv, else default."
+  [lv k default]
+  (get (:attributes (dimension/type-of (:dim lv))) k default))
+
 (defn- darken
-  "Returns how much time and weather dim the sky of level lv. A level
-  without a day dims nothing."
+  "Returns how much time and weather dim the sky of level lv. Without
+  a day track the sky light level of the dimension holds."
   ^long [lv]
-  (if (clock/held lv (:dim lv) sky-level)
+  (if (clock/tracked? (:dim lv) sky-level)
     (light/sky-darken (clock/day-ticks lv) (weather/rain-level lv)
                       (weather/thunder-level lv))
-    0))
+    (long (- 15.0 (double (base lv :gameplay/sky-light-level 15.0))))))
 
 (defn- by-sun
   "Returns light lit scaled by the height of the sun in level lv."
   ^long [lv ^long lit]
-  (let [deg (double (or (clock/sampled lv (:dim lv) sun) 0.0))
+  (let [deg (double (or (clock/sampled lv (:dim lv) sun)
+                        (base lv :visual/sun-angle 0.0)))
         a (num/f32 (* deg (num/f32 (/ Math/PI 180.0))))
         to (if (< a (num/f32 Math/PI)) 0.0 (num/f32 (* Math/PI 2.0)))
         a (num/f32 (+ a (num/f32 (* (num/f32 (- to a))

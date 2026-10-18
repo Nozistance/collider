@@ -270,6 +270,13 @@
                   (peek segs))
               (get track "ease") at))))
 
+(defn tracked?
+  "Returns true when a timeline of level dim has a track for
+  attribute id."
+  [dim id]
+  (boolean (some #(get-in (timeline-of (data/wire %)) [:tracks id])
+                 (:timelines (dimension/type-of dim)))))
+
 (defn sampled
   "Returns the float value the timelines of level dim give attribute
   id in world, blended between keyframes by their ease, or nil when

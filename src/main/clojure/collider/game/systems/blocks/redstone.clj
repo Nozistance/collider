@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.redstone
   "Turning redstone wire from a cross to a dot, stepping the delay of
-  a repeater and switching the mode of a comparator by hand."
+  a repeater, switching the mode of a comparator and inverting a
+  daylight detector by hand."
   (:require [collider.game.changes :as changes]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
@@ -31,8 +32,9 @@
             world [[pos st' nil 2] (refreshed (level/level-ctx world) pos)]))))
 
 (defn turned-deltas
-  "Returns the deltas of player eid turning the wire, the repeater or
-  the comparator at pos, nil when it does not turn."
+  "Returns the deltas of player eid turning the wire, the repeater,
+  the comparator or the daylight detector at pos, nil when it does
+  not turn."
   [world eid pos]
   (let [chunks (:chunks world)
         st (changes/block-at world pos)]
