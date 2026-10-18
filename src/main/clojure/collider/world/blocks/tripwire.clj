@@ -173,18 +173,47 @@
   [p ^long ws tick]
   (mapv (fn [d] (fn [cs] (seek cs p d ws tick))) [:south :west]))
 
+(defn powered?
+  [^long st]
+  (on? st :powered))
+
+(defn checked
+  "Returns the ops of string st at p that a body holds down when
+  pressed?, at tick t."
+  [p ^long st pressed? t]
+  (let [was (on? st :powered)
+        st' (block/with st :powered (block/flag pressed?))]
+    (cond-> []
+      (not= was pressed?) (into (cons [p st' nil update/all]
+                                      (sourced p st' t)))
+      pressed? (conj [:tick p (+ (long t) recheck-ticks) 0 :tripwire])
+      (and was (not pressed?)) (conj [:tick p t 0 :tripwire]))))
+
+(defn- bounds [p ^long st]
+  (let [[b & more] (block/outline-boxes st)]
+    (when more
+      (throw (ex-info "string of more than one box" {:state st})))
+    (mapv (fn [c x] (+ (long c) (/ (double x) 16.0))) (into p p) b)))
+
+(defn- due [chunks p {:keys [tick bodies]}]
+  (let [st (chunk/at chunks p)]
+    (when (and (wire? st) (on? st :powered))
+      (checked p st (pos? (long (bodies (bounds p st) false))) tick))))
+
 (defn- placed [chunks p {:keys [old tick]}]
   (when-not (wire? (long old))
     (sourced p (chunk/at chunks p) tick)))
 
 (def wire-rule
-  "The block rule of string, which wakes its hooks once placed."
+  "The block rule of string, which wakes its hooks once placed and
+  looks for the bodies on it on its tick."
   {:name    :tripwire
    :match?  (fn [_chunks st _p] (wire? st))
    :pass    :place
    :reach   0
    :wake    (constantly :neighbor)
-   :reshape placed})
+   :reshape placed
+   :due     due})
 
 (def hook-rule
   "The block rule of hooks. They are held as attached blocks are and

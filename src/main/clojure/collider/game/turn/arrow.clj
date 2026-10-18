@@ -1,7 +1,8 @@
 (ns collider.game.turn.arrow
   "The turn of an arrow in flight, in the ground and falling out of
   it."
-  (:require [collider.game.effect :as effect]
+  (:require [collider.game.block.press :as press]
+            [collider.game.effect :as effect]
             [collider.game.effect.account :as account]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
@@ -269,7 +270,8 @@
 (defn- body-flight [world eid e met]
   (let [to (nth (first met) 2)
         f (fire-met world e (:pos e) to)
-        out (put-out world eid e f)
+        out (into (press/tripped world e (:pos e) to)
+                  (put-out world eid e f))
         e (assoc e :pos to :needs-sync? true :fire f)
         {:keys [e ds gone?]} (reduce #(struck world eid %1 %2)
                                      {:e e :ds (vec out)} met)]
@@ -287,7 +289,9 @@
 (defn- block-flight [world eid e at b]
   (let [f (fire-met world e (:pos e) at)
         out (put-out world eid e f)]
-    (into (vec (block-landed world eid (assoc e :fire f) at b)) out)))
+    (-> (press/tripped world e (:pos e) at)
+        (into (block-landed world eid (assoc e :fire f) at b))
+        (into out))))
 
 (defn- flight-deltas [world eid e]
   (let [move (:vel e)

@@ -63,7 +63,9 @@
   "Returns true when the box of a body passing from point from to
   point to is inside state st of cell c."
   [st [x y z] from to half height]
-  (if-let [bs (cauldron/inside-boxes st)]
+  (if-let [bs (if (= :tripwire (block/type-of st))
+                (block/outline-boxes st)
+                (cauldron/inside-boxes st))]
     (some #(touches? (mapv (fn [c b] (+ (long c) (/ (double b) 16.0)))
                            [x y z x y z] %)
                      from to half height)
