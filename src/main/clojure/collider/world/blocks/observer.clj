@@ -17,10 +17,7 @@
   [^long st]
   (= :observer (block/type-of st)))
 
-(defn powered?
-  "Returns true when observer st is on."
-  [^long st]
-  (= :true (:powered (block/props-of st))))
+(defn- powered? [^long st] (= :true (:powered (block/props-of st))))
 
 (defn front
   "Returns the ops of observer st at p that tell the cell behind it,
