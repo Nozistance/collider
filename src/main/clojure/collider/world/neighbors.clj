@@ -663,11 +663,10 @@
 (defn- command-shaped-first
   "Returns s after the rule of the state of change c shapes it from
   its neighbours before a command sets it."
-  [s ctx [p st]]
-  (reduce #(op-run %1 ctx %2) s
-          (rules/command-shape-changes (chunks s) st p
-                                       (assoc ctx :scheduled?
-                                              (.scheduled ^Neighbors s)))))
+  [^Neighbors s ctx [p st]]
+  (let [ctx' (assoc ctx :scheduled? (.scheduled s))
+        ops (rules/command-shape-changes (chunks s) st p ctx')]
+    (reduce #(op-run %1 ctx %2) s ops)))
 
 (defn- command-placed
   [s ctx [p :as c]]
