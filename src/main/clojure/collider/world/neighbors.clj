@@ -613,8 +613,8 @@
 
 (defn placed-by-hand
   "Returns the level after changes [pos st fx] are placed as
-  set-blocks places them, then each block that a hand or an item
-  placed takes its step."
+  set-blocks places them and each block that a hand or an item
+  placed takes its step after all of them."
   [chunks ctx changes]
   (let [step (fn [[p st]]
                (when (tripwire/hook? st)
