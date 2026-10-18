@@ -134,7 +134,8 @@
                 (gusted b id e d12 seen))
     (hanging? e)
     (let [by (:cause (:src b))]
-      {:ds (drops/kill-deltas (:world b) id e (:causer b) by)
+      {:ds (drops/kill-deltas (:world b) id e (:causer b) by
+                              (:tick (:world b)))
        :gone? true})
     :else (pushed b id e d12 seen)))
 

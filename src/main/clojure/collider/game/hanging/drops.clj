@@ -1,6 +1,7 @@
 (ns collider.game.hanging.drops
   "The sounds and drops of paintings and item frames that break."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.changes :as changes]
+            [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.world.direction :as dir]
@@ -45,10 +46,19 @@
         (conj (spawned world eid e {:item (:type e) :count 1} 0))
         s (conj (spawned world eid e s 1))))))
 
-(defn- frame-broken [world eid e causer by]
-  (concat [(sound e "break")]
-          (frame-drops world eid e causer true)
-          (signal/game-event :block-change (:pos e) by)))
+(defn signal-deltas
+  "Returns the deltas of the comparators that read the cell of frame e
+  hearing of its change. Level w holds the frame as it is after, and
+  base is the tick the change comes after."
+  [w e base]
+  (changes/change-deltas w [[:output-signal (:block-pos e)]] base))
+
+(defn- frame-broken [world eid e causer by base]
+  (let [gone (update world :entities dissoc eid)]
+    (concat [(sound e "break")]
+            (signal-deltas gone e base)
+            (frame-drops world eid e causer true)
+            (signal/game-event :block-change (:pos e) by))))
 
 (defn- painting-broken [world eid e causer]
   (when (drops? world)
@@ -58,17 +68,19 @@
 
 (defn dropped
   "Returns the deltas of hanging entity eid breaking by causer, whose
-  eid is by. They hold its break sound and drops, and a frame adds a
-  block change game event."
-  [world eid e causer by]
+  eid is by, after tick base. They hold its break sound and drops,
+  and a frame adds the update of its output signal and a block change
+  game event."
+  [world eid e causer by base]
   (if (= :painting (:type e))
     (painting-broken world eid e causer)
-    (frame-broken world eid e causer by)))
+    (frame-broken world eid e causer by base)))
 
 (defn kill-deltas
   "Returns the deltas of hanging entity eid, e, killed by causer,
-  whose eid is by. Both causer and by are nil when nothing caused it."
-  [world eid e causer by]
+  whose eid is by, after tick base. Both causer and by are nil when
+  nothing caused it."
+  [world eid e causer by base]
   (concat [[:remove-entity eid]]
           (signal/game-event :entity-die (:pos e) eid)
-          (dropped world eid e causer by)))
+          (dropped world eid e causer by base)))

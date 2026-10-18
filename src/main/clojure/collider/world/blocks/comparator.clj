@@ -33,7 +33,19 @@
                       {:pos p :block (block/block-of st)}))
       v)))
 
-(defn- input ^long [chunks p ^long st]
+(defn- framed [frames r f]
+  (let [vs (keep (fn [[facing v]] (when (= f facing) v))
+                 (get frames r))]
+    (when (= 1 (count vs)) (first vs))))
+
+(defn- behind [chunks frames q f s]
+  (let [r (dir/toward q f)
+        st (chunk/at chunks r)
+        v (framed frames r f)
+        a (when (block/analog-output? st) (analog r st))]
+    (if (and v a) (max (long v) a) (or v a s))))
+
+(defn- input ^long [chunks frames p ^long st]
   (let [s (diode/input chunks p st)
         f (block/facing-of st)
         q (dir/toward p f)
@@ -41,9 +53,7 @@
     (cond
       (block/analog-output? there) (analog q there)
       (and (< s 15) (block/conductor? there))
-      (let [r (dir/toward q f)
-            behind (chunk/at chunks r)]
-        (if (block/analog-output? behind) (analog r behind) s))
+      (behind chunks frames q f s)
       :else s)))
 
 (defn- side ^long [chunks p d]
@@ -60,8 +70,8 @@
     (max (side chunks p (dir/clockwise f))
          (side chunks p (dir/counter-clockwise f)))))
 
-(defn- output ^long [chunks p ^long st]
-  (let [in (input chunks p st)]
+(defn- output ^long [chunks frames p ^long st]
+  (let [in (input chunks frames p st)]
     (if (zero? in)
       0
       (let [s (sides chunks p st)]
@@ -69,17 +79,18 @@
               (subtract? st) (- in s)
               :else in)))))
 
-(defn- turns-on? [chunks p ^long st]
-  (let [in (input chunks p st)]
+(defn- turns-on? [chunks frames p ^long st]
+  (let [in (input chunks frames p st)]
     (and (pos? in)
          (let [s (sides chunks p st)]
            (or (> in s) (and (= in s) (not (subtract? st))))))))
 
-(defn- checked [chunks p {:keys [tick will-tick?]}]
+(defn- checked [chunks p {:keys [tick will-tick? frames]}]
   (let [st (chunk/at chunks p)]
     (when (and (not (and will-tick? (will-tick? p :comparator)))
-               (or (not= (output chunks p st) (chunk/signal-at chunks p))
-                   (not= (on? st) (turns-on? chunks p st))))
+               (or (not= (output chunks frames p st)
+                         (chunk/signal-at chunks p))
+                   (not= (on? st) (turns-on? chunks frames p st))))
       [[:tick p (+ (long tick) delay-ticks)
         (if (diode/prioritized? chunks p st) -1 0) :comparator]])))
 
@@ -90,13 +101,13 @@
 
 (defn refreshed
   "Returns the changes of comparator st at p as it takes the output
-  its inputs give."
-  [chunks p ^long st]
-  (let [out (output chunks p st)
+  its inputs give, frames as level/frame-signals gives them."
+  [chunks frames p ^long st]
+  (let [out (output chunks frames p st)
         old (chunk/signal-at chunks p)]
     (into [[:signal p out]]
           (when (or (not= old out) (not (subtract? st)))
-            (let [on (turns-on? chunks p st)]
+            (let [on (turns-on? chunks frames p st)]
               (cond-> []
                 (not= on (on? st))
                 (conj [p (block/with st :powered (block/flag on)) nil
@@ -111,8 +122,8 @@
 (defn placed-tick
   "Returns the tick that block st a player set at p asks for, at once
   when it is a comparator its inputs turn on, else nil."
-  [chunks p ^long st tick]
-  (when (and (comparator? st) (turns-on? chunks p st))
+  [chunks frames p st tick]
+  (when (and (comparator? st) (turns-on? chunks frames p st))
     (inc (long tick))))
 
 (defn- changed [chunks p ctx]
@@ -139,5 +150,5 @@
                     (case (:pass ctx)
                       :neighbor (changed chunks p ctx)
                       :shape (shaped chunks p ctx)))
-         :due (fn [chunks p _ctx]
-                (refreshed chunks p (chunk/at chunks p)))))
+         :due (fn [chunks p ctx]
+                (refreshed chunks (:frames ctx) p (chunk/at chunks p)))))

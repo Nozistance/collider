@@ -331,10 +331,11 @@
                :block.dried-ghast.place)]
     [(out/all (out/block-sound kind pos 1.0 1.0))]))
 
-(defn- placed-by-ticks [chunks pos base]
-  (when-let [at (let [st (chunk/at chunks pos)]
+(defn- placed-by-ticks [world chunks pos base]
+  (when-let [at (let [st (chunk/at chunks pos)
+                      fs (level/frame-signals world)]
                   (or (diode/placed-tick chunks pos st base)
-                      (comparator/placed-tick chunks pos st base)))]
+                      (comparator/placed-tick chunks fs pos st base)))]
     [[:schedule-ticks {at [(cell/pack pos)]}]]))
 
 (defn- placed-by-fx [pos ^long state]
@@ -367,7 +368,7 @@
          [deltas s] (run-deltas world changes base neighbors/set-blocks)
          [[pos state]] (first (dried world changes))]
      (-> deltas
-         (into (placed-by-ticks (:chunks s) pos base))
+         (into (placed-by-ticks world (:chunks s) pos base))
          (into (placed-by-fx pos state))
          (conj (place-sound world eid pos state))
          (into (spent world eid))))))

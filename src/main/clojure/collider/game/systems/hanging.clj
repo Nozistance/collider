@@ -26,7 +26,7 @@
                      {:check-at (hanging/next-check-at t)}])]
     [(dissoc live eid)
      (-> (conj acc [:remove-entity eid])
-         (into (drops/dropped world eid e nil nil)))]))
+         (into (drops/dropped world eid e nil nil t)))]))
 
 (defn- turn [world active t [live acc :as s] [eid e :as entry]]
   (if (areas/active-at? active (:pos e))
@@ -119,23 +119,29 @@
 (defn- in-attack-range? [p e]
   (<= (Math/sqrt (gap-sq p (hanging/box e))) (range-of p)))
 
-(defn- put-deltas [peid p eid e hand stack]
+(defn- changed-deltas [world eid e']
+  (drops/signal-deltas (assoc-in world [:entities eid] e') e'
+                       (dec (long (:tick world)))))
+
+(defn- put-deltas [world peid p eid e hand stack]
   (let [e' (assoc e :stack (assoc stack :count 1))]
     (concat [[:merge-entity eid {:stack (:stack e')}]
              (drops/sound e' "add-item")]
+            (changed-deltas world eid e')
             (signal/game-event :block-change (:pos e) peid)
             (inventory/consume-deltas peid p hand 1))))
 
-(defn- turn-item-deltas [peid eid e]
-  (let [r (mod (inc (long (or (:rotation e) 0))) 8)]
+(defn- turn-item-deltas [world peid eid e]
+  (let [r (mod (inc (long (:rotation e))) 8)]
     (concat [(drops/sound e "rotate-item")
              [:merge-entity eid {:rotation r}]]
+            (changed-deltas world eid (assoc e :rotation r))
             (signal/game-event :block-change (:pos e) peid))))
 
-(defn- frame-use [peid p eid e hand]
+(defn- frame-use [world peid p eid e hand]
   (let [stack (player/hand-stack p hand)]
-    (cond (:stack e) (turn-item-deltas peid eid e)
-          stack (put-deltas peid p eid e hand stack))))
+    (cond (:stack e) (turn-item-deltas world peid eid e)
+          stack (put-deltas world peid p eid e hand stack))))
 
 (defn- target [world ev]
   (let [p (get-in world [:entities (nth ev 1)])
@@ -147,10 +153,11 @@
 (defn- use-deltas [world [_ peid eid hand :as ev]]
   (when-let [[p e] (target world ev)]
     (when (and (hanging/frames (:type e)) (in-use-range? p e))
-      (frame-use peid p eid e (if (#{:off 1} hand) :off :main)))))
+      (frame-use world peid p eid e (if (#{:off 1} hand) :off :main)))))
 
 (defn- emptied-deltas [world peid p eid e]
   (concat [[:merge-entity eid {:stack nil}]]
+          (changed-deltas world eid (assoc e :stack nil))
           (drops/frame-drops world eid e p false)
           (signal/game-event :block-change (:pos e) peid)
           [(drops/sound e "remove-item")]))
@@ -160,7 +167,8 @@
     (when (in-attack-range? p e)
       (if (and (:stack e) (hanging/frames (:type e)))
         (emptied-deltas world peid p eid e)
-        (drops/kill-deltas world eid e p peid)))))
+        (drops/kill-deltas world eid e p peid
+                           (dec (long (:tick world))))))))
 
 (defn- event-deltas [world ev]
   (case (nth ev 0)

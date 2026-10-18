@@ -120,6 +120,11 @@
   [type pos facing t]
   (placed (assoc (base type pos facing t) :rotation 0)))
 
+(defn analog-output
+  "Returns the signal item frame e gives a comparator that reads it."
+  ^long [e]
+  (if (:stack e) (inc (mod (long (:rotation e)) 8)) 0))
+
 (defn- painting-of [pos facing variant t]
   (placed (assoc (base :painting pos facing t) :variant variant)))
 

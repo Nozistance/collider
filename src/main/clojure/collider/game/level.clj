@@ -3,6 +3,7 @@
   (:require [collider.data.long-map :as lm]
             [collider.game.clock :as clock]
             [collider.game.entity.stamp :as stamp]
+            [collider.game.hanging :as hanging]
             [collider.game.schema :as schema]
             [collider.world.env.dimension :as dimension]
             [collider.world.env.weather :as weather]
@@ -224,6 +225,15 @@
     (apply update-in w [:entities eid] f args)
     w))
 
+(defn frame-signals
+  "Returns the item frames of level w by the cell they hang in, each
+  as [facing signal]."
+  [w]
+  (reduce (fn [m [_ e]]
+            (update m (:block-pos e) (fnil conj [])
+                    [(:facing e) (hanging/analog-output e)]))
+          {} (of-types w hanging/frames)))
+
 (defn level-ctx
   "Returns what the block rules of level w read besides its blocks,
   at tick t when given."
@@ -235,6 +245,7 @@
           {:rules (:rules w)
            :dim (:dim w)
            :tick (long t)
+           :frames (frame-signals w)
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 
