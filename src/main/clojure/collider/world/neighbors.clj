@@ -597,8 +597,10 @@
 
 (def ^:private shape-order [:west :east :north :south :down :up])
 
-(defn- held [s p st]
-  (set-chunks! s (chunk/chunks-set-block (chunks s) p st)))
+(defn- held [s p ^long st]
+  (if (== st (block-at s p))
+    s
+    (set-chunks! s (chunk/chunks-set-block (chunks s) p st))))
 
 (defn- gone-or ^long [^long st]
   (if (or (zero? st) (block/liquid? st)) 0 st))

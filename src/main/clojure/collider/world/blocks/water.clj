@@ -95,7 +95,7 @@
 (defn- kelp-wake [chunks _dim tick p _old side]
   (let [held? (support/supported? chunks p (chunk/at chunks p))]
     (cond
-      (and (contains? #{nil :down} side) (not held?))
+      (and (= :down side) (not held?))
       (inc (long tick))
       (contains? #{nil :up} side) :neighbor)))
 
