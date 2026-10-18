@@ -245,7 +245,7 @@
           {:rules (:rules w)
            :dim (:dim w)
            :tick (long t)
-           :frames (frame-signals w)
+           :frames (delay (frame-signals w))
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 

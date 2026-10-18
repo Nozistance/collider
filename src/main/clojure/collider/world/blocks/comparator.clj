@@ -35,7 +35,7 @@
 
 (defn- framed [frames r f]
   (let [vs (keep (fn [[facing v]] (when (= f facing) v))
-                 (get frames r))]
+                 (get (force frames) r))]
     (when (= 1 (count vs)) (first vs))))
 
 (defn- behind [chunks frames q f s]
