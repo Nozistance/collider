@@ -270,7 +270,7 @@
 (defn- body-flight [world eid e met]
   (let [to (nth (first met) 2)
         f (fire-met world e (:pos e) to)
-        out (into (press/tripped world e (:pos e) to)
+        out (into (vec (press/trip world eid e (:pos e) to))
                   (put-out world eid e f))
         e (assoc e :pos to :needs-sync? true :fire f)
         {:keys [e ds gone?]} (reduce #(struck world eid %1 %2)
@@ -289,7 +289,7 @@
 (defn- block-flight [world eid e at b]
   (let [f (fire-met world e (:pos e) at)
         out (put-out world eid e f)]
-    (-> (press/tripped world e (:pos e) at)
+    (-> (vec (press/trip world eid e (:pos e) at))
         (into (block-landed world eid (assoc e :fire f) at b))
         (into out))))
 

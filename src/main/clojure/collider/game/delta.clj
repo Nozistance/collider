@@ -103,6 +103,14 @@
              (let [e [p b x y]]
                (update w :block-events
                        #(if (some #{e} %) % (conj (or % []) e)))))}
+   :trip-queued
+   {:scope :level :schema [:cat Eid :keyword Vec3 Vec3]
+    :apply (fn [w [_ eid type from to]]
+             (assoc-in w [:trips eid]
+                       {:type type :pos to :moves [[from to nil]]}))}
+   :trips-pressed
+   {:scope :level :schema [:cat]
+    :apply (fn [w _] (dissoc w :trips))}
    :block-events-ran
    {:scope :level :schema [:cat Coll]
     :apply (fn [w [_ kept]] (assoc w :block-events (not-empty kept)))}

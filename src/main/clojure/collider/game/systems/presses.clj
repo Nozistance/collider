@@ -6,6 +6,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity.bodies :as bodies]
             [collider.game.entity.size :as size]
+            [collider.game.input :as input]
             [collider.game.mode :as game-mode]
             [collider.num :as num]
             [collider.vec :as v]
@@ -27,19 +28,22 @@
     (chunk/holds? s @press/pressables)
     false))
 
-(defn- plated?
-  "Returns true when a section the box of a body at p meets may hold
-  a plate or string."
-  [chunks p ^double half ^double height]
-  (let [x (double (v/x p)) y (double (v/y p)) z (double (v/z p))
-        y0 (sec y) y1 (sec (+ y height)) z0 (sec (- z half))
-        z1 (sec (+ z half)) x1 (sec (+ x half))
+(defn- pressable-near?
+  "Returns true when a section the box of a body on moves meets may
+  hold a plate or string."
+  [chunks moves ^double half ^double height]
+  (let [ps (mapcat #(subvec (vec %) 0 2) moves)
+        lo #(apply min (map (fn [p] (double (% p))) ps))
+        hi #(apply max (map (fn [p] (double (% p))) ps))
+        y0 (sec (lo v/y)) y1 (sec (+ (hi v/y) height))
+        z0 (sec (- (lo v/z) half)) z1 (sec (+ (hi v/z) half))
+        x1 (sec (+ (hi v/x) half))
         column? (fn [cx cz]
                   (loop [sy y0]
                     (and (<= sy y1)
                          (or (holds-at? chunks cx sy cz)
                              (recur (inc sy))))))]
-    (loop [cx (sec (- x half)) cz z0]
+    (loop [cx (sec (- (lo v/x) half)) cz z0]
       (cond (> cx x1) false
             (> cz z1) (recur (inc cx) z0)
             (column? cx cz) true
@@ -50,38 +54,54 @@
 
 (defn- touched
   "Returns the cells of the plates and string at rest that the box of
-  body e is in, in the order it meets them. A dying body meets none,
-  one that ignores triggers no string."
-  [world e]
+  body e meets on moves, in the order it meets them. A dying body
+  meets none, one that ignores triggers no string."
+  [world e moves]
   (let [chunks (:chunks world)
         [half height] (or (size/box e)
                           (throw (ex-info "a body of no size"
-                                          {:type (:type e)})))
-        p (:pos e)]
-    (when (and (not (dying? e)) (plated? chunks p half height))
-      (for [[x y z st] (inside/met chunks [[p p nil]] half height
+                                          {:type (:type e)})))]
+    (when (and (not (dying? e))
+               (pressable-near? chunks moves half height))
+      (for [[x y z st] (inside/met chunks moves half height
                                    @press/pressables)
             :when (and (press/up? world [x y z] st)
                        (or (plate/plate? st)
                            (not (bodies/ignores-triggers? e))))]
         [x y z]))))
 
+(defn- bodies-of
+  "Returns [eid body moves] of the bodies that press after their
+  turns in the order of their ids, along the moves their turns queued,
+  those gone since too, or where they stand."
+  [world]
+  (let [active (areas/active-chunks world)
+        es (:entities world) trips (:trips world)
+        live (for [[eid e] es
+                   :when (and (not (unmoved (:type e)))
+                              (areas/active-at? active (:pos e)))
+                   :let [p (:pos e)]]
+               [eid e (:moves (get trips eid) [[p p nil]])])
+        gone (for [[eid t] trips :when (not (contains? es eid))]
+               [eid t (:moves t)])]
+    (if (seq gone) (sort-by first (concat live gone)) live)))
+
 (defn presses
   "Returns the deltas of the plates and string the bodies but the
   players press after their turns, body by body."
-  {:wake {:keys [:entities]}}
+  {:wake {:keys [:entities :trips]}}
   [world _d]
-  (let [active (areas/active-chunks world)]
-    (press/pressed-at world
-                (for [[_ e] (:entities world)
-                      :when (and (not (unmoved (:type e)))
-                                 (areas/active-at? active (:pos e)))
-                      c (touched world e)]
-                  c))))
+  (cond-> (press/pressed-at
+            world (mapcat (fn [[_ e moves]] (touched world e moves))
+                          (bodies-of world)))
+    (:trips world) (deltas/merge (deltas/of-vec [[:trips-pressed]]))))
 
 (defn player-deltas
-  "Returns the deltas of the plates and string player e presses in
-  its tick."
-  [world [_ e]]
+  "Returns the deltas of the plates and string player e of eid presses
+  in its tick, along the moves its packets made."
+  [world [eid e]]
   (when-not (game-mode/spectator? e)
-    (deltas/as-vec (press/pressed-at world (touched world e)))))
+    (let [p (:pos e)
+          moves (or (seq (input/moves-of world eid)) [[p p nil]])]
+      (deltas/as-vec
+        (press/pressed-at world (touched world e moves))))))

@@ -20,9 +20,6 @@
   (delay (block/state-table
            :boolean #(or (plate/plate? %) (tripwire/wire? %)))))
 
-(def ^:private ^:table wires
-  (delay (block/state-table :boolean tripwire/wire?)))
-
 (defn up?
   "Returns true when st at p waits for a body to press it. String
   waits only with no tick of its own pending in world w."
@@ -55,11 +52,14 @@
   (second (reduce pressed [world deltas/empty-deltas]
                   (distinct cells))))
 
-(defn tripped
-  "Returns the deltas of the string body e trips on its move from
-  point from to point to."
-  [world e from to]
-  (let [[half height] (size/box e)
-        met (inside/met (:chunks world) [[from to nil]] half height
-                        @wires)]
-    (deltas/as-vec (pressed-at world (map #(subvec % 0 3) met)))))
+(defn trip
+  "Returns the delta that queues move from point from to point to of
+  body e of eid for the presses after the turns, when the move meets
+  a plate or string."
+  [world eid e from to]
+  (let [[half height] (or (size/box e)
+                          (throw (ex-info "a body of no size"
+                                          {:type (:type e)})))]
+    (when (seq (inside/met (:chunks world) [[from to nil]] half height
+                           @pressables))
+      [[:trip-queued eid (:type e) from to]])))

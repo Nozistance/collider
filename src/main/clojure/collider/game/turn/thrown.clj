@@ -20,6 +20,7 @@
             [collider.game.projectile :as projectile]
             [collider.game.stack :as stack]
             [collider.game.blast :as blast]
+            [collider.game.block.press :as press]
             [collider.game.turn.arrow :as arrow]
             [collider.game.turn.overlay :as overlay]
             [collider.game.turn.rocket :as rocket]
@@ -457,12 +458,13 @@
   (let [d (drift world e)
         left? (projectile/left-owner? world e d)
         hit (projectile/clip world eid (assoc e :left-owner? left?) d)
-        at (if hit (:at hit) (v/add (:pos e) d))]
+        at (if hit (:at hit) (v/add (:pos e) d))
+        trip (press/trip world eid e (:pos e) at)]
     (cond
       (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
-      hit (into [[:remove-entity eid]]
-                (hit-deltas world eid e d at hit))
-      :else [[:merge-entity eid (moved e at d left?)]])))
+      hit (-> [[:remove-entity eid]] (into trip)
+              (into (hit-deltas world eid e d at hit)))
+      :else (into [[:merge-entity eid (moved e at d left?)]] trip))))
 
 (defn- step-deltas [world eid e]
   (cond (= :firework-rocket (:type e)) (rocket/step-deltas world eid e)
