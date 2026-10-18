@@ -182,7 +182,7 @@
           s (or sb (when-not (:no-blocks? e)
                      (phys/supporting-block
                        ch (v/v3 (v/x o) (v/y p) (v/z o)) half c)))]
-      [(if (= s (:support e)) (:support e) s) (nil? sb)])))
+      [(if (= s (:support e)) (:support e) s) (nil? s)])))
 
 (defn- bounced
   "Returns speed u of body e after its move mv by d with the speed up

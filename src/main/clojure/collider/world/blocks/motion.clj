@@ -247,8 +247,16 @@
 (defn- flagged? [^booleans a ^long st]
   (and (< -1 st) (< st (alength a)) (aget a st)))
 
-(defn- holds-support? [st]
-  (flagged? @supports (long st)))
+(def ^:private ^:table fences
+  (delay (block/state-table :boolean #(block/tagged? % "fences"))))
+
+(defn- holds-support?
+  "Returns true when a body on st looks no lower than st itself,
+  offset below its feet. A fence holds it only at half a block or
+  less."
+  [st ^double offset]
+  (or (flagged? @supports (long st))
+      (and (<= offset 0.5) (flagged? @fences (long st)))))
 
 (defn below-state
   "Returns the state of the block under a body at pos that sets its
@@ -261,14 +269,14 @@
          xz (or sup pos)
          x (num/floor (v/x xz))
          z (num/floor (v/z xz))]
-     (if (and sup (holds-support? st))
+     (if (and sup (holds-support? st offset))
        st
        (state-at chunks x y z)))))
 
 (defn below-at
   "Returns the cell of the block below-state reads."
   [chunks pos sup ^double offset]
-  (if (and sup (holds-support? (chunk/at chunks sup)))
+  (if (and sup (holds-support? (chunk/at chunks sup) offset))
     sup
     (let [xz (or sup pos)]
       [(num/floor (v/x xz)) (num/floor (- (v/y pos) offset))

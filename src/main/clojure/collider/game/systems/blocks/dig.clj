@@ -156,7 +156,7 @@
     (when (and (= :turtle-egg (block/block-of st)) (> n 1))
       (concat [(out/all (out/block-sound :entity.turtle.egg-break pos 0.7 pitch))]
               (changes/change-deltas
-                world [[pos (block/with-long st :eggs (dec n))]])
+                world [[pos (block/with-long st :eggs (dec n)) nil 2]])
               [(out/all (out/break-effect pos st))]))))
 
 (defn- after-deltas [world e pos st]
