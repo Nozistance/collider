@@ -234,7 +234,8 @@
         b (blast/of world (spec s eid e pos))
         hits (blast/struck b (:idx s) (now-of s eid) (hit-of s t b))
         [s motions] (took s hits)
-        {:keys [ds spawns]} (blast/finish b motions)]
+        {:keys [ds spawns]} (blast/finish b motions)
+        ds (into (vec (blast/gone-deltas b hits)) ds)]
     (-> s
         (update :w overlay/wrote eid ds)
         (update :out into ds)

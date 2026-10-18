@@ -134,9 +134,8 @@
                 (gusted b id e d12 seen))
     (hanging? e)
     (let [by (:cause (:src b))]
-      {:ds (drops/kill-deltas (:world b) id e (:causer b) by
-                              (:tick (:world b)))
-       :gone? true})
+      {:ds (drops/kill-deltas (:world b) id e (:causer b) by [])
+       :gone? true :hung e})
     :else (pushed b id e d12 seen)))
 
 (defn- distance [b]
@@ -191,6 +190,19 @@
                 seen-least
                 Long/MAX_VALUE)]
     (into [] (filter some?) (par/pmapv one (near b idx) 16 least))))
+
+(defn gone-deltas
+  "Returns the deltas of the comparators that read the hanging bodies
+  blast b broke, as hits holds them, each hearing it went after the
+  ones before it."
+  [b hits]
+  (let [t (:tick (:world b))
+        step (fn [[w ds] [id h]]
+               (if-let [e (:hung h)]
+                 [(update w :entities dissoc id)
+                  (into ds (drops/gone-deltas w id e t))]
+                 [w ds]))]
+    (peek (reduce step [(:world b) []] hits))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1]) (random/of-key [seed :p2]))]
@@ -366,6 +378,7 @@
         idx (sections/index world)
         hits (struck b idx #(get es %) hit-of)
         {:keys [ds spawns]} (finish b (motions hits))]
-    (-> ds
-        (into (mapcat (comp :ds second)) hits)
+    (-> (into [] (mapcat (comp :ds second)) hits)
+        (into (gone-deltas b hits))
+        (into ds)
         (into (map (fn [e] [:spawn-entity e])) spawns))))

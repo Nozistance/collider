@@ -20,19 +20,23 @@
 (defn- hung-entries [world]
   (level/of-types world hanging/types))
 
-(defn- checked [world t [live acc] [eid e]]
-  (if (hanging/survives? (:chunks world) eid e live)
+(defn- checked [t [live acc w] [eid e]]
+  (if (hanging/survives? (:chunks w) eid e live)
     [live (conj acc [:merge-entity eid
-                     {:check-at (hanging/next-check-at t)}])]
+                     {:check-at (hanging/next-check-at t)}])
+     w]
     [(dissoc live eid)
      (-> (conj acc [:remove-entity eid])
-         (into (drops/dropped world eid e nil nil t)))]))
+         (into (drops/dropped w eid e nil nil
+                              (drops/gone-deltas w eid e t))))
+     (update w :entities dissoc eid)]))
 
-(defn- turn [world active t [live acc :as s] [eid e :as entry]]
+(defn- turn [active t [live acc w :as s] [eid e :as entry]]
   (if (areas/active-at? active (:pos e))
-    (checked world t s entry)
+    (checked t s entry)
     [live (conj acc [:merge-entity eid
-                     {:check-at (inc (long (:check-at e)))}])]))
+                     {:check-at (inc (long (:check-at e)))}])
+     w]))
 
 (defn- busy? [active t [_ e]]
   (or (<= (long (:check-at e)) (long t))
@@ -42,10 +46,10 @@
   (let [active (areas/active-chunks world)
         t (long (:tick world))
         busy (filterv #(busy? active t %) entries)
-        step (fn [s entry] (turn world active t s entry))]
+        step (fn [s entry] (turn active t s entry))]
     (if (empty? busy)
       []
-      (peek (reduce step [(into {} entries) []] busy)))))
+      (nth (reduce step [(into {} entries) [] world] busy) 1))))
 
 (defn hanging-checks
   "Returns the deltas that tick the hanging entities. Once in 101 of
@@ -169,7 +173,9 @@
     (when (in-attack-range? p e)
       (if (and (:stack e) (hanging/frames (:type e)))
         (emptied-deltas world peid p eid e)
-        (drops/kill-deltas world eid e p peid (base world))))))
+        (drops/kill-deltas world eid e p peid
+                           (drops/gone-deltas world eid e
+                                              (base world)))))))
 
 (defn- event-deltas [world ev]
   (case (nth ev 0)

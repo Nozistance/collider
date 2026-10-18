@@ -226,13 +226,14 @@
     w))
 
 (defn frame-signals
-  "Returns the item frames of level w by the cell they hang in, each
-  as [facing signal]."
+  "Returns a delay of the item frames of level w by the cell they hang
+  in, each as [facing signal]."
   [w]
-  (reduce (fn [m [_ e]]
-            (update m (:block-pos e) (fnil conj [])
-                    [(:facing e) (hanging/analog-output e)]))
-          {} (of-types w hanging/frames)))
+  (delay
+    (reduce (fn [m [_ e]]
+              (update m (:block-pos e) (fnil conj [])
+                      [(:facing e) (hanging/analog-output e)]))
+            {} (of-types w hanging/frames))))
 
 (defn level-ctx
   "Returns what the block rules of level w read besides its blocks,
@@ -245,7 +246,7 @@
           {:rules (:rules w)
            :dim (:dim w)
            :tick (long t)
-           :frames (delay (frame-signals w))
+           :frames (frame-signals w)
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 

@@ -34,8 +34,10 @@
       v)))
 
 (defn- framed [frames r f]
-  (let [vs (keep (fn [[facing v]] (when (= f facing) v))
-                 (get (force frames) r))]
+  (let [fs (or (force frames)
+               (throw (ex-info "the frames of the level are not given"
+                               {:pos r})))
+        vs (keep (fn [[facing v]] (when (= f facing) v)) (get fs r))]
     (when (= 1 (count vs)) (first vs))))
 
 (defn- behind [chunks frames q f s]

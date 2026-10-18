@@ -46,19 +46,31 @@
         (conj (spawned world eid e {:item (:type e) :count 1} 0))
         s (conj (spawned world eid e s 1))))))
 
+(defn- idle? [d]
+  (and (= :set-blocks (nth d 0)) (= 3 (count d))
+       (empty? (nth d 1)) (empty? (nth d 2))))
+
 (defn signal-deltas
   "Returns the deltas of the comparators that read the cell of frame e
   hearing of its change. Level w holds the frame as it is after, and
   base is the tick the change comes after."
   [w e base]
-  (changes/change-deltas w [[:output-signal (:block-pos e)]] base))
+  (remove idle? (changes/change-deltas
+                  w [[:output-signal (:block-pos e)]] base)))
 
-(defn- frame-broken [world eid e causer by base]
-  (let [gone (update world :entities dissoc eid)]
-    (concat [(sound e "break")]
-            (signal-deltas gone e base)
-            (frame-drops world eid e causer true)
-            (signal/game-event :block-change (:pos e) by))))
+(defn gone-deltas
+  "Returns the deltas of the comparators that read the cell of hanging
+  entity eid, e, hearing that it went from level w after tick base.
+  A painting has none."
+  [w eid e base]
+  (when-not (= :painting (:type e))
+    (signal-deltas (update w :entities dissoc eid) e base)))
+
+(defn- frame-broken [world eid e causer by heard]
+  (concat [(sound e "break")]
+          heard
+          (frame-drops world eid e causer true)
+          (signal/game-event :block-change (:pos e) by)))
 
 (defn- painting-broken [world eid e causer]
   (when (drops? world)
@@ -68,19 +80,18 @@
 
 (defn dropped
   "Returns the deltas of hanging entity eid breaking by causer, whose
-  eid is by, after tick base. They hold its break sound and drops,
-  and a frame adds the update of its output signal and a block change
-  game event."
-  [world eid e causer by base]
+  eid is by. They hold its break sound and drops, and a frame adds
+  heard, the deltas of gone-deltas, and a block change game event."
+  [world eid e causer by heard]
   (if (= :painting (:type e))
     (painting-broken world eid e causer)
-    (frame-broken world eid e causer by base)))
+    (frame-broken world eid e causer by heard)))
 
 (defn kill-deltas
   "Returns the deltas of hanging entity eid, e, killed by causer,
-  whose eid is by, after tick base. Both causer and by are nil when
-  nothing caused it."
-  [world eid e causer by base]
+  whose eid is by, with heard as dropped takes it. Both causer and by
+  are nil when nothing caused it."
+  [world eid e causer by heard]
   (concat [[:remove-entity eid]]
           (signal/game-event :entity-die (:pos e) eid)
-          (dropped world eid e causer by base)))
+          (dropped world eid e causer by heard)))
