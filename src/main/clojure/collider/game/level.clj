@@ -46,9 +46,14 @@
 (defn advance
   "Returns the world one tick older."
   [world]
-  (cond-> (update world :tick inc)
-          (clock/advancing? world)
-          (update :clocks clock/advanced)))
+  (update world :tick inc))
+
+(defn clocks-advanced
+  "Returns the world with its clocks one tick on when its rules let
+  them run."
+  [world]
+  (cond-> world
+          (clock/advancing? world) (update :clocks clock/advanced)))
 
 (defn- made-bounds [dim]
   (assoc (dimension/bounds dim)

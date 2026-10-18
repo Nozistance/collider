@@ -297,10 +297,12 @@
 
 (defn late
   "Returns the world, the deltas of the whole tick acc and those of
-  its phases from the level tick on, after those phases."
+  its phases from the level tick on, after those phases. The clocks
+  move first, as the level tick starts."
   ([acc] (late acc phases))
   ([[_ before :as acc] phases]
-   (let [[world' ds] (reduce run-phase acc (remove early? phases))
+   (let [acc (step acc home (deltas/of-vec [[:advance-clocks]]))
+         [world' ds] (reduce run-phase acc (remove early? phases))
          part (fn [dim]
                 (deltas/since (get before dim deltas/empty-deltas)
                               (get ds dim deltas/empty-deltas)))]

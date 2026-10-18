@@ -233,6 +233,9 @@
    :advance-tick
    {:scope :world :schema [:cat]
     :apply (fn [w _] (dissoc (level/advance w) :input))}
+   :advance-clocks
+   {:scope :world :schema [:cat]
+    :apply (fn [w _] (level/clocks-advanced w))}
    :advance-weather
    {:scope :level :schema [:cat [:? :map]]
     :apply writes/advance-weather}
