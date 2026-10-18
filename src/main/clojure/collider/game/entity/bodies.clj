@@ -1,6 +1,7 @@
 (ns collider.game.entity.bodies
   "The bodies whose boxes meet a box, as block triggers count them."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.data :as data]
+            [collider.game.entity :as entity]
             [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
@@ -18,9 +19,19 @@
          (< y (double y1)) (> (+ y (double height)) (double y0))
          (< (- z half) (double z1)) (> (+ z half) (double z0)))))
 
+(defn ignores-triggers?
+  "Returns true when body e neither presses nor weighs on a block."
+  [e]
+  (let [x (:ignores-triggers? (get (data/entities) (:type e)))]
+    (if (= :varies x)
+      (throw (ex-info "a body whose state decides if it ignores blocks"
+                      {:type (:type e)}))
+      (boolean x))))
+
 (defn- counts? [box living? e]
   (and (some? e)
        (or (not living?) (entity/living? e))
+       (not (ignores-triggers? e))
        (not (game-mode/spectator? e))
        (not (entity/removed? e))
        (meets? box e)))

@@ -38,16 +38,29 @@
   [p ^long st]
   [[:notify p nil st] [:notify (dir/toward p :down) nil st]])
 
-(defn- strength
-  "Returns the signal of plate block with n bodies on it."
-  ^long [block ^long n]
-  (if-some [most (:max-weight (data/info block))]
-    (if (pos? n)
-      (let [m (double most)
-            part (num/fdiv (min (double n) m) m)]
-        (long (Math/ceil (num/fmul part 15.0))))
-      0)
-    (if (pos? n) 15 0)))
+(defn- fact [block k]
+  (or (get (data/info block) k)
+      (throw (ex-info "a plate the tables do not know"
+                      {:block block :key k}))))
+
+(defn- weighed
+  "Returns the signal of a weighted plate that most bodies weigh down
+  fully, with n bodies on it."
+  ^long [^long most ^long n]
+  (if (pos? n)
+    (let [m (double most)
+          part (num/fdiv (min (double n) m) m)]
+      (long (Math/ceil (num/fmul part 15.0))))
+    0))
+
+(defn- counted
+  "Returns the signal plate st at p gives for the bodies on it."
+  ^long [p ^long st bodies]
+  (let [block (block/block-of st)]
+    (if (= :weighted-pressure-plate (block/type-of st))
+      (weighed (fact block :max-weight) (long (bodies (touch-box p) false)))
+      (let [living? (= :mobs (fact block :sensitivity))]
+        (if (pos? (long (bodies (touch-box p) living?))) 15 0)))))
 
 (defn- clicks [block ^long old ^long s]
   (cond
@@ -64,8 +77,7 @@
   [p ^long st bodies t]
   (let [old (signal-of st)
         block (block/block-of st)
-        living? (= :mobs (:sensitivity (data/info block)))
-        s (strength block (long (bodies (touch-box p) living?)))
+        s (counted p st bodies)
         st' (with-signal st s)
         at (+ (long t) (data/pressed-ticks block))]
     (cond-> []

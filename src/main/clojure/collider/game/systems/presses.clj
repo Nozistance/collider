@@ -7,6 +7,8 @@
             [collider.game.entity.bodies :as bodies]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
+            [collider.num :as num]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.inside :as inside]
             [collider.world.blocks.plate :as plate]
@@ -24,14 +26,48 @@
 (defn- up? [^long st]
   (and (plate/plate? st) (zero? (plate/signal-of st))))
 
+(defn- sec ^long [^double a] (bit-shift-right (num/floor a) 4))
+
+(defn- holds-at? [chunks ^long cx ^long sy ^long cz]
+  (if-let [s (chunk/chunk-section (chunk/chunk-at chunks cx cz)
+                                  (chunk/section-index (* 16 sy)))]
+    (chunk/holds? s @plates)
+    false))
+
+(defn- plated?
+  "Returns true when a section the box of a body at p meets may hold
+  a plate."
+  [chunks p ^double half ^double height]
+  (let [x (double (v/x p)) y (double (v/y p)) z (double (v/z p))
+        y0 (sec y) y1 (sec (+ y height)) z0 (sec (- z half))
+        z1 (sec (+ z half)) x1 (sec (+ x half))
+        column? (fn [cx cz]
+                  (loop [sy y0]
+                    (and (<= sy y1)
+                         (or (holds-at? chunks cx sy cz)
+                             (recur (inc sy))))))]
+    (loop [cx (sec (- x half)) cz z0]
+      (cond (> cx x1) false
+            (> cz z1) (recur (inc cx) z0)
+            (column? cx cz) true
+            :else (recur cx (inc cz))))))
+
+(defn- dying? [e]
+  (when-some [h (:health e)] (<= (double h) 0.0)))
+
 (defn- touched
   "Returns the cells of the plates at rest that the box of body e is
-  in, in the order it meets them."
+  in, in the order it meets them. A dying body meets none."
   [chunks e]
-  (let [[half height] (size/box e) p (:pos e)]
-    (for [[x y z st] (inside/met chunks [[p p nil]] half height @plates)
-          :when (up? st)]
-      [x y z])))
+  (let [[half height] (or (size/box e)
+                          (throw (ex-info "a body of no size"
+                                          {:type (:type e)})))
+        p (:pos e)]
+    (when (and (not (dying? e)) (plated? chunks p half height))
+      (for [[x y z st] (inside/met chunks [[p p nil]] half height
+                                   @plates)
+            :when (up? st)]
+        [x y z]))))
 
 (defn- pressed [[w :as acc] p]
   (let [st (chunk/at (:chunks w) p)]

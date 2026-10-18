@@ -31,9 +31,12 @@
 
 (defn box
   "Returns the half width and the height of entity e, as its type,
-  age and pose make it, or nil for a type of no size."
+  age and pose make it, or nil for a type of no size. A cloud with a
+  radius is as wide as the radius makes it."
   [e]
-  (:box (size-of e)))
+  (if-some [r (when (= :area-effect-cloud (:type e)) (:radius e))]
+    [(num/f32 r) (num/f32 0.5)]
+    (:box (size-of e))))
 
 (defn eye
   "Returns how far above its position entity e looks out."

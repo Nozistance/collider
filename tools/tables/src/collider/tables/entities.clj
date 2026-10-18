@@ -4,7 +4,8 @@
             [collider.tables.reflect
              :refer [call cls elements hidden-field key-of registry]]
             [collider.tables.value :refer [flt kw]])
-  (:import (java.lang.reflect Field Method ParameterizedType)
+  (:import (java.lang.reflect Field InvocationTargetException Method
+                              ParameterizedType)
            (java.util Map)))
 
 (set! *warn-on-reflection* true)
@@ -52,9 +53,27 @@
     (into (sorted-map)
           (for [[p d] (Map/.entrySet m)] [(pose-key p) (size d)]))))
 
+(def ^:private unsafe
+  (delay (let [f (Class/.getDeclaredField (Class/forName "sun.misc.Unsafe")
+                                          "theUnsafe")]
+           (Field/.setAccessible f true)
+           (Field/.get f nil))))
+
+(defn- ignores-triggers
+  "Returns true when every body of class c ignores block triggers,
+  :varies when its state decides, nil when none does."
+  [^Class c]
+  (let [m (Class/.getMethod c "isIgnoringBlockTriggers"
+                            (make-array Class 0))]
+    (when (not= (cls "world.entity.Entity") (Method/.getDeclaringClass m))
+      (try (boolean (Method/.invoke m (call @unsafe "allocateInstance" c)
+                                    (object-array 0)))
+           (catch InvocationTargetException _ :varies)))))
+
 (defn- measured [c dims]
-  (let [b (baby c dims) ps (poses c)]
-    (cond-> (size dims) b (assoc :baby b) ps (assoc :poses ps))))
+  (let [b (baby c dims) ps (poses c) ig (some-> c ignores-triggers)]
+    (cond-> (size dims) b (assoc :baby b) ps (assoc :poses ps)
+            ig (assoc :ignores-triggers? ig))))
 
 (defn entities
   "Returns the width, height and eye height of each entity type, of
