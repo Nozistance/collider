@@ -54,6 +54,13 @@
 (defn- sound [kind pitch event]
   [[:sound kind (num/f32 0.4) (num/f32 pitch)] [:game-event event]])
 
+(defn- detach-pitch
+  "Returns the pitch of the detach sound for the random float r, in
+  float steps."
+  ^double [^double r]
+  (let [f num/f32]
+    (f (/ (f 1.2) (f (+ (f (* r (f 0.2))) (f 0.9)))))))
+
 (defn- emitted
   "Returns the fx of a hook at p turning from was to now, each
   [attached powered]."
@@ -67,7 +74,7 @@
                                :block-attach)
     (and (not a) was-a)
     (sound :block.tripwire.detach
-           (/ 1.2 (+ 0.9 (* 0.2 (random/of-key tick p :detach))))
+           (detach-pitch (num/f32 (random/of-key tick p :detach)))
            :block-detach)))
 
 (defn- heard [p fx]
