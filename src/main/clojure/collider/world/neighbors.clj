@@ -391,13 +391,15 @@
         s [:north :east :south :west]))
     s))
 
-(defn- shapes-changed [s ctx p old flags limit]
+(defn- shapes-of [s ctx p old nst flags limit]
   (if (and (not (running? s)) (deaf-around? s ctx :shape p))
     s
-    (let [nst (block-at s p)
-          f (bit-and-not (long flags) shape-cleared)]
+    (let [f (bit-and-not (long flags) shape-cleared)]
       (passed s ctx p true nil
               #(shape-changed %1 ctx %2 %4 old %3 nst f limit)))))
+
+(defn- shapes-changed [s ctx p old flags limit]
+  (shapes-of s ctx p old (block-at s p) flags limit))
 
 (defn- run-by-level? [e]
   (or (= :fluid-tick e)
@@ -598,6 +600,9 @@
     :changed (add-and-run! s ctx [:changed x y z])
     :output-signal (output-signaled s ctx x)
     :tell (set-told s ctx x y)
+    :shapes (shapes-of s ctx x y y z update-limit)
+    :indirect (indirect-shaped s ctx x y z update-limit)
+    :removal (after-removal s ctx x y z)
     :edge (edged s ctx x y)
     :send (add-sent! s x)
     :tick (ticked s :block-ticks y x ty z)
@@ -636,7 +641,11 @@
   clients of pos. An op [:notify pos side] tells the blocks around
   pos but the one on side, [:notify pos side src] tells them of a
   change of block src, [:changed pos src side] tells the block at pos
-  of a change of block src on side, [:output-signal pos] tells the
+  of a change of block src on side, [:shapes pos st flags] tells the
+  six blocks around pos that their neighbour there is st, and
+  [:indirect pos st flags] does the same for the wires a step off,
+  [:removal pos old moved?] runs what block old does when it goes
+  from pos, [:output-signal pos] tells the
   comparators that read pos, [:tick pos at priority ty] asks for a
   tick of type ty at pos at tick at, and [:signal pos v] keeps v as
   the signal of the comparator at pos. A step fn of chunks gives

@@ -474,7 +474,10 @@
 (defn- dig-props [st]
   (let [air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
         zero (static-field "core.BlockPos" "ZERO")]
-    (cond-> {:hardness (flt (call st "getDestroySpeed" air zero))}
+    (cond-> {:hardness (flt (call st "getDestroySpeed" air zero))
+             :push (kw (str/lower-case
+                         (call (call st "getPistonPushReaction")
+                               "name")))}
       (call st "requiresCorrectToolForDrops") (assoc :needs-tool? true))))
 
 (defn- own-props [by-type env reg b]

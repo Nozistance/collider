@@ -166,6 +166,7 @@
                    (dir/index (block/facing-of st))]
                   (out/all (out/block-sound :bell/use pos 2.0 1.0))]
                  (signal/game-event :block-change pos nil)))
+   :queue (fn [_ pos [_ b x y]] [[:block-event-queued pos b x y]])
    :game-event (fn [_ pos [_ kind source]]
                  (signal/game-event kind pos source))
    :trail (fn [_ pos [_ target color ticks]]
