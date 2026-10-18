@@ -14,6 +14,7 @@
             [collider.world.blocks.observer :as observer]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.torch :as torch]
+            [collider.world.blocks.tripwire :as tripwire]
             [collider.world.blocks.wire :as wire]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -98,9 +99,9 @@
   (if (torch/torch? st) (torch/told p st) (front-ops p st)))
 
 (defn- removal-ops
-  "Returns the ops that block old at p runs when it goes. scheduled?
-  tells whether a tick of a type waits at p."
-  [p ^long old moved? scheduled?]
+  "Returns the ops that block old at p runs when it goes on tick.
+  scheduled? tells whether a tick of a type waits at p."
+  [p old moved? scheduled? tick]
   (let [t (block/type-of old)
         {:keys [powered]} (block/props-of old)]
     (cond
@@ -114,6 +115,9 @@
       (when (= :true powered)
         [[:notify (rod/front p old) nil old]])
       moved? nil
+      (tripwire/hook? old) [(fn [_] (tripwire/removed p old tick))]
+      (tripwire/wire? old)
+      (tripwire/sourced p (block/with old :powered :true) tick)
       (button/switch? old)
       (when (button/powered? old) (button/told p old))
       (diode/diode? old) (front-ops p old)
@@ -123,7 +127,7 @@
       (mapv #(vector :notify % nil old) (rail/removal-notified p old)))))
 
 (defn- hooked? [^long st]
-  (boolean (seq (removal-ops [0 0 0] st false (constantly true)))))
+  (boolean (seq (removal-ops [0 0 0] st false (constantly true) 0))))
 
 (defn- plain?
   "Returns true when placing st needs no reply from st."
@@ -429,7 +433,8 @@
             (indirect-shaped ctx p st flags (dec limit)))))))
 
 (defn- after-removal [s ctx p old moved?]
-  (hooked s ctx (removal-ops p old moved? (.scheduled ^Neighbors s))))
+  (hooked s ctx (removal-ops p old moved? (.scheduled ^Neighbors s)
+                            (:tick ctx))))
 
 (defn- removed
   "Returns s after block old that st replaced at p tells the cells
@@ -600,6 +605,22 @@
   (if (fn? o)
     (reacted s ctx (o (chunks s)) told-all update-limit)
     (op-run s ctx o)))
+
+(defn- by-hand [s ctx c]
+  (if (fn? c)
+    (stepped s ctx c)
+    ((placed-with update/all) s ctx c)))
+
+(defn placed-by-hand
+  "Returns the level after changes [pos st fx] are placed as
+  set-blocks places them, then each block that a hand or an item
+  placed takes its step."
+  [chunks ctx changes]
+  (let [step (fn [[p st]]
+               (when (tripwire/hook? st)
+                 (tripwire/placed-by p (:tick ctx))))]
+    (run-each chunks ctx (into (vec changes) (keep step) changes)
+              by-hand)))
 
 (defn run
   "Returns the level after ops run in order. An op [:set c flags] or

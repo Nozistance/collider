@@ -370,7 +370,8 @@
   ([world eid pos state] (placed-by-use-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [base (dec (long (:tick world)))
-         [deltas s] (run-deltas world changes base neighbors/set-blocks)
+         [deltas s] (run-deltas world changes base
+                                neighbors/placed-by-hand)
          [[pos state]] (first (dried world changes))]
      (-> deltas
          (into (placed-by-ticks (level/level-ctx world base) (:chunks s)

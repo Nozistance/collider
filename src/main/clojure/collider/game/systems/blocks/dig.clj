@@ -22,7 +22,9 @@
             [collider.world.block :as block]
             [collider.world.blocks.halves :as halves]
             [collider.world.chunk :as chunk]
-            [collider.world.env.attribute :as attribute]))
+            [collider.world.env.attribute :as attribute]
+            [collider.world.env.signal :as signal]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -62,11 +64,22 @@
     [(out/all (out/extinguish pos))]
     [(out/except eid (out/break-effect pos old))]))
 
+(defn- cut
+  "Returns the quiet change that disarms string old at pos, which e
+  cuts with shears in the main hand, or nil."
+  [e pos old]
+  (when (and (= :tripwire (block/type-of old))
+             (= :shears (:item (player/hand-stack e :main))))
+    [pos (block/with old :disarmed :true) nil update/quiet]))
+
 (defn- gone-deltas
-  [world eid pos old [ppos pst :as kept]]
-  (let [gone (cond->> [[pos (block/emptied old)]]
-               kept (cons [ppos (block/emptied pst)]))]
+  [world e eid pos old [ppos pst :as kept]]
+  (let [cut (cut e pos old)
+        gone (cond->> [[pos (block/emptied old)]]
+               kept (cons [ppos (block/emptied pst)])
+               cut (cons cut))]
     (concat
+      (when cut (signal/game-event :shear pos eid))
       (break-shown eid pos old)
       (changes/change-deltas world gone)
       (when kept [(out/except eid (out/break-effect ppos pst))]))))
@@ -77,7 +90,7 @@
         kept (kept-partner world e pos old)]
     (if (pos? old)
       (into (vec (shulker-break-deltas world e pos))
-            (gone-deltas world eid pos old kept))
+            (gone-deltas world e eid pos old kept))
       [(edit/own-change world eid pos)])))
 
 (defn- tool-breaks? [e]

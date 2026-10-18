@@ -28,6 +28,7 @@
             [collider.world.blocks.support :as support]
             [collider.world.blocks.target :as target]
             [collider.world.blocks.torch :as torch]
+            [collider.world.blocks.tripwire :as tripwire]
             [collider.world.blocks.water :as water]))
 
 (set! *warn-on-reflection* true)
@@ -50,6 +51,8 @@
    comparator/rule
    torch/rule
    observer/rule
+   tripwire/hook-rule
+   tripwire/wire-rule
    support/rule
    dripstone/rule
    dripstone/cauldron-rule

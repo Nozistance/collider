@@ -33,7 +33,7 @@
                  :isolation #(liquid/reach (:dim %))}})
 
 (defn- again-at [k chunks ctx changes p st]
-  (when (and (= :block-ticks k) (not-any? #(= p (first %)) changes))
+  (when (and (= :block-ticks k) (not-any? #(and (vector? %) (= p (first %))) changes))
     (rules/again-tick chunks st p (:tick ctx))))
 
 (defn- ruled [w ctx k p st]

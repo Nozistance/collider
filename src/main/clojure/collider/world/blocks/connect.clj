@@ -293,11 +293,15 @@
     :tripwire true
     false))
 
-(defn- tripwire-state [self ^long st at]
-  (let [side (fn [[d off]]
-               [d (block/flag (wire-connects? (at off) d))])]
-    (->> (into (block/props-of st) (map side) dir/horizontal-offset)
-         (block/state self))))
+(defn- tripwire-state [chunks p ^long st sides]
+  (let [ds (if (contains? sides nil)
+             dir/horizontal
+             (filter (set dir/horizontal) sides))
+        side (fn [d]
+               [d (block/flag
+                    (wire-connects? (chunk/at chunks (dir/toward p d)) d))])]
+    (->> (into (block/props-of st) (map side) ds)
+         (block/state (block/block-of st)))))
 
 (defn- instrument [^long st]
   (let [b (get (data/blocks) (block/block-of st))]
@@ -376,6 +380,7 @@
 
 (def ^:private sided-reshapers
   {:door                    door-state
+   :tripwire                tripwire-state
    :redstone-wire           wire-reshaped
    :weathering-copper-door  door-state
    :bed                     bed-state
@@ -414,8 +419,7 @@
    :potent-sulfur            sulfur-state
    :fence-gate               gate-state
    :stair                    stair-state
-   :weathering-copper-stair  stair-state
-   :tripwire                 tripwire-state})
+   :weathering-copper-stair  stair-state})
 
 (defn- reshaped-state [t chunks pos st at tick sides]
   (let [self (block/block-of st)]
