@@ -292,9 +292,10 @@
     (into hs (landed-deltas world eid e l))))
 
 (defn- slid [world e mv]
-  (motion/honey-slid (:chunks world)
-                     [[(:pos e) (phys/pos mv) (:vel e)]] (half) (height) (phys/on-ground? mv)
-                     (if (:stuck e) [0.0 0.0 0.0] (phys/vel mv))))
+  (let [moves [[(:pos e) (phys/pos mv) (:vel e)]]
+        vel (if (:stuck e) [0.0 0.0 0.0] (phys/vel mv))]
+    (motion/honey-slid (:chunks world) moves (half) (height)
+                       (phys/on-ground? mv) vel)))
 
 (defn- step-deltas [world eid e]
   (let [mv (fall-move world e)

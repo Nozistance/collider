@@ -194,8 +194,8 @@
         w (if (:stuck e)
             [0.0 0.0 0.0]
             (moved-speed chunks mv sup og (vel 1)))
-        [w] (motion/honey-slid chunks [[(:pos e) p vel]] half height og
-                               w)]
+        [w] (motion/honey-slid chunks [[(:pos e) p vel]] half height
+                               og w)]
     [p (dragged chunks p sup og w) og sup nb?]))
 
 (defn- jolt-of ^double [vel' old]
