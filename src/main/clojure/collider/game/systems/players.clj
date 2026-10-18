@@ -1,6 +1,7 @@
 (ns collider.game.systems.players
   "The player list, logins and the tab header."
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.game.clock :as clock]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.out :as out]
@@ -51,7 +52,7 @@
 
 (defn- joined-deltas [world events]
   (for [[tag eid] events :when (= :player-join tag)
-        d [(out/to eid (out/joined))
+        d [(out/to eid (out/joined (clock/full-sync world)))
            (out/except eid (out/system-chat
                              (entity/joined-text
                                (shown world eid

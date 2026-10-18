@@ -36,7 +36,7 @@
         :when (= :joined (:msg m))
         :let [eid (:to m)
               lv (audience/own-level sight eid)]
-        p (join/join-packets world lv eid)]
+        p (join/join-packets world lv eid (:clocks m))]
     [eid p]))
 
 (defn- entity-delta-packets [sight deltas pick]

@@ -3,7 +3,6 @@
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
             [collider.game.block.menu :as menu]
-            [collider.game.clock :as clock]
             [collider.game.command.forms :as forms]
             [collider.game.command.nodes :as commands]
             [collider.game.effect :as effect]
@@ -106,8 +105,8 @@
   [m]
   {:packet :set-time :age (:age m) :clocks (:clocks m)})
 
-(defn- clock-sync-packet [lv]
-  (set-time-packet {:age (:tick lv) :clocks (clock/full-sync lv)}))
+(defn- clock-sync-packet [lv clocks]
+  (set-time-packet {:age (:tick lv) :clocks clocks}))
 
 (defn- rain-packets [lv]
   (let [rain (double (:rain-level lv 0.0))
@@ -117,8 +116,9 @@
        (game-event-packet :rain-level-change rain)
        (game-event-packet :thunder-level-change thunder)])))
 
-(defn- level-info-packets [lv]
-  (concat [border-packet (clock-sync-packet lv) (spawn-pos-packet lv)]
+(defn- level-info-packets [lv clocks]
+  (concat [border-packet (clock-sync-packet lv clocks)
+           (spawn-pos-packet lv)]
           (rain-packets lv)
           [(game-event-packet :level-chunks-load-start 0.0)]
           ticking-packets))
@@ -183,7 +183,7 @@
       (permission-packets lv eid e)
       (leave-packets m)
       (arrival-packets m e)
-      (level-info-packets lv)
+      (level-info-packets lv (:clocks m))
       (player-info-packets e)
       (effect-packets eid e))))
 
@@ -196,7 +196,7 @@
        (spawn-pos-packet lv)
        difficulty-packet]
       (effect-packets eid e)
-      (level-info-packets lv)
+      (level-info-packets lv (:clocks m))
       (permission-packets lv eid e))))
 
 (defn- rule-flags [lv]
@@ -261,7 +261,7 @@
     :score-reset {:packet :reset-score :owner (:holder m)
                   :objective (:objective m)}))
 
-(defn- join-world-packets [world e eid motd]
+(defn- join-world-packets [world e eid motd clocks]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets world eid e)
@@ -270,7 +270,7 @@
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet
-     (clock-sync-packet world)
+     (clock-sync-packet world clocks)
      (spawn-pos-packet world)
      (game-event-packet :level-chunks-load-start 0.0)]
     ticking-packets))
@@ -290,10 +290,11 @@
    :view-distance 4 :simulation-distance 2})
 
 (defn join-packets
-  "Returns the packets of player eid joining level lv of world."
-  [world lv eid]
+  "Returns the packets of player eid joining level lv of world, the
+  clocks in their network state as it joined."
+  [world lv eid clocks]
   (let [cfg (merge unset-settings (:config world))
         e (get-in lv [:entities eid])]
     (concat (join-login-packets cfg lv eid e)
-            (join-world-packets world e eid (:motd cfg))
+            (join-world-packets world e eid (:motd cfg) clocks)
             (join-player-packets eid e))))

@@ -1,6 +1,7 @@
 (ns collider.game.respawn
   "Where a dead player comes back, and the deltas that bring it."
   (:require [collider.game.block.menu :as menu]
+            [collider.game.clock :as clock]
             [collider.game.block.screen :as screen]
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
@@ -93,10 +94,10 @@
     (out/experience (:xp-progress e 0.0) (:xp-level e 0)
                     (:xp-total e 0))))
 
-(defn- revived [eid e pos yaw pitch tick keep?]
+(defn- revived [world eid e pos yaw pitch keep?]
   [[:teleport eid pos]
-   [:merge-entity eid (fresh-marks e tick keep?)]
-   (out/to eid (out/respawn))
+   [:merge-entity eid (fresh-marks e (:tick world) keep?)]
+   (out/to eid (out/respawn (clock/full-sync world)))
    (out/to eid (out/teleport pos yaw pitch))
    (out/to eid (shown-experience e keep?))
    (out/to eid (out/held-slot (long (or (:held-slot e) 0))))])
@@ -118,8 +119,7 @@
   [world eid [pos yaw pitch lost?]]
   (let [e (get-in world [:entities eid])
         inv (apply dissoc (:inventory e) (range 5))
-        t (:tick world)
-        back (revived eid e pos yaw pitch t (kept-xp? world e))]
+        back (revived world eid e pos yaw pitch (kept-xp? world e))]
     (cond-> (into (vec (screen/removed-deltas world eid e)) back)
       (seq inv) (conj (out/to eid (own-slots inv)))
       lost? (conj (out/to eid not-valid))

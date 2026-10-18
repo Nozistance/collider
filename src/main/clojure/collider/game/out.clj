@@ -127,17 +127,21 @@
   {:msg :experience :progress (double progress) :level (long level)
    :total (long total)})
 
-(defn respawn []
-  {:msg :respawn})
+(defn respawn
+  "Returns the effect of a player respawning, with the network state
+  of the clocks as it respawns."
+  [clocks]
+  {:msg :respawn :clocks clocks})
 
 (defn change-dimension
   "Returns the effect of a player entering level dim at pos.
   Yaw, pitch and relative work as in a teleport. The effect names the
-  chunks and entities the player knew in the level it left."
-  [dim pos [yaw pitch relative] forget untrack]
+  chunks and entities the player knew in the level it left and the
+  network state of the clocks as it moves."
+  [dim pos [yaw pitch relative] forget untrack clocks]
   {:msg :change-dimension :dim dim :pos pos :yaw (double yaw)
    :pitch (double pitch) :relative (long relative)
-   :forget (vec forget) :untrack (vec untrack)})
+   :forget (vec forget) :untrack (vec untrack) :clocks clocks})
 
 (defn default-spawn
   "Returns the effect that shows the world spawn in level dim, faced
@@ -173,8 +177,11 @@
 (defn close []
   {:msg :close})
 
-(defn joined []
-  {:msg :joined})
+(defn joined
+  "Returns the effect of a player joining, with the network state of
+  the clocks as it joins."
+  [clocks]
+  {:msg :joined :clocks clocks})
 
 (defn block-ack [sequence]
   {:msg :block-ack :sequence sequence})

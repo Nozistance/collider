@@ -252,10 +252,19 @@
              pd)]
     (reduce #(step %1 %2 (get pd %2)) acc dims)))
 
-(def ^:private before-level
-  (into #{#'spawning/placing #'chunks/chunk-loading} packet-systems))
+(defn- system-key
+  "Returns the namespace and the name system s carries in its
+  metadata, which a copy of s keeps."
+  [s]
+  (let [m (meta s)] [(:ns m) (:name m)]))
 
-(defn- early? [phase] (some before-level phase))
+(def ^:private before-level
+  (into #{} (map system-key)
+        (into [#'spawning/placing #'chunks/chunk-loading]
+              packet-systems)))
+
+(defn- early? [phase]
+  (some #(contains? before-level (system-key %)) phase))
 
 (defn open
   "Returns the world and the deltas of each level as a tick opens,

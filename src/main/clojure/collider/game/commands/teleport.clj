@@ -1,6 +1,7 @@
 (ns collider.game.commands.teleport
   "The tp, rotate and spectate commands."
   (:require [collider.game.camera :as camera]
+            [collider.game.clock :as clock]
             [collider.game.command.targets :as targets]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
@@ -54,7 +55,8 @@
         kept (merge {:yaw (:yaw e 0.0) :pitch (:pitch e 0.0)}
                     (turn-props yaw pitch))]
     [[:change-dimension eid dim pos (:yaw kept) (:pitch kept)]
-     (out/to eid (out/change-dimension dim pos sent known seen))]))
+     (out/to eid (out/change-dimension dim pos sent known seen
+                                       (clock/full-sync lv)))]))
 
 (defn- sent-angle [rel? v old]
   (if rel? (targets/wrapped (- (double v) (double old))) v))
