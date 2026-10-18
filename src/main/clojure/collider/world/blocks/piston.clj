@@ -263,4 +263,5 @@
           b (chunk/at chunks q)]
       (when (fits? st b)
         [[q (block/emptied b)
-          (cond-> [[:break b]] drops? (conj [:drop b]))]]))))
+          (cond-> [[:break b] [:game-event :block-destroy nil]]
+            drops? (conj [:drop b]))]]))))

@@ -393,20 +393,22 @@
   (let [st (long st)]
     (and (pos? st) (not (block/air-type? st)))))
 
-(defn- lit-campfire? [st]
-  (and (= :campfire (block/type-of st))
+(defn- lit? [kind st]
+  (and (= kind (block/type-of st))
        (= :true (:lit (block/props-of st)))))
 
 (defn- held ^long [st]
   (if (container? st)
     (cond-> (block/with st :waterlogged :true)
-      (lit-campfire? st) (block/with :lit :false))
+      (or (lit? :campfire st) (lit? :candle st))
+      (block/with :lit :false))
     0))
 
 (defn- fill ^long [st]
   (cond
     (not (container? st)) 0
-    (lit-campfire? st) Flow/DOUSE
+    (lit? :campfire st) Flow/DOUSE
+    (lit? :candle st) Flow/SNUFF
     (= :dried-ghast (block/type-of st)) Flow/SOAK
     :else Flow/FILL))
 
@@ -602,17 +604,22 @@
 (def ^:private extinguished
   [:sound :entity.generic.extinguish-fire 1.0 1.0])
 
+(def ^:private snuffed
+  [:sound :candle/extinguish 1.0 1.0])
+
 (def ^:private soaked-ghast
   [:sound :block.dried-ghast.place-in-water 1.0 1.0])
 
 (def ^:private effects
-  (-> (vec (repeat (inc Flow/SOAK) nil))
+  (-> (vec (repeat (inc Flow/SNUFF) nil))
       (assoc Flow/FIZZ [:fizz]
              Flow/FIZZ_TWICE [:fizz :fizz]
              Flow/FILL [:fluid-tick]
              Flow/DOUSE [extinguished [:game-event :block-change nil]
                          :fluid-tick]
-             Flow/SOAK [soaked-ghast :fluid-tick])))
+             Flow/SOAK [soaked-ghast :fluid-tick]
+             Flow/SNUFF [snuffed [:game-event :block-change nil]
+                         :fluid-tick])))
 
 (defn- found-fx [^ints found ^long k]
   (let [g (Flow/changeDrop found k)]

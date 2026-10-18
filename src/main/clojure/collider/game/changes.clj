@@ -432,7 +432,8 @@
     (when (= :true (:lit (block/props-of cur)))
       (let [deltas (change-deltas world [[pos (unlit cur)]])
             snuff (out/block-sound :candle/extinguish pos 1.0 1.0)]
-        (concat deltas [(out/all snuff)])))))
+        (concat deltas [(out/all snuff)]
+                (signal/game-event :block-change pos nil))))))
 
 (defn campfire-out-deltas
   "Returns the deltas that dowse a campfire at pos.
@@ -441,7 +442,8 @@
   (when-let [st (campfire/dowsed (block-at world pos))]
     (concat (change-deltas world [[pos st]])
             [(out/all (out/level-event
-                        :sound-extinguish-fire pos))])))
+                        :sound-extinguish-fire pos))]
+            (signal/game-event :block-change pos nil))))
 
 (defn dowse-deltas
   "Returns the deltas of a candle or a campfire dowsed by water."

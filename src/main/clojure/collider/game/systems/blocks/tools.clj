@@ -24,7 +24,8 @@
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.env.biome :as biome]))
+            [collider.world.env.biome :as biome]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -57,13 +58,14 @@
                (not= :true (:waterlogged props)))
       (block/with cur :lit :true))))
 
-(defn- fire-deltas [world pos off snd]
+(defn- fire-deltas [world pos off snd at]
   (let [[_ y' _ :as pos'] (mapv + pos off)
         st (fire/state-for (:chunks world) pos')]
     (when (and (chunk/in-level? world y')
                (zero? (changes/block-at world pos'))
                (support/supported? (:chunks world) pos' st))
-      (conj (changes/change-deltas world [[pos' st]]) (snd pos')))))
+      (concat (changes/change-deltas world [[pos' st]]) [(snd pos')]
+              (signal/game-event :block-place (at pos') nil)))))
 
 (defn- flint-sound [world eid pos]
   (let [pitch (random/pitch (:tick world) pos :flint)]
@@ -77,14 +79,15 @@
     (out/all (out/block-sound :firecharge/use pos 1.0 pitch))))
 
 (defn- changed-with [world changes fx]
-  (concat (changes/change-deltas world changes) fx))
+  (concat (changes/change-deltas world changes) fx
+          (signal/game-event :block-change (ffirst changes) nil)))
 
 (defn firecharge-deltas
   [world [_eid pos face]]
   (if-let [st (lightable world pos)]
     (changed-with world [[pos st]] [(charge-sound world pos)])
     (when-let [off (dir/face-offset face)]
-      (fire-deltas world pos off #(charge-sound world %)))))
+      (fire-deltas world pos off #(charge-sound world %) identity))))
 
 (defn- primable? [world eid pos]
   (and (tnt/tnt-state? (changes/block-at world pos))
@@ -108,7 +111,8 @@
   (when-let [off (dir/face-offset face)]
     (if-let [st (lightable world pos)]
       (changed-with world [[pos st]] [(flint-sound world eid pos)])
-      (fire-deltas world pos off #(flint-sound world eid %)))))
+      (fire-deltas world pos off #(flint-sound world eid %)
+                   (constantly pos)))))
 
 (defn- meal-drops [world pos drops]
   (map-indexed
@@ -228,7 +232,8 @@
         (concat
           (changes/change-deltas world [[pos (block/state to)]])
           (when freed (freed-drop world pos freed))
-          [(out/all (out/block-sound :hoe/till pos 1.0 1.0))])))))
+          [(out/all (out/block-sound :hoe/till pos 1.0 1.0))]
+          (signal/game-event :block-change pos nil))))))
 
 (defn- flattened-state [world pos cur]
   (when (and (contains? grow/flattened (block/block-of cur))
@@ -242,7 +247,8 @@
       (if-let [st (flattened-state world pos cur)]
         (let [snd (out/block-sound :shovel/flatten pos 1.0 1.0)]
           (changed-with world [[pos st]] [(out/all snd)]))
-        (changes/campfire-out-deltas world pos)))))
+        (some-> (changes/campfire-out-deltas world pos)
+                (concat (signal/game-event :block-change pos nil)))))))
 
 (defn- door-partner [world pos cur]
   (when (contains? block/door-types (block/type-of cur))

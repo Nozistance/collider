@@ -10,7 +10,8 @@
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.piston :as piston]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -78,7 +79,8 @@
         gone (reversed destroy (mapv #(chunk/at chunks %) destroy))
         left (left chunks push d (when ext? arm))]
     (concat
-      (for [[q o] gone] [:set [q 0 [[:drop o]]] 18])
+      (for [[q o] gone]
+        [:set [q 0 [[:drop o] [:game-event :block-destroy nil]]] 18])
       (for [q (rseq push)] (carried chunks q d f ext?))
       (when ext? (arm-ops pos f t))
       (left-ops left)
@@ -106,7 +108,8 @@
       (concat
         (changes/set-deltas
           (seen w ops) (concat ops [[:set [pos on] 67]]))
-        [(sound w pos :block.piston.extend 0.25)]))))
+        [(sound w pos :block.piston.extend 0.25)]
+        (signal/game-event :block-activate pos nil)))))
 
 (defn- final-step
   "The step that puts the block a moving piston at p carries in place
@@ -170,7 +173,8 @@
                    (if (= :sticky t)
                      (pulled w pos f b0)
                      (cleared arm))]))
-      [(sound w pos :block.piston.contract 0.15)])))
+      [(sound w pos :block.piston.contract 0.15)]
+      (signal/game-event :block-deactivate pos nil))))
 
 (defn triggered
   "Returns the deltas of block event b0 b1 of the piston st at pos,

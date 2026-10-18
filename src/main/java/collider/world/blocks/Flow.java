@@ -42,6 +42,9 @@ public final class Flow {
     /// The effect of a dried ghast that takes water.
     public static final int SOAK = 5;
 
+    /// The effect of a lit candle that takes water and goes out.
+    public static final int SNUFF = 6;
+
     /// The blocks that lava turns into next to water.
     ///
     /// @param source The block of a lava source over water.
