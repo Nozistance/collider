@@ -3,6 +3,7 @@
   blocks it moves."
   (:require [collider.cell :as cell]
             [collider.game.changes :as changes]
+            [collider.game.block.piston-push :as push]
             [collider.game.out :as out]
             [collider.hash-order :as hash-order]
             [collider.random :as random]
@@ -204,6 +205,8 @@
   [w [pos e]]
   (let [n (long (:progress e))]
     (if (< n 2)
-      [[:set-block-entity pos
-        (assoc e :progress-o n :progress (inc n) :ticked (:tick w))]]
+      (conj (vec (push/pushes w pos e))
+            [:set-block-entity pos
+             (assoc e :progress-o n :progress (inc n)
+                    :ticked (:tick w))])
       (finished w pos e))))

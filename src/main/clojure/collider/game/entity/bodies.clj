@@ -10,7 +10,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- box-of
+(defn box-of
   "Returns the box [x0 y0 z0 x1 y1 z1] of body e."
   [e]
   (if (contains? hanging/types (:type e))

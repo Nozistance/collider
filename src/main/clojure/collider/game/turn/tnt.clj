@@ -34,7 +34,13 @@
   (motion/stuck-speed (:chunks world) [[(:pos e) pos (:vel e)]]
                       (tnt-half) (tnt-height)))
 
-(def ^:private ^:const drag (double (float 0.98)))
+(def ^:const drag
+  "How much of its speed a primed TNT keeps each tick."
+  (double (float 0.98)))
+
+(def ^:const gravity
+  "How much a primed TNT falls faster each tick."
+  0.04)
 
 (defn- stepped-vel
   "Returns the motion of a TNT after its drag, its bounce on the
@@ -46,7 +52,7 @@
 
 (defn- tnt-move [world e]
   (let [[vx vy vz] (:vel e)
-        d [(double vx) (- (double vy) 0.04) (double vz)]
+        d [(double vx) (- (double vy) gravity) (double vz)]
         stuck (:stuck e)]
     (phys/move (:chunks world) (:pos e) (if stuck (mapv * d stuck) d)
                (tnt-half) (tnt-height))))
@@ -55,8 +61,8 @@
   (let [chunks (:chunks world)
         sup (when on-ground
               (phys/supporting-block chunks pos (tnt-half)))
-        vy (- (double (v/y (:vel e))) 0.04)
-        w (fall/landed-vel chunks mv sup vy 0.04 drag false)
+        vy (- (double (v/y (:vel e))) gravity)
+        w (fall/landed-vel chunks mv sup vy gravity drag false)
         sf (motion/block-speed-factor chunks pos sup)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (cond stuck [0.0 0.0 0.0]

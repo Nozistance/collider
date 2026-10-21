@@ -22,11 +22,15 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const drag (num/f32 0.99))
+(def ^:const drag
+  "How much of its speed an arrow in the air keeps each tick."
+  (num/f32 0.99))
 
 (def ^:private ^:const water-drag (num/f32 0.6))
 
-(def ^:private ^:const gravity 0.05)
+(def ^:const gravity
+  "How much an arrow falls faster each tick."
+  0.05)
 
 (def ^:private ^:const set-back (num/f32 0.05))
 
@@ -45,7 +49,9 @@
   (some #(projectile/inside? (projectile/abs-box cell %) p)
         (block/collision-boxes st)))
 
-(defn- falls? [world e]
+(defn falls?
+  "Returns true when no block holds arrow e where it stands."
+  [world e]
   (let [[x y z] (:pos e) m fall-margin]
     (phys/box-free? (:chunks world)
                     [(- x m) (- y m) (- z m) (+ x m) (+ y m) (+ z m)]

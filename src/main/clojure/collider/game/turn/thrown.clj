@@ -36,13 +36,21 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const air-drag (double (float 0.99)))
+(def ^:const air-drag
+  "How much of its speed a thrown item in the air keeps each tick."
+  (double (float 0.99)))
 
 (def ^:private ^:const water-drag (double (float 0.8)))
 
 (def ^:private gravity
   {:splash-potion 0.05 :lingering-potion 0.05
    :experience-bottle 0.07})
+
+(defn gravity-of
+  "Returns how much a thrown item of kind type falls faster each
+  tick."
+  ^double [type]
+  (double (gravity type 0.03)))
 
 (def ^:private ^:const inaccuracy 0.0172275)
 
@@ -181,7 +189,7 @@
 (defn- wind? [e] (= :wind-charge (:type e)))
 
 (defn- falling-drift [world e]
-  (let [g (double (gravity (:type e) 0.03))
+  (let [g (gravity-of (:type e))
         vel (:vel e)
         k (if (submerged? world e) water-drag air-drag)]
     [(* k (v/x vel)) (* k (- (v/y vel) g)) (* k (v/z vel))]))

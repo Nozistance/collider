@@ -30,7 +30,9 @@
 
 (def ^:private ^:const groups 40)
 
-(def ^:private ^:const gravity 0.03)
+(def ^:const gravity
+  "How much an orb falls faster each tick."
+  0.03)
 
 (defn- eye ^double [] (size/pose-eye :experience-orb nil))
 

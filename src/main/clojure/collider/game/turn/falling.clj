@@ -16,6 +16,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.motion :as motion]
+            [collider.world.blocks.piston :as piston]
             [collider.world.phys :as phys]
             [collider.world.blocks.support :as support]))
 
@@ -27,7 +28,13 @@
 
 (def ^:private ^:const max-time 600)
 
-(def ^:private ^:const air-drag (double (float 0.98)))
+(def ^:const gravity
+  "How much a falling block falls faster each tick."
+  0.04)
+
+(def ^:const air-drag
+  "How much of its speed a falling block keeps each tick."
+  (double (float 0.98)))
 
 (defn- block-at ^long [world [_ y _ :as pos]]
   (if (chunk/in-range? y)
@@ -140,7 +147,7 @@
 
 (defn- fall-move [world e]
   (let [[vx vy vz] (:vel e)
-        d [(double vx) (- (double vy) 0.04) (double vz)]]
+        d [(double vx) (- (double vy) gravity) (double vz)]]
     (phys/move (:chunks world) (:pos e)
                (if (:stuck e) (mapv * d (:stuck e)) d) (half) (height)
                0.0 (phys/context e))))
@@ -248,7 +255,9 @@
           (assoc e :block (block/state k facing))))
       e)))
 
-(defn- honey-deltas [eid e]
+(defn honey-deltas
+  "Returns the effects of body eid, e, that lands on honey."
+  [eid e]
   [(out/all (out/sound :block.honey-block.slide (:pos e) 1.0 1.0
                        :neutral))
    (out/all (out/status eid :honey-jump))])
@@ -258,7 +267,7 @@
         sup (phys/supporting-block ch pos (half) (phys/context e))]
     (chunk/at ch (fall/on-pos ch pos sup))))
 
-(defn- fell-on
+(defn fell-on
   "Returns falling block e after it lands from fall f, and the deltas
   of the block under it and of the bodies it hurts."
   [world eid e ^double f]
@@ -287,15 +296,46 @@
     (phys/fallen (landing/cleared world (:pos e) (phys/pos mv) f)
                  (phys/moved-y mv))))
 
-(defn- ground-deltas [world eid e f l]
-  (let [[e hs] (fell-on world eid e f)]
-    (into hs (landed-deltas world eid e l))))
+(defn- ground-deltas
+  "Returns the deltas of falling block e that lands from fall f, or
+  breaks when a fall before cancelled its drop."
+  [world eid e f l]
+  (if (:cancel-drop e)
+    (landed-deltas world eid nil l)
+    (let [[e hs] (fell-on world eid e f)]
+      (into hs (landed-deltas world eid e l)))))
 
 (defn- slid [world e mv]
   (let [moves [[(:pos e) (phys/pos mv) (:vel e)]]
         vel (if (:stuck e) [0.0 0.0 0.0] (phys/vel mv))]
     (motion/met-speed (:chunks world) moves (half) (height)
-                       (phys/on-ground? mv) vel)))
+                      (phys/on-ground? mv) vel)))
+
+(defn- held-vel [world e mv sup]
+  (if (:stuck e)
+    [0.0 0.0 0.0]
+    (let [vy (- (v/y (:vel e)) gravity)
+          u (fall/landed-vel (:chunks world) mv sup vy gravity air-drag
+                             false)]
+      (drift-vel nil (mapv * [(v/x u) (v/y u) (v/z u)]
+                           [0.7 -0.5 0.7])))))
+
+(defn- held-deltas
+  "Returns the deltas of falling block e that lands at pos in the cell
+  of a moving block and waits there for it to stop."
+  [world eid e mv time f]
+  (let [pos (phys/pos mv)
+        sup (phys/supporting-block (:chunks world) pos (half)
+                                   (phys/context e))
+        [e' hs] (fell-on world eid (assoc e :pos pos) f)
+        stuck' (stuck-now world e pos)]
+    (conj (vec hs)
+          [:merge-entity eid
+           (cond-> {:pos pos :on-ground true :time time
+                    :block (:block (or e' e)) :fall (landing/kept e 0.0)
+                    :vel (held-vel world e mv sup)}
+             (or stuck' (:stuck e)) (assoc :stuck stuck')
+             (nil? e') (assoc :cancel-drop true))])))
 
 (defn- step-deltas [world eid e]
   (let [mv (fall-move world e)
@@ -305,6 +345,9 @@
         f (if slid? 0.0 (fallen world e mv))
         [cell _ _ stuck? :as l] (landing world e pos vel)]
     (cond
+      (and (phys/on-ground? mv)
+           (piston/moving? (block-at world cell)))
+      (held-deltas world eid e mv time f)
       (phys/on-ground? mv)
       (ground-deltas world eid (assoc e :pos pos) f l)
       stuck? (land-deltas world eid (assoc e :pos pos) l)
