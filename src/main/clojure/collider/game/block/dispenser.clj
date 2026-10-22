@@ -240,16 +240,15 @@
 
 (defn- boat-fired [world pos facing e items i stack]
   (when (entity/boat? (:item stack))
-    (let [off (boat/offset (:chunks world) pos facing)]
-      (if (nil? off)
-        [(into (shot-deltas world pos facing e items i)
+    (if-let [born (boat/entity (:chunks world) pos facing
+                               (:item stack))]
+      (let [box (assoc e :items (assoc items i (shrink stack)))]
+        [(into [[:set-block-entity pos box] [:spawn-entity born]]
                (report pos facing :sound-dispenser-dispense))
-         []]
-        (let [born (boat/entity pos facing off (:item stack))
-              box (assoc e :items (assoc items i (shrink stack)))]
-          [(into [[:set-block-entity pos box] [:spawn-entity born]]
-                 (report pos facing :sound-dispenser-dispense))
-           []])))))
+         []])
+      [(into (shot-deltas world pos facing e items i)
+             (report pos facing :sound-dispenser-dispense))
+       []])))
 
 (defn- chosen [world pos facing e items i]
   (let [stack (nth items i)]
