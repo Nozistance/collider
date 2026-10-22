@@ -1,7 +1,9 @@
 (ns collider.game.block.dispenser
   "A dispenser tick spits one plain item along its facing, pours
-  or fills a bucket, or clicks when the dispenser is empty."
+  or fills a bucket, primes tnt in front of it, or clicks when
+  the dispenser is empty."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
             [collider.game.item :as item]
             [collider.game.loot :as loot]
@@ -195,6 +197,28 @@
         [be [:spawn-entity spawn] sound smoke])
       [be])))
 
+(defn- report [pos facing sound]
+  [(out/all (out/level-event sound pos 0))
+   (out/all (out/level-event :particles-shoot-smoke pos
+                             (dir/index facing)))])
+
+(defn- primed-at [world there seed]
+  (let [e (dissoc (tnt/primed there seed) :origin)]
+    [[:spawn-entity e]
+     (out/all (out/sound :tnt/primed (:pos e) 1.0 1.0))
+     [:game-event :entity-place there nil]]))
+
+(defn- tnt-fired [world pos facing e items i stack]
+  (when (= :tnt (:item stack))
+    (if-not (get-in world [:rules :tnt-explodes] true)
+      [(vec (report pos facing :sound-dispenser-fail)) []]
+      (let [there (ahead pos facing)
+            left (shrink stack)
+            e (assoc e :items (assoc items i left))
+            born (primed-at world there [(:tick world) pos])
+            fx (report pos facing :sound-dispenser-dispense)]
+        [(into [[:set-block-entity pos e]] (concat born fx)) []]))))
+
 (defn- with-bucket [placed world pos facing e items i left extra]
   [(into (vec (:fx placed))
          (kept world pos facing e items i left extra))
@@ -213,6 +237,12 @@
         (let [[left extra] (opened stack (bucket (:item placed)))]
           (with-bucket placed world pos facing e items i left extra))))))
 
+(defn- chosen [world pos facing e items i]
+  (let [stack (nth items i)]
+    (or (tnt-fired world pos facing e items i stack)
+        (liquid-fired world pos facing e items i stack)
+        [(shot-deltas world pos facing e items i) []])))
+
 (defn fired
   "Returns [deltas edits] of dispenser at pos firing once.
   edits are the block changes of a bucket it pours or fills."
@@ -225,8 +255,7 @@
         [ds edits]
         (if (neg? i)
           [(vec (empty-shot pos)) []]
-          (or (liquid-fired world pos facing e items i (nth items i))
-              [(shot-deltas world pos facing e items i) []]))]
+          (chosen world pos facing e items i))]
     (if found
       [ds edits]
       [(into [[:set-block-entity pos e]] ds) edits])))
