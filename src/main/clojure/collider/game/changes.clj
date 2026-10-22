@@ -177,7 +177,8 @@
    :geyser-start (fn [_ pos [_ st]] (sulfur-placed-fx pos st))
    :reset-countdown (fn [world pos _] (countdown-reset world pos))
    :toggle (fn [_ pos [_ t]] [[:torch-toggled pos t]])
-   :signal (fn [_ pos [_ v]] [[:set-signal pos v]])})
+   :signal (fn [_ pos [_ v]] [[:set-signal pos v]])
+   :moving (fn [_ pos [_ packed]] [[:moving pos packed]])})
 
 (defn change-fx
   "Returns the deltas of the effects the changes carry.

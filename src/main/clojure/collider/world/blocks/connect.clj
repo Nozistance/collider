@@ -4,6 +4,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
+            [collider.world.phys :as phys]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.chest :as chest]
             [collider.world.blocks.chorus :as chorus]
@@ -72,8 +73,8 @@
   (or (contains? @leaf-blocks b) (contains? never-connect b)
       (contains? @shulker-boxes b)))
 
-(defn- sturdy? [st b side]
-  (and (block/face-sturdy? st (dir/opposite side))
+(defn- sturdy? [chunks pos b side]
+  (and (phys/face-holds? chunks pos (dir/opposite side))
        (not (never-connects? b))))
 
 (defn- gate-connects? [st side]
@@ -82,36 +83,36 @@
       (contains? #{:east :west} f)
       (contains? #{:north :south} f))))
 
-(defn- fence-connects? [self nst side]
+(defn- fence-connects? [chunks self npos nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (contains? @fences n)
       (= (contains? @wooden n) (contains? @wooden self))
       (= :fence-gate t) (gate-connects? nst side)
-      :else (sturdy? nst n side))))
+      :else (sturdy? chunks npos n side))))
 
-(defn- wall-connects? [nst side]
+(defn- wall-connects? [chunks npos nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (or (contains? @walls n) (contains? @fences n)
           (contains? bar-types t)) true
       (= :fence-gate t) (gate-connects? nst side)
-      :else (sturdy? nst n side))))
+      :else (sturdy? chunks npos n side))))
 
-(defn- pane-connects? [nst side]
+(defn- pane-connects? [chunks npos nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (or (contains? bar-types t) (contains? @walls n)) true
-      :else (sturdy? nst n side))))
+      :else (sturdy? chunks npos n side))))
 
-(defn- connects? [t self nst side]
+(defn- connects? [chunks t self npos nst side]
   (case t
-    :fence (fence-connects? self nst side)
-    :wall (wall-connects? nst side)
-    (pane-connects? nst side)))
+    :fence (fence-connects? chunks self npos nst side)
+    :wall (wall-connects? chunks npos nst side)
+    (pane-connects? chunks npos nst side)))
 
 (defn- axis-low? [sides a b c d]
   (and (= :low (a sides)) (= :low (b sides))
@@ -143,11 +144,11 @@
 
 (defn- door-state [chunks pos ^long st sides]
   (let [lower? (= :lower (:half (block/props-of st)))
-        pst (other-door chunks pos st)
-        below (chunk/at chunks (dir/down pos))]
+        pst (other-door chunks pos st)]
     (cond
       (and lower? (contains? sides :down)
-           (not (block/face-sturdy? below :up))) (block/emptied st)
+           (not (phys/face-holds? chunks (dir/down pos) :up)))
+      (block/emptied st)
       (not (contains? sides (partner-side st))) st
       (nil? pst) (block/emptied st)
       :else (block/with pst :half (if lower? :lower :upper)))))
@@ -224,16 +225,19 @@
   (let [{:keys [facing half]} (block/props-of st)]
     (block/with st :shape (stair-shape st at facing half))))
 
-(defn- open-water? [at side]
-  (let [n (at (dir/offset side))]
-    (and (block/water? n)
-         (not (block/face-sturdy? n (dir/opposite side))))))
+(defn- open-water? [chunks pos side]
+  (let [p (mapv + pos (dir/offset side))
+        n (chunk/at chunks p)
+        face (dir/opposite side)]
+    (and (block/water? n) (not (phys/face-holds? chunks p face)))))
 
-(defn- powder-state [st at]
-  (if (or (block/water? (at [0 0 0]))
-          (some #(open-water? at %) [:up :north :south :west :east]))
-    (block/concrete-of st)
-    st))
+(defn- powder-state [chunks pos st]
+  (let [here (chunk/at chunks pos)
+        wet? #(open-water? chunks pos %)]
+    (if (or (block/water? here)
+            (some wet? [:up :north :south :west :east]))
+      (block/concrete-of st)
+      st)))
 
 (defn- growing-plant-state [pos st at tick sides]
   (let [{:keys [head body dir]}
@@ -278,12 +282,15 @@
 (defn- side-value [t c]
   (if (= :wall t) (if c :low :none) (block/flag c)))
 
-(defn- sides-state [t self ^long st at]
+(defn- sides-state [chunks pos t self st]
   (let [side (fn [[d off]]
-               [d (side-value t (connects? t self (at off) d))])
+               (let [p (mapv + pos off)
+                     n (chunk/at chunks p)
+                     on? (connects? chunks t self p n d)]
+                 [d (side-value t on?)]))
         sides (into {} (map side) dir/horizontal-offset)
         post (block/flag (wall-post? sides))
-        props (cond-> (merge (block/props-of st) sides)
+        props (cond-> (merge (block/props-of (long st)) sides)
                 (= :wall t) (assoc :up post))]
     (block/state self props)))
 
@@ -350,24 +357,24 @@
 (defn- soul-fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st) st 0))
 
-(defn- bell-props
-  [{:keys [attachment facing]} side nst]
-  (cond
-    (and (= :double_wall attachment)
-         (not (block/face-sturdy? nst side)))
-    {:attachment :single_wall :facing (dir/opposite side)}
-    (and (= :single_wall attachment) (= side (dir/opposite facing))
-         (block/face-sturdy? nst facing))
-    {:attachment :double_wall}))
+(defn- bell-props [chunks pos {:keys [attachment facing]} side]
+  (let [p (dir/toward pos side)]
+    (cond
+      (and (= :double_wall attachment)
+           (not (phys/face-holds? chunks p side)))
+      {:attachment :single_wall :facing (dir/opposite side)}
+      (and (= :single_wall attachment)
+           (= side (dir/opposite facing))
+           (phys/face-holds? chunks p facing))
+      {:attachment :double_wall})))
 
 (defn- bell-reshaped [chunks pos st sides]
   (let [side (first (remove nil? sides))
         props (block/props-of st)]
     (if (and side (= (dir/axis side) (dir/axis (:facing props))))
-      (let [nst (chunk/at chunks (dir/toward pos side))]
-        (if-let [m (bell-props props side nst)]
-          (block/state (block/block-of st) (merge props m))
-          st))
+      (if-let [m (bell-props chunks pos props side)]
+        (block/state (block/block-of st) (merge props m))
+        st)
       st)))
 
 (defn- wire-reshaped
@@ -427,10 +434,10 @@
       (sided-reshapers t) ((sided-reshapers t) chunks pos st sides)
       (pos-reshapers t) ((pos-reshapers t) chunks pos st)
       (self-reshapers t) ((self-reshapers t) self st at)
-      (= :concrete-powder t) (powder-state st at)
+      (= :concrete-powder t) (powder-state chunks pos st)
       (contains? block/growing-plant-types t)
       (growing-plant-state pos st at tick sides)
-      :else (sides-state t self st at))))
+      :else (sides-state chunks pos t self st))))
 
 (defn reshape
   "Returns the new state of st at pos after a change on its sides, or

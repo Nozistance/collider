@@ -268,6 +268,21 @@ public final class ChunkIndex extends APersistentMap
         return assoc(id(x >> 4, z >> 4), n);
     }
 
+    /// Returns this index with the moving record at x, y, z set to
+    /// packed. The same index comes back when the chunk is absent or
+    /// was written in place.
+    public ChunkIndex withMoving(int x, int y, int z, long packed) {
+        Object c = find(root, span, prefixU, prefixV, x >> 4, z >> 4);
+        if (c == null) {
+            return this;
+        }
+        Chunk n = ((Chunk) c).withMoving(x, y, z, packed, token);
+        if (n == c) {
+            return this;
+        }
+        return assoc(id(x >> 4, z >> 4), n);
+    }
+
     /// Returns this index with each key of ids set to the value of
     /// values at the same place, removed where that value is null.
     public ChunkIndex withAll(long[] ids, Object[] values) {

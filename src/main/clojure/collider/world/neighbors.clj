@@ -676,7 +676,10 @@
     :shaped (let [[s st] (neighbour-shaped s ctx x y)]
               (reacted s ctx (z st) told-all update-limit))
     :signal (-> (set-chunks! s (chunk/chunks-set-signal (chunks s) x y))
-                (add-record! [x (block-at s x) [[:signal y]]]))))
+                (add-record! [x (block-at s x) [[:signal y]]]))
+    :moving (let [s (set-chunks!
+                      s (chunk/chunks-set-moving (chunks s) x y))]
+              (add-record! s [x (block-at s x) [[:moving y]]]))))
 
 (defn- stepped [s ctx o]
   (if (fn? o)
@@ -719,8 +722,10 @@
   tick of type ty at pos at tick at, [:shaped pos st f] shapes st at
   pos from its neighbours and runs the changes f gives the shaped
   state, and [:signal pos v] keeps v as
-  the signal of the comparator at pos. A step fn of chunks gives
-  the changes that follow the ops before it."
+  the signal of the comparator at pos. An op [:moving pos packed]
+  keeps packed as the moving record at pos. A packed of 0 clears
+  it. A step fn of chunks gives the changes that follow the ops
+  before it."
   [chunks ctx ops]
   (run-each chunks ctx ops stepped))
 

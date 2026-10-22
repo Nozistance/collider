@@ -249,9 +249,10 @@
     [(assoc m :in-ground? false :life 0 :ground-time 0) ds]
     [m ds]))
 
-(defn- body-move [w id e dv]
+(defn- body-move [w id e dv noclip]
   (let [[half height] (size/box e)
-        ctx (phys/context e)
+        clip (int (dir/index noclip))
+        ctx (Collision/withNoclip (int (phys/context e)) clip)
         mv (phys/move (:chunks w) (:pos e) dv half height (step-up e)
                       (boolean (:on-ground e)) ctx)]
     (cond (entity/player? e) [(player-moved dv mv) nil]
@@ -262,13 +263,14 @@
 (defn- moved
   "Returns [fields deltas] of body id, e, after a piston pushes it by
   amount along d."
-  [w id e d amount]
+  [w id e d amount noclip]
   (let [i (axis d)
         a (if (ahead? d) amount (- (double amount)))
         [left sums] (limited e (:tick w) i a)
+        step (assoc [0.0 0.0 0.0] i left)
         [m ds] (when-not (zero? (double left))
-                 (body-move w id e (assoc [0.0 0.0 0.0] i left)))]
-    [(assoc m :piston-deltas sums) ds]))
+                 (body-move w id e step noclip))]
+    [(when m (assoc m :piston-deltas sums)) ds]))
 
 (defn- pushed-by
   "Returns how far boxes going toward d push box b, at most dp."
@@ -294,7 +296,7 @@
       (let [r (+ 0.01 (reach base o b))
             ri (+ 0.01 (reach base o (intersection b base)))]
         (when (< (Math/abs (- r ri)) 0.01)
-          (moved w id e o (+ 0.01 (min r (double dp)))))))))
+          (moved w id e o (+ 0.01 (min r (double dp))) d))))))
 
 (defn- thrown [e d]
   (let [i (axis d) u (:vel e)]
@@ -318,7 +320,7 @@
       (not (pos? r)) (merged (when slime? {:vel (:vel b)}))
       (contains? hanging/types (:type e)) (broken w id e)
       :else
-      (let [[m ds] (moved w id b d (+ 0.01 (min r 0.5)))
+      (let [[m ds] (moved w id b d (+ 0.01 (min r 0.5)) d)
             [fix fds] (when (and (not (:extending? pe)) (:source? pe))
                         (kept-out w pos id (merge b m) d 0.5))]
         (concat (merged (merge (select-keys b [:vel]) m fix))
@@ -334,6 +336,59 @@
         ids (sections/within (sections/index w) (v/v3 x0 y0 z0)
                              (v/v3 x1 y1 z1))]
     (for [id ids :let [e (get es id)] :when (in? box e)] [id e])))
+
+(def ^:private ^:const honey-top 1.5000010000000001)
+
+(defn- shape-top ^double [^long st]
+  (let [^doubles b (Collision/boxes (block/collision-arr) (int st))]
+    (when (nil? b)
+      (throw (ex-info "a moved block has no shape" {:state st})))
+    (loop [i 10 m (aget b 4)]
+      (if (>= i (alength b))
+        m
+        (recur (+ i 6) (max m (aget b i)))))))
+
+(defn- sticky-box [pos e]
+  (let [n (double (:progress e))
+        k (* 0.5 (if (:extending? e) (- n 2.0) (- 2.0 n)))
+        o (dir/offset (:facing e))
+        at #(+ (double %1) (* k (double %2)))
+        [x y z] (mapv at pos o)
+        top (shape-top (long (:moved e)))]
+    [x (+ y top) z (+ x 1.0) (+ y honey-top) (+ z 1.0)]))
+
+(defn- rests? [chunks e pos]
+  (let [[half] (size/box e)
+        ctx (phys/context e)
+        s (phys/supporting-block chunks (:pos e) (double half) ctx)]
+    (= (mapv long pos) s)))
+
+(defn- over? [[x0 _ z0 x1 _ z1] e]
+  (let [x (double (v/x (:pos e)))
+        z (double (v/z (:pos e)))]
+    (and (>= x (double x0)) (<= x (double x1))
+         (>= z (double z0)) (<= z (double z1)))))
+
+(defn- dragged [w id e d]
+  (let [[m ds] (moved w id e d 0.5 d)
+        fields (merge (select-keys e [:vel]) m)]
+    (concat (when (seq m) [[:merge-entity id fields]]) ds)))
+
+(defn- flat? [d] (not (#{:down :up} d)))
+
+(defn- on-honey? [w pos box b]
+  (and (:on-ground b)
+       (or (rests? (:chunks w) b pos) (over? box b))))
+
+(defn stuck
+  "Returns the deltas of the bodies honey e at pos drags."
+  [w pos e]
+  (when (and (= :honey-block (block/block-of (:moved e)))
+             (flat? (movement e)))
+    (let [d (movement e) box (sticky-box pos e)]
+      (mapcat (fn [[id b]]
+                (when (on-honey? w pos box b) (dragged w id b d)))
+              (in-box w box)))))
 
 (defn pushes
   "Returns the deltas of the bodies moving piston e at pos pushes in

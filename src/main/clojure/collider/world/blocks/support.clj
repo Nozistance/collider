@@ -4,6 +4,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
+            [collider.world.phys :as phys]
             [collider.world.light :as light]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -31,8 +32,8 @@
   "Returns true when the block beside pos on side holds a block on its
   face toward pos."
   [chunks pos side]
-  (block/face-sturdy? (chunk/at chunks (dir/toward pos side))
-                      (dir/opposite side)))
+  (phys/face-holds? chunks (dir/toward pos side)
+                    (dir/opposite side)))
 
 (defn- center-below? [chunks pos _st]
   (let [b (below-void chunks pos)]
@@ -44,10 +45,10 @@
          (block/face-holds-center? a :down))))
 
 (defn- sturdy-below? [chunks pos _st]
-  (block/face-sturdy? (below chunks pos) :up))
+  (phys/face-holds? chunks (dir/down pos) :up))
 
 (defn- sturdy-above? [chunks pos _st]
-  (block/face-sturdy? (above chunks pos) :down))
+  (phys/face-holds? chunks (dir/up pos) :down))
 
 (defn- motion-below? [chunks pos _st]
   (block/blocks-motion? (below chunks pos)))
@@ -62,8 +63,8 @@
   (and (= (block/block-of below) (block/block-of st))
        (= :lower (:half (block/props-of below)))))
 
-(defn- seagrass-base? [^long below]
-  (and (block/face-sturdy? below :up)
+(defn- seagrass-base? [chunks pos ^long below]
+  (and (phys/face-holds? chunks (dir/down pos) :up)
        (not (block/tagged? below "cannot_support_seagrass"))))
 
 (def ^:private crop-types
@@ -111,7 +112,7 @@
   (let [t (block/type-of st) b (below chunks pos)]
     (cond
       (halved-vegetation t) (halved-held? t st b)
-      (= :seagrass t) (seagrass-base? b)
+      (= :seagrass t) (seagrass-base? chunks pos b)
       (= :cactus-flower t) (cactus-flower-held? chunks pos b)
       :else (block/tagged? b (vegetation-tag t st)))))
 
@@ -122,19 +123,20 @@
 (defn- kelp-held? [chunks pos _st]
   (let [b (below chunks pos)]
     (or (contains? kelp-types (block/type-of b))
-        (and (block/face-sturdy? b :up)
+        (and (phys/face-holds? chunks (dir/down pos) :up)
              (not (block/tagged? b "cannot_support_kelp"))))))
 
 (defn- tall-seagrass-held? [chunks pos ^long st]
   (let [b (below chunks pos)]
-    (if (upper? st) (lower-half-of? b st) (seagrass-base? b))))
+    (if (upper? st) (lower-half-of? b st)
+        (seagrass-base? chunks pos b))))
 
 (defn- fire-held? [chunks pos ^long st]
   (let [b (below chunks pos)]
     (if (= :soul-fire (block/type-of st))
       (block/tagged? b "soul_fire_base_blocks")
       (boolean
-        (or (block/face-sturdy? b :up)
+        (or (phys/face-holds? chunks (dir/down pos) :up)
             (some #(block/burnable? (chunk/at chunks (mapv + pos %)))
                   dir/around))))))
 
@@ -215,9 +217,10 @@
 (defn- growing-plant-held? [chunks pos ^long st]
   (let [{:keys [head body dir]}
         (block/growing-plant (block/type-of st))
-        n (chunk/at chunks (dir/toward pos (dir/opposite dir)))]
+        npos (dir/toward pos (dir/opposite dir))
+        n (chunk/at chunks npos)]
     (or (contains? #{head body} (block/block-of n))
-        (block/face-sturdy? n dir))))
+        (phys/face-holds? chunks npos dir))))
 
 (defn connected-direction
   "Returns the side of a block hung by its face, such as a lever,
@@ -234,7 +237,7 @@
     (if (= :wall-hanging-sign (block/type-of n))
       (= (#{:north :south} (block/facing-of n))
          (#{:north :south} (block/facing-of st)))
-      (block/face-sturdy? n attach-face))))
+      (phys/face-holds? chunks attach-pos attach-face))))
 
 (defn- hanging-sign-held? [chunks pos st]
   (let [f (block/facing-of st)
@@ -260,8 +263,8 @@
 
 (defn- cluster-held? [chunks pos st]
   (let [f (block/facing-of st)
-        n (chunk/at chunks (dir/toward pos (dir/opposite f)))]
-    (block/face-sturdy? n f)))
+        npos (dir/toward pos (dir/opposite f))]
+    (phys/face-holds? chunks npos f)))
 
 (defn- cocoa-held? [chunks pos st]
   (let [n (chunk/at chunks (dir/toward pos (block/facing-of st)))]
@@ -289,7 +292,9 @@
 
 (defn- sea-pickle-held? [chunks pos _st]
   (let [b (below-void chunks pos)]
-    (or (neg? b) (block/face-sturdy? b :up) (block/full-cube? b))))
+    (or (neg? b)
+        (phys/face-holds? chunks (dir/down pos) :up)
+        (block/full-cube? b))))
 
 (defn- spore-blossom-held? [chunks pos st]
   (and (center-above? chunks pos st)
@@ -308,7 +313,7 @@
 (defn- wire-held? [chunks pos _st]
   (let [b (below-void chunks pos)]
     (or (neg? b)
-        (block/face-sturdy? b :up)
+        (phys/face-holds? chunks (dir/down pos) :up)
         (= :hopper (block/block-of b)))))
 
 (defn- vine-held? [chunks pos st] (pos? (vine/updated chunks pos st)))

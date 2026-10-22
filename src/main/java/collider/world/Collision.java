@@ -28,6 +28,8 @@ public final class Collision {
     /// The kind of a state offset by up to an eighth of a block.
     public static final byte OFFSET_EIGHTH = 5;
 
+    public static final byte MOVING = 6;
+
     public static final int DESCENDING = 1;
 
     /// The flag of a body that falls more than 2.5 blocks.
@@ -37,6 +39,8 @@ public final class Collision {
     public static final int WALKER = 4;
 
     public static final int FALLING_BLOCK = 8;
+
+    public static final int NOCLIP = 4;
 
     /// Returns the boxes of st at the origin as an empty context
     /// meets them, or null when it has none. A state past the end of
@@ -50,6 +54,15 @@ public final class Collision {
         }
         double[] b = (double[]) shapes[st];
         return b.length == 0 ? null : b;
+    }
+
+    public static int withNoclip(int flags, int direction) {
+        return (flags & ~(7 << NOCLIP)) | ((direction + 1) << NOCLIP);
+    }
+
+    public static int noclip(int flags) {
+        int v = (flags >>> NOCLIP) & 7;
+        return v == 0 ? -1 : v - 1;
     }
 
     /// Returns the kind of st, PLAIN for a state that kinds lacks.
@@ -161,6 +174,95 @@ public final class Collision {
                 && box[4] > a[o + 1]
                 && a[o + 5] > box[2]
                 && box[5] > a[o + 2];
+    }
+
+    private static final int[] STEP_X = {0, 0, 0, 0, -1, 1};
+
+    private static final int[] STEP_Y = {-1, 1, 0, 0, 0, 0};
+
+    private static final int[] STEP_Z = {0, 0, -1, 1, 0, 0};
+
+    private static double[] shift(double[] b, double dx, double dy, double dz) {
+        if (b == null || (dx == 0.0 && dy == 0.0 && dz == 0.0)) {
+            return b;
+        }
+        double[] m = b.clone();
+        for (int k = 0; k < m.length; k += 6) {
+            m[k] += dx;
+            m[k + 1] += dy;
+            m[k + 2] += dz;
+            m[k + 3] += dx;
+            m[k + 4] += dy;
+            m[k + 5] += dz;
+        }
+        return m;
+    }
+
+    private static double[] join(double[] a, double[] b) {
+        if (a == null) {
+            return b;
+        }
+        if (b == null) {
+            return a;
+        }
+        double[] m = new double[a.length + b.length];
+        System.arraycopy(a, 0, m, 0, a.length);
+        System.arraycopy(b, 0, m, a.length, b.length);
+        return m;
+    }
+
+    private static boolean covers(double lo, double hi) {
+        return lo <= EPSILON && hi >= 1.0 - EPSILON;
+    }
+
+    /// Returns true when one box of boxes covers the whole unit face
+    /// direction. direction is a face index.
+    public static boolean faceFull(double[] boxes, int direction) {
+        if (boxes == null) {
+            return false;
+        }
+        int axis = direction < 2 ? 1 : (direction < 4 ? 2 : 0);
+        boolean positive = (direction & 1) == 1;
+        int u = (axis + 1) % 3;
+        int v = (axis + 2) % 3;
+        for (int k = 0; k < boxes.length; k += 6) {
+            double lo = boxes[k + axis];
+            double hi = boxes[k + axis + 3];
+            boolean touch = positive ? hi >= 1.0 - EPSILON : lo <= EPSILON;
+            if (touch && covers(boxes[k + u], boxes[k + u + 3])
+                    && covers(boxes[k + v], boxes[k + v + 3])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns the boxes of moving record packed, relative to its
+    /// cell, or null when it has none. A facing above 5 or a progress
+    /// above 2 throws.
+    public static double[] moving(Object[] shapes, long packed, int flags) {
+        if (packed == 0L) {
+            return null;
+        }
+        int shape = (int) (packed & 0xFFFFFL);
+        int base = (int) ((packed >>> 20) & 0xFFFFFL);
+        int facing = (int) ((packed >>> 40) & 7L);
+        int progress = (int) ((packed >>> 43) & 3L);
+        boolean extending = ((packed >>> 45) & 1L) != 0;
+        if (facing > 5 || progress > 2) {
+            throw new IllegalArgumentException("moving " + packed);
+        }
+        int movement = extending ? facing : (facing ^ 1);
+        double[] baseBoxes = base == 0 ? null : boxes(shapes, base);
+        if (progress < 2 && noclip(flags) == movement) {
+            return baseBoxes;
+        }
+        float p = (float) progress * 0.5f;
+        float ext = extending ? p - 1.0f : 1.0f - p;
+        double dx = (double) ((float) STEP_X[facing] * ext);
+        double dy = (double) ((float) STEP_Y[facing] * ext);
+        double dz = (double) ((float) STEP_Z[facing] * ext);
+        return join(baseBoxes, shift(boxes(shapes, shape), dx, dy, dz));
     }
 
     /// Returns the y coordinates in ys of the boxes that the methods

@@ -2,7 +2,9 @@
   "The moves of a piston on its block events and the ticks of the
   blocks it moves."
   (:require [collider.cell :as cell]
+            [collider.game.apply :as apply]
             [collider.game.changes :as changes]
+            [collider.game.block.moving :as moving]
             [collider.game.block.piston-push :as push]
             [collider.game.out :as out]
             [collider.hash-order :as hash-order]
@@ -58,14 +60,17 @@
             op)))
 
 (defn- carried [chunks q d f ext?]
-  [:set [(dir/toward q d) (moving f :normal)
-         [[:carry (moved (chunk/at chunks q) f ext? false)]]]
-   324])
+  (let [p (dir/toward q d)
+        e (moved (chunk/at chunks q) f ext? false)]
+    [[:set [p (moving f :normal) [[:carry e]]] 324]
+     [:moving p (moving/packed e)]]))
 
 (defn- arm-ops [pos f t]
   (let [arm (dir/toward pos f)
-        m (moving f t)]
-    [[:set [arm m [[:carry (moved (head f t) f true true)]]] 324]]))
+        m (moving f t)
+        e (moved (head f t) f true true)]
+    [[:set [arm m [[:carry e]]] 324]
+     [:moving arm (moving/packed e)]]))
 
 (defn- move-ops
   "Returns the ops of moveBlocks of the piston at pos facing f of
@@ -78,7 +83,7 @@
     (concat
       (for [[q o] gone]
         [:set [q 0 [[:drop o] [:game-event :block-destroy nil]]] 18])
-      (for [q (rseq push)] (carried chunks q d f ext?))
+      (mapcat #(carried chunks % d f ext?) (rseq push))
       (when ext? (arm-ops pos f t))
       (left-ops left)
       (for [[q o] gone
@@ -166,6 +171,7 @@
       (changes/set-deltas
         w (concat (when (early? e) [(final-step arm e)])
                   [[:set [pos m [[:carry base]]] 276]
+                   [:moving pos (moving/packed base)]
                    [:notify pos nil m] [:shapes pos m 2]
                    (if (= :sticky t)
                      (pulled w pos f b0)
@@ -205,8 +211,10 @@
   [w [pos e]]
   (let [n (long (:progress e))]
     (if (< n 2)
-      (conj (vec (push/pushes w pos e))
-            [:set-block-entity pos
-             (assoc e :progress-o n :progress (inc n)
-                    :ticked (:tick w))])
+      (let [pushed (vec (push/pushes w pos e))
+            seen (apply/entities w pushed)]
+        (conj (into pushed (push/stuck seen pos e))
+              [:set-block-entity pos
+               (assoc e :progress-o n :progress (inc n)
+                      :ticked (:tick w))]))
       (finished w pos e))))

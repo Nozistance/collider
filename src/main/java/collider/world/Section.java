@@ -28,10 +28,12 @@ public final class Section {
     private final byte[] bl;
     private final byte[] sl;
     private final byte[] sg;
+    private final short[] mi;
+    private final long[] mv;
     private final Object token;
 
     private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl, byte[] sg) {
-        this(bits, pal, data, bl, sl, sg, null);
+        this(bits, pal, data, bl, sl, sg, null, null, null);
     }
 
     private Section(
@@ -41,6 +43,8 @@ public final class Section {
             byte[] bl,
             byte[] sl,
             byte[] sg,
+            short[] mi,
+            long[] mv,
             Object token
     ) {
         this.token = token;
@@ -52,6 +56,8 @@ public final class Section {
         this.bl = bl;
         this.sl = sl;
         this.sg = sg;
+        this.mi = mi;
+        this.mv = mv;
     }
 
     private static byte[] filled() {
@@ -188,12 +194,14 @@ public final class Section {
             return false;
         }
         return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl)
-                && Arrays.equals(sg, o.sg) && sameBlocks(o);
+                && Arrays.equals(sg, o.sg) && Arrays.equals(mi, o.mi)
+                && Arrays.equals(mv, o.mv) && sameBlocks(o);
     }
 
     @Override
     public int hashCode() {
         int h = 31 * (31 * Arrays.hashCode(bl) + Arrays.hashCode(sl)) + Arrays.hashCode(sg);
+        h = 31 * (31 * h + Arrays.hashCode(mi)) + Arrays.hashCode(mv);
         for (int i = 0; i < SIZE; i++) {
             h = 31 * h + block(i);
         }
@@ -297,7 +305,77 @@ public final class Section {
         byte[] a = sg == null ? new byte[LIGHT] : sg.clone();
         setNibble(a, i, v);
         Object t = token != null && this.token == token ? token : null;
-        return new Section(bits, pal, data, bl, sl, canon(a), t);
+        return new Section(bits, pal, data, bl, sl, canon(a), mi, mv, t);
+    }
+
+    /// Returns the moving record at index i, 0 where none is kept.
+    public long moving(int i) {
+        if (mi == null) {
+            return 0L;
+        }
+        int k = Arrays.binarySearch(mi, (short) i);
+        return k < 0 ? 0L : mv[k];
+    }
+
+    /// Returns this section with the moving record at index i set to
+    /// packed. A packed of 0 clears it. The records are copied. A
+    /// section owned by token stays owned.
+    public Section withMoving(int i, long packed, Object token) {
+        if (i < 0 || i >= SIZE) {
+            throw new IllegalArgumentException("move " + i);
+        }
+        int k = mi == null ? -1 : Arrays.binarySearch(mi, (short) i);
+        if (packed == 0L) {
+            return k < 0 ? this : cleared(k, token);
+        }
+        if (k >= 0 && mv[k] == packed) {
+            return this;
+        }
+        return stored(i, packed, k, token);
+    }
+
+    private Section stored(int i, long packed, int k, Object token) {
+        int n = mi == null ? 0 : mi.length;
+        int at = k >= 0 ? k : -k - 1;
+        short[] ni = new short[k >= 0 ? n : n + 1];
+        long[] nv = new long[ni.length];
+        if (at > 0) {
+            System.arraycopy(mi, 0, ni, 0, at);
+            System.arraycopy(mv, 0, nv, 0, at);
+        }
+        ni[at] = (short) i;
+        nv[at] = packed;
+        int from = k >= 0 ? at + 1 : at;
+        int rest = n - from;
+        if (rest > 0) {
+            System.arraycopy(mi, from, ni, at + 1, rest);
+            System.arraycopy(mv, from, nv, at + 1, rest);
+        }
+        return moved(ni, nv, token);
+    }
+
+    private Section cleared(int k, Object token) {
+        int n = mi.length - 1;
+        if (n == 0) {
+            return moved(null, null, token);
+        }
+        short[] ni = new short[n];
+        long[] nv = new long[n];
+        if (k > 0) {
+            System.arraycopy(mi, 0, ni, 0, k);
+            System.arraycopy(mv, 0, nv, 0, k);
+        }
+        int rest = n - k;
+        if (rest > 0) {
+            System.arraycopy(mi, k + 1, ni, k, rest);
+            System.arraycopy(mv, k + 1, nv, k, rest);
+        }
+        return moved(ni, nv, token);
+    }
+
+    private Section moved(short[] ni, long[] nv, Object token) {
+        Object t = token != null && this.token == token ? token : null;
+        return new Section(bits, pal, data, bl, sl, sg, ni, nv, t);
     }
 
     /// Returns how many bits each packed palette index takes.
@@ -367,13 +445,13 @@ public final class Section {
     /// Returns this section with block light a, 2048 bytes or null for
     /// dark.
     public Section withBlockLight(byte[] a) {
-        return new Section(bits, pal, data, canon(a), sl, sg);
+        return new Section(bits, pal, data, canon(a), sl, sg, mi, mv, null);
     }
 
     /// Returns this section with sky light a, 2048 bytes or null for
     /// dark.
     public Section withSkyLight(byte[] a) {
-        return new Section(bits, pal, data, bl, canon(a), sg);
+        return new Section(bits, pal, data, bl, canon(a), sg, mi, mv, null);
     }
 
     /// Returns an all-air section with the bottom layer of sky light
@@ -414,7 +492,7 @@ public final class Section {
     }
 
     private Section owned(Object t) {
-        return t == token ? this : new Section(bits, pal, data, bl, sl, sg, t);
+        return t == token ? this : new Section(bits, pal, data, bl, sl, sg, mi, mv, t);
     }
 
     /// Returns this section with the blocks at the first n entries of
@@ -478,7 +556,7 @@ public final class Section {
             v[i] = nb == GLOBAL_BITS ? np[q] : q;
         }
         int[] kept = nb == GLOBAL_BITS ? null : np;
-        return new Section(nb, kept, pack(nb, v), bl, sl, sg);
+        return new Section(nb, kept, pack(nb, v), bl, sl, sg, mi, mv, null);
     }
 
     private int used(long[] d, int[] remap) {
@@ -499,7 +577,7 @@ public final class Section {
 
     private Section settle(long[] d, int[] p) {
         if (bits == 0) {
-            return new Section(0, p, null, bl, sl, sg);
+            return new Section(0, p, null, bl, sl, sg, mi, mv, null);
         }
         if (p == null) {
             return settleGlobal(d);
@@ -508,7 +586,7 @@ public final class Section {
         if (uniform(d, q0)) {
             return single(p[q0], bl, sl, sg);
         }
-        return new Section(bits, p, d, bl, sl, sg);
+        return new Section(bits, p, d, bl, sl, sg, mi, mv, null);
     }
 
     private boolean uniform(long[] d, int q) {
@@ -535,7 +613,7 @@ public final class Section {
         int[] ids = new int[MAX_PALETTE + 1];
         int[] ix = new int[SIZE];
         if (scan(v, ids, ix) > MAX_PALETTE) {
-            return new Section(bits, null, d, bl, sl, sg);
+            return new Section(bits, null, d, bl, sl, sg, mi, mv, null);
         }
         return build(v, bl, sl, sg);
     }
@@ -660,6 +738,12 @@ public final class Section {
         saveLight(out, bl);
         saveLight(out, sl);
         saveLight(out, sg);
+        int n = mi == null ? 0 : mi.length;
+        out.writeShort(n);
+        for (int k = 0; k < n; k++) {
+            out.writeShort(mi[k]);
+            out.writeLong(mv[k]);
+        }
     }
 
     private static void saveLight(DataOutput out, byte[] a) throws IOException {
@@ -685,7 +769,24 @@ public final class Section {
         byte[] sl = loadLight(in);
         byte[] sg = loadLight(in);
         long[] d = bits == 0 ? null : data;
-        return new Section(bits, pal, d, bl, sl, sg);
+        int n = in.readUnsignedShort();
+        if (n > SIZE) {
+            throw new IOException("section moves " + n);
+        }
+        short[] mi = n == 0 ? null : new short[n];
+        long[] mv = n == 0 ? null : new long[n];
+        int prev = -1;
+        for (int k = 0; k < n; k++) {
+            int i = in.readUnsignedShort();
+            long packed = in.readLong();
+            if (i <= prev || i >= SIZE || packed == 0L) {
+                throw new IOException("section move " + i);
+            }
+            mi[k] = (short) i;
+            mv[k] = packed;
+            prev = i;
+        }
+        return new Section(bits, pal, d, bl, sl, sg, mi, mv, null);
     }
 
     private static int[] loadPalette(DataInput in, int bits) throws IOException {

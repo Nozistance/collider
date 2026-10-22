@@ -4,9 +4,11 @@
             [collider.data.state :as states]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir])
   (:import (collider V3)
-           (collider.world ChunkIndex Collision Move Phys YCoords)))
+           (collider.world Chunk ChunkIndex Collision)
+           (collider.world Move Phys YCoords)))
 
 (set! *warn-on-reflection* true)
 
@@ -76,6 +78,7 @@
     :powder-snow Collision/POWDER_SNOW
     :bamboo-stalk Collision/OFFSET_QUARTER
     (:pointed-dripstone :sulfur-spike) Collision/OFFSET_EIGHTH
+    :moving-piston Collision/MOVING
     Collision/PLAIN))
 
 (def ^:private ^:table kind-table
@@ -87,6 +90,28 @@
 (defn kinds
   "Returns the collision kind of every block state by state id."
   ^bytes [] @kind-table)
+
+(defn- moving-shape [^ChunkIndex chunks pos]
+  (Collision/moving
+    (block/collision-arr)
+    (Chunk/movingAt chunks
+                    (unchecked-int (long (pos 0)))
+                    (unchecked-int (long (pos 1)))
+                    (unchecked-int (long (pos 2))))
+    (int 0)))
+
+(defn- moving? [^long st]
+  (= (int Collision/MOVING)
+     (int (aget ^bytes (kinds) (int st)))))
+
+(defn face-holds?
+  "Returns true when face of the block at pos holds a block."
+  [^ChunkIndex chunks pos face]
+  (let [st (chunk/at chunks pos)
+        d (int (dir/index face))]
+    (if (moving? st)
+      (Collision/faceFull (moving-shape chunks pos) d)
+      (block/face-sturdy? st face))))
 
 (defn- doubles-of [v] (when v (double-array v)))
 

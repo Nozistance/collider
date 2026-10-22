@@ -290,6 +290,17 @@
   (.withSignal chunks (unchecked-int x) (unchecked-int y)
                (unchecked-int z) (unchecked-int v)))
 
+(defn chunks-set-moving
+  "Returns chunks with the moving record at p set to packed.
+  A packed of 0 clears it. A change in an absent chunk is dropped."
+  ^ChunkIndex [^ChunkIndex chunks [x y z] packed]
+  (let [packed (long packed)]
+    (when (neg? packed)
+      (throw (ex-info "a moving record is negative"
+                      {:pos [x y z] :packed packed})))
+    (.withMoving chunks (unchecked-int x) (unchecked-int y)
+                 (unchecked-int z) packed)))
+
 (defn changed
   "Returns the changes [pos st] that alter a block of chunks inside
   the height of level lv, as [pos old st] in order. A change sees the

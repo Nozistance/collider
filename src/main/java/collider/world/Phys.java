@@ -20,6 +20,9 @@ public final class Phys {
     private static final ThreadLocal<double[]> BOX =
             ThreadLocal.withInitial(() -> new double[6]);
 
+    private static final ThreadLocal<long[]> CELLS =
+            ThreadLocal.withInitial(() -> new long[768]);
+
     /// Returns d clamped so that the box ebox moving by d along axis
     /// stops on the face of the nearest of the n boxes in a.
     private static double clampAll(
@@ -130,10 +133,14 @@ public final class Phys {
             long y,
             long z,
             double bottom,
-            int flags
+            int flags,
+            long packed
     ) {
         if (st <= 0) {
             return null;
+        }
+        if (Collision.kind(kinds, st) == Collision.MOVING) {
+            return Collision.moving(shapes, packed, flags);
         }
         if (st < cube.length && cube[st]) {
             return Collision.CUBE;
@@ -152,6 +159,18 @@ public final class Phys {
                 );
     }
 
+    private static void remember(int n, long x, long y, long z) {
+        long[] c = CELLS.get();
+        int i = n * 3;
+        if (i + 3 > c.length) {
+            c = Arrays.copyOf(c, Math.max(c.length * 2, i + 3));
+            CELLS.set(c);
+        }
+        c[i] = x;
+        c[i + 1] = y;
+        c[i + 2] = z;
+    }
+
     private static int putBoxes(double[] a, int n, double[] s, long x, long y, long z) {
         for (int k = 0; k < s.length; k += 6) {
             int o = n * 6;
@@ -161,6 +180,7 @@ public final class Phys {
             a[o + 3] = x + s[k + 3];
             a[o + 4] = y + s[k + 4];
             a[o + 5] = z + s[k + 5];
+            remember(n, x, y, z);
             n++;
         }
         return n;
@@ -177,12 +197,15 @@ public final class Phys {
             long y,
             long z,
             double bottom,
-            int flags
+            int flags,
+            long packed
     ) {
         if (st <= 0) {
             return n;
         }
-        if (st < cube.length && cube[st]) {
+        if (Collision.kind(kinds, st) != Collision.MOVING
+                && st < cube.length
+                && cube[st]) {
             int o = n * 6;
             a[o] = x;
             a[o + 1] = y;
@@ -190,9 +213,12 @@ public final class Phys {
             a[o + 3] = x + 1.0;
             a[o + 4] = y + 1.0;
             a[o + 5] = z + 1.0;
+            remember(n, x, y, z);
             return n + 1;
         }
-        double[] s = shapeOf(st, kinds, cube, shapes, x, y, z, bottom, flags);
+        double[] s = shapeOf(
+                st, kinds, cube, shapes, x, y, z, bottom, flags, packed
+        );
         return s == null ? n : putBoxes(a, n, s, x, y, z);
     }
 
@@ -247,8 +273,8 @@ public final class Phys {
         long y1 = Math.max(Chunk.MIN_Y, loBound(ebox[1], vy) - 1);
         long y2 = Math.min(Chunk.MAX_Y, hiBound(ebox[4], vy));
         long z1 = loBound(ebox[2], vz), z2 = hiBound(ebox[5], vz);
-        long cells = (x2 - x1 + 1) * (Math.max(y1, y2) - y1 + 1) * (z2 - z1 + 1);
-        double[] a = buffer(96 * Math.max(1, cells));
+        long wide = (x2 - x1 + 3) * (Math.max(y1, y2) - y1 + 3) * (z2 - z1 + 3);
+        double[] a = buffer(96 * Math.max(1, wide));
         int n = 0;
         long ckey = -1;
         Section s = null;
@@ -260,8 +286,95 @@ public final class Phys {
                         s = Chunk.sectionAt(chunks, (int) x, (int) y, (int) z);
                         ckey = k;
                     }
-                    int st = s == null ? 0 : s.block(cellIndex(x, y, z));
-                    n = putBlock(a, n, st, kinds, cube, shapes, x, y, z, bottom, flags);
+                    int i = cellIndex(x, y, z);
+                    int st = s == null ? 0 : s.block(i);
+                    long mv = record(s, kinds, st, i);
+                    n = putBlock(
+                            a, n, st, kinds, cube, shapes, x, y, z, bottom, flags, mv
+                    );
+                }
+            }
+        }
+        long iy1 = loBound(ebox[1], vy);
+        long iy2 = hiBound(ebox[4], vy);
+        return around(
+                a, n, chunks, kinds, shapes, x1, x2, iy1, iy2, z1, z2, y1, y2, flags
+        );
+    }
+
+    private static long record(Section s, byte[] kinds, int st, int i) {
+        if (s == null || Collision.kind(kinds, st) != Collision.MOVING) {
+            return 0L;
+        }
+        return s.moving(i);
+    }
+
+    private static int putMoving(
+            double[] a,
+            int n,
+            Section s,
+            byte[] kinds,
+            Object[] shapes,
+            long x,
+            long y,
+            long z,
+            int flags
+    ) {
+        if (s == null) {
+            return n;
+        }
+        int i = cellIndex(x, y, z);
+        int st = s.block(i);
+        if (Collision.kind(kinds, st) != Collision.MOVING) {
+            return n;
+        }
+        double[] b = Collision.moving(shapes, s.moving(i), flags);
+        return b == null ? n : putBoxes(a, n, b, x, y, z);
+    }
+
+    private static int around(
+            double[] a,
+            int n,
+            ChunkIndex chunks,
+            byte[] kinds,
+            Object[] shapes,
+            long ix1,
+            long ix2,
+            long iy1,
+            long iy2,
+            long iz1,
+            long iz2,
+            long yLo,
+            long yHi,
+            int flags
+    ) {
+        long x0 = ix1 - 1, x1 = ix2 + 1;
+        long y0 = iy1 - 1, y1 = iy2 + 1;
+        long z0 = iz1 - 1, z1 = iz2 + 1;
+        long yFrom = Math.max(Chunk.MIN_Y, y0);
+        long yTo = Math.min(Chunk.MAX_Y, y1);
+        long ckey = -1;
+        Section s = null;
+        for (long x = x0; x <= x1; x++) {
+            boolean ox = x == x0 || x == x1;
+            for (long z = z0; z <= z1; z++) {
+                boolean oz = z == z0 || z == z1;
+                for (long y = yFrom; y <= yTo; y++) {
+                    boolean oy = y == y0 || y == y1;
+                    int edge = (ox ? 1 : 0) + (oy ? 1 : 0) + (oz ? 1 : 0);
+                    if (edge == 0 || edge == 3) {
+                        continue;
+                    }
+                    if (x >= ix1 && x <= ix2 && z >= iz1 && z <= iz2
+                            && y >= yLo && y <= yHi) {
+                        continue;
+                    }
+                    long k = sectionKey(x, y, z);
+                    if (k != ckey) {
+                        s = Chunk.sectionAt(chunks, (int) x, (int) y, (int) z);
+                        ckey = k;
+                    }
+                    n = putMoving(a, n, s, kinds, shapes, x, y, z, flags);
                 }
             }
         }
@@ -297,8 +410,8 @@ public final class Phys {
         long y1 = Math.max(Chunk.MIN_Y, loBound(ebox[1], 0.0) - 1);
         long y2 = Math.min(Chunk.MAX_Y, hiBound(ebox[4], 0.0));
         long z1 = loBound(ebox[2], 0.0), z2 = hiBound(ebox[5], 0.0);
-        long cells = (x2 - x1 + 1) * (Math.max(y1, y2) - y1 + 1) * (z2 - z1 + 1);
-        double[] a = buffer(96 * Math.max(1, cells));
+        long wide = (x2 - x1 + 3) * (Math.max(y1, y2) - y1 + 3) * (z2 - z1 + 3);
+        double[] a = buffer(96 * Math.max(1, wide));
         int n = 0;
         long ckey = -1;
         Section s = null;
@@ -310,8 +423,12 @@ public final class Phys {
                         s = Chunk.sectionAt(chunks, (int) x, (int) y, (int) z);
                         ckey = k;
                     }
-                    int st = s == null ? 0 : s.block(cellIndex(x, y, z));
-                    double[] b = shapeOf(st, kinds, cube, shapes, x, y, z, bottom, flags);
+                    int i = cellIndex(x, y, z);
+                    int st = s == null ? 0 : s.block(i);
+                    long mv = record(s, kinds, st, i);
+                    double[] b = shapeOf(
+                            st, kinds, cube, shapes, x, y, z, bottom, flags, mv
+                    );
                     if (b == null) {
                         continue;
                     }
@@ -323,7 +440,11 @@ public final class Phys {
                 }
             }
         }
-        return n;
+        long iy1 = loBound(ebox[1], 0.0);
+        long iy2 = hiBound(ebox[4], 0.0);
+        return around(
+                a, n, chunks, kinds, shapes, x1, x2, iy1, iy2, z1, z2, y1, y2, flags
+        );
     }
 
     /// Returns true when no cell a body box of half width half and
@@ -467,13 +588,14 @@ public final class Phys {
         double[] box = {x - half, y - 1.0E-6, z - half, x + half, y, z + half};
         int n = swept(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0, y, flags);
         double[] a = BUF.get();
+        long[] cells = CELLS.get();
         long[] best = null;
         double bd = Double.MAX_VALUE;
         for (int i = 0; i < n; i++) {
             int o = 6 * i;
-            long bx = (long) Math.floor(a[o]);
-            long by = (long) Math.floor(a[o + 1]);
-            long bz = (long) Math.floor(a[o + 2]);
+            long bx = cells[3 * i];
+            long by = cells[3 * i + 1];
+            long bz = cells[3 * i + 2];
             double dx = (bx + 0.5) - x;
             double dy = (by + 0.5) - y;
             double dz = (bz + 0.5) - z;

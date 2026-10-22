@@ -5,6 +5,7 @@
   (:require [collider.cell :as cell]
             [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.moving :as moving]
             [collider.game.block.pois :as pois]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
@@ -36,7 +37,8 @@
         (update-in [:block-entities (chunk/block-chunk pos)]
                    dissoc pos))
       (update :openers dissoc pos)
-      (update :tickers tickers/without pos)))
+      (update :tickers tickers/without pos)
+      (update :chunks chunk/chunks-set-moving pos 0)))
 
 (defn- reticked [w pos]
   (let [e (be/at w pos)
@@ -221,13 +223,23 @@
         (update :unknown dissoc id)
         (update :stored (fnil conj (lm/long-set)) id))))
 
+(defn set-moving
+  "Returns level w with the moving record at pos set to packed.
+  A packed of 0 clears it."
+  [w [_ pos packed]]
+  (update w :chunks chunk/chunks-set-moving pos packed))
+
+(defn- moving-written [w pos e]
+  (update w :chunks chunk/chunks-set-moving pos (moving/packed e)))
+
 (defn set-block-entity
   "Returns level w after the delta [:set-block-entity pos e]."
   [w [_ pos e]]
   (if (and e (be/kind (chunk/at (:chunks w) pos)))
     (-> w
         (assoc-in [:block-entities (chunk/block-chunk pos) pos] e)
-        (reticked pos))
+        (reticked pos)
+        (cond-> (= :piston (:kind e)) (moving-written pos e)))
     (drop-block-entity w pos)))
 
 (defn advance-weather
