@@ -1,8 +1,9 @@
 (ns collider.game.block.dispenser
   "A dispenser tick spits one plain item along its facing, pours
-  or fills a bucket, primes tnt in front of it, or clicks when
-  the dispenser is empty."
+  or fills a bucket, primes tnt, sets a boat on water, or clicks
+  when the dispenser is empty."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.boat :as boat]
             [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
             [collider.game.item :as item]
@@ -237,9 +238,23 @@
         (let [[left extra] (opened stack (bucket (:item placed)))]
           (with-bucket placed world pos facing e items i left extra))))))
 
+(defn- boat-fired [world pos facing e items i stack]
+  (when (entity/boat? (:item stack))
+    (let [off (boat/offset (:chunks world) pos facing)]
+      (if (nil? off)
+        [(into (shot-deltas world pos facing e items i)
+               (report pos facing :sound-dispenser-dispense))
+         []]
+        (let [born (boat/entity pos facing off (:item stack))
+              box (assoc e :items (assoc items i (shrink stack)))]
+          [(into [[:set-block-entity pos box] [:spawn-entity born]]
+                 (report pos facing :sound-dispenser-dispense))
+           []])))))
+
 (defn- chosen [world pos facing e items i]
   (let [stack (nth items i)]
-    (or (tnt-fired world pos facing e items i stack)
+    (or (boat-fired world pos facing e items i stack)
+        (tnt-fired world pos facing e items i stack)
         (liquid-fired world pos facing e items i stack)
         [(shot-deltas world pos facing e items i) []])))
 

@@ -29,7 +29,8 @@
 (def ^:private tracked-types
   (into #{:player :item :tnt :falling-block :area-effect-cloud
           :experience-orb :lightning-bolt}
-        cat [entity/thrown-types hanging/types (keys mobs/types)]))
+        cat [entity/thrown-types entity/boat-types hanging/types
+             (keys mobs/types)]))
 
 (defn- tracked? [e]
   (contains? tracked-types (:type e)))

@@ -56,6 +56,7 @@
      (fn [e] {:radius (:radius e) :color (:color e)
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
+    (zipmap entity/boat-types (repeat (constantly {})))
     {:wind-charge (constantly {})
      :arrow tipped-metadata
      :spectral-arrow arrow-metadata

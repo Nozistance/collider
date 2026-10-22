@@ -18,8 +18,8 @@
         entity/thrown-types))
 
 (def ^:private ^:table entity-type
-  (delay (zipmap kinds
-                 (map #(data/registry-id "entity_type" %) kinds))))
+  (delay (let [ks (into kinds entity/boat-types)]
+           (zipmap ks (map #(data/registry-id "entity_type" %) ks)))))
 
 (def ^:private ^:table entity-effect-particle
   (delay (data/registry-id "particle_type" :entity-effect)))
@@ -29,7 +29,9 @@
   cannot show yet goes as :player."
   [e]
   (let [t (:type e)]
-    (if (contains? kinds t) t :player)))
+    (cond (contains? kinds t) t
+          (entity/boat? t) t
+          :else :player)))
 
 (def ^:private shared-flags
   {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5

@@ -21,6 +21,22 @@
     :experience-bottle :wind-charge :firework-rocket :arrow
     :spectral-arrow})
 
+(def boat-types
+  "Boats, chest boats and rafts."
+  #{:oak-boat :spruce-boat :birch-boat :jungle-boat
+    :acacia-boat :dark-oak-boat :mangrove-boat
+    :cherry-boat :pale-oak-boat :bamboo-raft
+    :oak-chest-boat :spruce-chest-boat :birch-chest-boat
+    :jungle-chest-boat :acacia-chest-boat
+    :dark-oak-chest-boat :mangrove-chest-boat
+    :cherry-chest-boat :pale-oak-chest-boat
+    :bamboo-chest-raft})
+
+(defn boat?
+  "Returns true when type is a boat, chest boat or raft."
+  [type]
+  (contains? boat-types type))
+
 (def ^:private arrow-types #{:arrow :spectral-arrow})
 
 (defn saveable?
