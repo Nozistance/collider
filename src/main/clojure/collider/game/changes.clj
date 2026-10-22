@@ -4,6 +4,7 @@
             [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.dispenser :as dispenser]
+            [collider.game.block.dropper :as dropper]
             [collider.game.block.instrument :as instrument]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
@@ -149,15 +150,24 @@
 
 (declare change-deltas entities-changed-deltas)
 
+(defn- launched [world pos]
+  (if (= :dropper (block/type-of (chunk/at (:chunks world) pos)))
+    [(dropper/fired world pos) []]
+    (dispenser/fired world pos)))
+
+(defn- signal-ops [sets]
+  (mapv (fn [p] [:output-signal p])
+        (distinct (map second sets))))
+
 (defn- dispensed [world pos]
-  (let [[raw edits] (dispenser/fired world pos)
+  (let [[raw edits] (launched world pos)
         ds (into (vec raw) (when (seq edits)
                              (change-deltas world edits)))
         set? #(= :set-block-entity (first %))
         sets (filterv set? ds)]
     (if (empty? sets)
       ds
-      (concat (entities-changed-deltas world sets [[:output-signal pos]]
+      (concat (entities-changed-deltas world sets (signal-ops sets)
                                        (:tick world))
               (remove set? ds)))))
 

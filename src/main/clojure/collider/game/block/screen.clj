@@ -277,7 +277,8 @@
    :shulker-box              :custom/open-shulker-box
    :ender-chest              :custom/open-enderchest
    :hopper                   :custom/inspect-hopper
-   :dispenser                :custom/inspect-dispenser})
+   :dispenser                :custom/inspect-dispenser
+   :dropper                  :custom/inspect-dropper})
 
 (defn- open-stat [world pos m]
   (or (open-stats (:type m))

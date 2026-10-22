@@ -259,3 +259,15 @@
     (if found
       [ds edits]
       [(into [[:set-block-entity pos e]] ds) edits])))
+
+(defn picked
+  "Returns the slot items of a launcher at pos gives up at tick t,
+  or -1 when every slot is empty."
+  [items t pos]
+  (slot-of items t pos))
+
+(defn thrown
+  "Returns the deltas of launcher e at pos throwing slot i along
+  facing. The stack leaves as one item."
+  [world pos facing e items i]
+  (shot-deltas world pos facing e items i))

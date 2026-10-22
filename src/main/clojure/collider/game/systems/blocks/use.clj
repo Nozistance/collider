@@ -621,7 +621,6 @@
   {:enchantment-table nil
    :beacon :custom/interact-with-beacon
    :cartography-table :custom/interact-with-cartography-table
-   :dropper :custom/inspect-dropper
    :crafter nil})
 
 (defn- menu-use [{:keys [world eid pos]}]

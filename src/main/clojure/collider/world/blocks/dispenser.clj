@@ -1,6 +1,6 @@
 (ns collider.world.blocks.dispenser
-  "A dispenser arms when it or the block above it is powered, and
-  fires four ticks later."
+  "A dispenser or a dropper arms when it or the block above it
+  is powered, and fires four ticks later."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.signal :as signal]
@@ -10,8 +10,9 @@
 
 (def ^:private ^:const delay-ticks 4)
 
-(defn- dispenser? [^long st]
-  (= :dispenser (block/type-of st)))
+(defn- launcher? [^long st]
+  (let [t (block/type-of st)]
+    (or (= :dispenser t) (= :dropper t))))
 
 (defn- triggered? [^long st]
   (= :true (:triggered (block/props-of st))))
@@ -27,7 +28,7 @@
     (cond
       (and on (not was))
       [[p (block/with st :triggered :true) [] update/clients]
-       [:tick p (+ (long tick) delay-ticks) 0 :dispenser]]
+       [:tick p (+ (long tick) delay-ticks) 0 (block/block-of st)]]
       (and (not on) was)
       [[p (block/with st :triggered :false) [] update/clients]])))
 
@@ -35,10 +36,10 @@
   [[:dispense p]])
 
 (def rule
-  "The block rule of a dispenser. A rising signal arms it, and it
-  fires four ticks later."
+  "The block rule of a dispenser or a dropper. A rising signal
+  arms it, and it fires four ticks later."
   {:name    :dispenser
-   :match?  (fn [_ st _] (dispenser? st))
+   :match?  (fn [_ st _] (launcher? st))
    :pass    :neighbor
    :reach   0
    :place?  false

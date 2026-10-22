@@ -99,7 +99,7 @@
 (def ^:private read-kinds
   #{:decorated-pot :lectern :jukebox :chiseled-bookshelf :shelf
     :chest :trapped-chest :barrel :shulker-box :furnace :blast-furnace
-    :smoker :brewing-stand :hopper :dispenser})
+    :smoker :brewing-stand :hopper :dispenser :dropper})
 
 (defn signal
   "Returns the signal block st at p gives a comparator on side, as
