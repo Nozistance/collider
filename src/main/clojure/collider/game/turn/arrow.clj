@@ -140,8 +140,16 @@
     (not (and (entity/player? o) (entity/player? a)
               (team/spares? (:teams world) o a)))))
 
-(defn- target? [world eid e oid o]
-  (and (not= (long oid) (long eid)) (projectile/hittable? o)
+(defn- own-shot? [e oid]
+  (and (not (:left-owner? e))
+       (= (long oid) (long (:owner e -1)))))
+
+(defn- target?
+  "Returns true when arrow e of eid may hit body o of oid.
+  The owner is missed until the shot has left them."
+  [world eid e oid o]
+  (and (not= (long oid) (long eid)) (not (own-shot? e oid))
+       (projectile/hittable? o)
        (pos? (double (:health o 1.0))) (not (game-mode/spectator? o))
        (harmed? world e o)))
 
