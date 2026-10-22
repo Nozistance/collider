@@ -274,7 +274,8 @@
    :trapped-chest            :custom/trigger-trapped-chest
    :barrel                   :custom/open-barrel
    :shulker-box              :custom/open-shulker-box
-   :ender-chest              :custom/open-enderchest})
+   :ender-chest              :custom/open-enderchest
+   :hopper                   :custom/inspect-hopper})
 
 (defn- open-stat [world pos m]
   (or (open-stats (:type m))

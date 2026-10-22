@@ -24,6 +24,7 @@
             [collider.world.blocks.observer :as observer]
             [collider.world.blocks.piston :as piston]
             [collider.world.blocks.plate :as plate]
+            [collider.world.blocks.hopper :as hopper]
             [collider.world.blocks.powered :as powered]
             [collider.world.blocks.rail :as rail]
             [collider.world.blocks.scaffold :as scaffold]
@@ -72,6 +73,7 @@
    lamp/rule
    bulb/rule
    powered/rule
+   hopper/rule
    fuse/rule
    note/rule])
 

@@ -193,6 +193,10 @@
 (defn- powered-fitted [chunks pos st _]
   (powered/placed chunks pos st))
 
+(defn- hopper-fitted [chunks pos st _]
+  (let [on (not (signal/has-neighbor-signal? chunks pos))]
+    (block/with st :enabled (block/flag on))))
+
 (defn- growing-plant-fitted [chunks pos st {:keys [tick]}]
   (let [{:keys [head body dir]}
         (block/growing-plant (block/type-of st))
@@ -310,6 +314,7 @@
    [[:huge-mushroom] mushroom-fitted]
    [[:farmland :dirt-path] dirt-fitted]
    [[:redstone-lamp] lamp-fitted]
+   [[:hopper] hopper-fitted]
    [[:repeater] repeater-fitted]
    [[:redstone-wire] wire-fitted]
    [(conj block/trapdoor-types :fence-gate) powered-fitted]])

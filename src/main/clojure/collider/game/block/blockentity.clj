@@ -25,6 +25,7 @@
    :chiseled-book-shelf :chiseled-bookshelf
    :bell                :bell
    :moving-piston       :piston
+   :hopper              :hopper
    :chest               :chest :copper-chest :chest
    :weathering-copper-chest :chest
    :trapped-chest       :trapped-chest
@@ -388,6 +389,7 @@
    :lectern            {:book nil :page 0}
    :brewing-stand      {:items (vec (repeat 5 nil))}
    :campfire           {:items (vec (repeat 4 nil))}
+   :hopper             {:items (vec (repeat 5 nil)) :cooldown -1}
    :furnace            blank-furnace
    :blast-furnace      blank-furnace
    :smoker             blank-furnace})

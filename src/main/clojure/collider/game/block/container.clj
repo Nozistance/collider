@@ -35,7 +35,8 @@
         bench-types))
 
 (def menu-types
-  (conj (into container-types be/furnace-kinds) :brewing-stand))
+  (conj (into container-types be/furnace-kinds)
+        :brewing-stand :hopper))
 
 (defn placed-state
   "Returns the state a chest or barrel st takes as it is placed at
@@ -158,12 +159,16 @@
    :blast-furnace "container.blast_furnace"
    :smoker        "container.smoker"})
 
+(defn- hopper-menu [pos]
+  {:kind :block :type :hopper :slots 5 :cells [pos]
+   :title {:translate "container.hopper"}})
+
 (defn- furnace-menu [t pos]
   {:kind  :block :type t :slots 3 :cells [pos]
    :title {:translate (furnace-titles t)}})
 
 (def ^:private builders
-  (into menu-builders
+  (into (assoc menu-builders :hopper (fn [_ _ pos _] (hopper-menu pos)))
         (map (fn [t] [t (fn [_ _ pos _] (furnace-menu t pos))]))
         be/furnace-kinds))
 
@@ -377,6 +382,7 @@
    (cond
      (lectern? m) (lectern/layout)
      (furnace? m) (furnace/layout m)
+     (= :hopper (:type m)) (menu/slots-layout 5)
      (brewing? m) (brewing/layout)
      :else (typed-layout m ctx))))
 
