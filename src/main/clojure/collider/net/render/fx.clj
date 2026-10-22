@@ -240,7 +240,10 @@
 
 (def level-events
   "The wire ids of the level events by name."
-  {:sound-extinguish-fire            1009
+  {:sound-dispenser-dispense         1000
+   :sound-dispenser-fail             1001
+   :particles-shoot-smoke            2000
+   :sound-extinguish-fire            1009
    :sound-play-jukebox-song          1010
    :sound-stop-jukebox-song          1011
    :sound-bat-liftoff                1025

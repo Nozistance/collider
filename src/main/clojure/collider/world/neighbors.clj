@@ -679,7 +679,8 @@
                 (add-record! [x (block-at s x) [[:signal y]]]))
     :moving (let [s (set-chunks!
                       s (chunk/chunks-set-moving (chunks s) x y))]
-              (add-record! s [x (block-at s x) [[:moving y]]]))))
+              (add-record! s [x (block-at s x) [[:moving y]]]))
+    :dispense (add-record! s [x (block-at s x) [[:dispense]]])))
 
 (defn- stepped [s ctx o]
   (if (fn? o)

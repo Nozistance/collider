@@ -3,6 +3,7 @@
   (:require [collider.cell :as cell]
             [collider.data :as data]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.dispenser :as dispenser]
             [collider.game.block.instrument :as instrument]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
@@ -146,6 +147,18 @@
     (when (= :potent-sulfur (:kind e))
       [[:set-block-entity pos (assoc e :countdown -1)]])))
 
+(declare entities-changed-deltas)
+
+(defn- dispensed [world pos]
+  (let [ds (vec (dispenser/fired-deltas world pos))
+        set? #(= :set-block-entity (first %))
+        sets (filterv set? ds)]
+    (if (empty? sets)
+      ds
+      (concat (entities-changed-deltas world sets [[:output-signal pos]]
+                                       (:tick world))
+              (remove set? ds)))))
+
 (def ^:private change-effects
   "What each effect a change names does, by its kind."
   {:fizz (fn [_ pos _] [(out/all (out/fizz pos))])
@@ -153,6 +166,7 @@
    :drop dropped
    :fall (fn [_ pos e] (falling-block pos e))
    :prime (fn [world pos _] (primed-deltas world pos nil))
+   :dispense (fn [world pos _] (dispensed world pos))
    :dry (fn [world pos _] (dried-fx world pos))
    :sound (fn [_ pos [_ kind volume pitch]]
             [(out/all (out/block-sound kind pos volume pitch))])

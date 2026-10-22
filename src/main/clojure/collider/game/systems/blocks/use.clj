@@ -621,7 +621,6 @@
   {:enchantment-table nil
    :beacon :custom/interact-with-beacon
    :cartography-table :custom/interact-with-cartography-table
-   :dispenser :custom/inspect-dispenser
    :dropper :custom/inspect-dropper
    :crafter nil})
 

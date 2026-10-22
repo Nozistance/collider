@@ -36,7 +36,7 @@
 
 (def menu-types
   (conj (into container-types be/furnace-kinds)
-        :brewing-stand :hopper))
+        :brewing-stand :hopper :dispenser))
 
 (defn placed-state
   "Returns the state a chest or barrel st takes as it is
@@ -159,6 +159,10 @@
    :blast-furnace "container.blast_furnace"
    :smoker        "container.smoker"})
 
+(defn- dispenser-menu [pos]
+  {:kind :block :type :generic-3x3 :slots 9 :cells [pos]
+   :title {:translate "container.dispenser"}})
+
 (defn- hopper-menu [pos]
   {:kind :block :type :hopper :slots 5 :cells [pos]
    :title {:translate "container.hopper"}})
@@ -168,7 +172,9 @@
    :title {:translate (furnace-titles t)}})
 
 (def ^:private builders
-  (into (assoc menu-builders :hopper (fn [_ _ pos _] (hopper-menu pos)))
+  (into (assoc menu-builders
+               :hopper (fn [_ _ pos _] (hopper-menu pos))
+               :dispenser (fn [_ _ pos _] (dispenser-menu pos)))
         (map (fn [t] [t (fn [_ _ pos _] (furnace-menu t pos))]))
         be/furnace-kinds))
 
@@ -383,6 +389,7 @@
      (lectern? m) (lectern/layout)
      (furnace? m) (furnace/layout m)
      (= :hopper (:type m)) (menu/slots-layout 5)
+     (= :generic-3x3 (:type m)) (menu/slots-layout 9)
      (brewing? m) (brewing/layout)
      :else (typed-layout m ctx))))
 

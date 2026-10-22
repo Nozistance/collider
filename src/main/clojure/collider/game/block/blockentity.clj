@@ -26,6 +26,7 @@
    :bell                :bell
    :moving-piston       :piston
    :hopper              :hopper
+   :dispenser           :dispenser
    :chest               :chest :copper-chest :chest
    :weathering-copper-chest :chest
    :trapped-chest       :trapped-chest
@@ -61,7 +62,8 @@
 (def furnace-kinds #{:furnace :blast-furnace :smoker})
 
 (def menu-kinds
-  (conj (into container-kinds furnace-kinds) :brewing-stand :hopper))
+  (conj (into container-kinds furnace-kinds)
+        :brewing-stand :hopper :dispenser))
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -390,6 +392,7 @@
    :brewing-stand      {:items (vec (repeat 5 nil))}
    :campfire           {:items (vec (repeat 4 nil))}
    :hopper             {:items (vec (repeat 5 nil)) :cooldown -1}
+   :dispenser          {:items (vec (repeat 9 nil))}
    :furnace            blank-furnace
    :blast-furnace      blank-furnace
    :smoker             blank-furnace})

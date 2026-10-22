@@ -8,6 +8,7 @@
             [collider.world.blocks.comparator :as comparator]
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.diode :as diode]
+            [collider.world.blocks.dispenser :as dispenser]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.dust :as dust]
@@ -51,6 +52,7 @@
    bell/rule
    dust/rule
    diode/rule
+   dispenser/rule
    comparator/rule
    torch/rule
    observer/rule
