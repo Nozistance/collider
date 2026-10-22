@@ -288,8 +288,8 @@
 
 (defn player-deltas
   "Returns the deltas of the dig of player p in its tick. A delayed
-  break goes on until the block is gone, else the cracks of the dig
-  go on."
+  break goes on until the block is gone, else the cracks of the
+  dig go on."
   [world [eid e]]
   (cond
     (:delayed e) (delayed-deltas world eid e)

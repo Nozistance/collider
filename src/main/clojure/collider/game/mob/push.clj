@@ -66,8 +66,8 @@
                   (recur (inc i)))))))
 
 (defn moved
-  "Moves body eid of index to the place and box of e and returns
-  index."
+  "Moves body eid of index to the place and box of e
+  and returns index."
   [^PushGrid index eid e]
   (let [p (:pos e) [h t] (pushable-box e)]
     (PushGrid/moved index (long eid) (double h) (double t)
@@ -169,8 +169,8 @@
     []))
 
 (defn touching
-  "Returns the ids of the bodies whose boxes overlap the box of body
-  eid."
+  "Returns the ids of the bodies whose boxes overlap the box
+  of body eid."
   [^PushGrid index eid e half height]
   (let [p (:pos e)]
     (PushGrid/touching index (v/x p) (v/y p) (v/z p) (double half)
@@ -207,8 +207,8 @@
   body with a slot waits for the calls with each lower slot whose
   body it could meet in a tick in which no body moves further than
   reach along x or z. The call of join with a slot follows the calls
-  of body with it and each lower slot, and no two calls of join
-  overlap."
+  of body with it and each lower slot, and no two calls
+  of join overlap."
   [^PushGrid index reach mind body join]
   (Turns/run index (double reach) mind body join))
 

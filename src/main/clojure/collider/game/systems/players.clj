@@ -153,8 +153,8 @@
 
 (defn swing-deltas
   "Returns the deltas of one swing a client plays itself.
-  The server only passes it on, and only as often as an arm
-  can swing."
+  The server only passes it on, and only as often as an
+  arm can swing."
   [world [tag eid hand]]
   (when (= :swing tag)
     (when-let [p (get-in world [:entities eid])]

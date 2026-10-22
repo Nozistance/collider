@@ -33,8 +33,8 @@
        (> (+ (double p) (double w) 7.0) (- (double q) (double ow)))))
 
 (defn- near?
-  "Returns true when the box of e grown by 7, 2 and 7 meets the box
-  of o."
+  "Returns true when the box of e grown by 7, 2 and 7 meets the
+  box of o."
   [e o]
   (let [[w h] (entity/box e) [ow oh] (entity/box o)
         p (:pos e) q (:pos o) y (v/y p) oy (v/y q)]
@@ -53,8 +53,8 @@
        (boolean (:sprinting? o))))
 
 (defn scared-by?
-  "Returns true when living entity oid of world scares armadillo e at
-  tick t."
+  "Returns true when living entity oid of world scares armadillo e
+  at tick t."
   [world e oid t]
   (let [o (get (:entities world) oid)]
     (boolean

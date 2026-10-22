@@ -295,8 +295,8 @@
 
 (defn- held-on
   "Returns speed vel of body e slowed to the pace of the climbable
-  block it holds. A sneaking player stays put on a ladder, not on
-  scaffolding."
+  block it holds. A sneaking player stays put on a ladder,
+  not on scaffolding."
   [world e vel]
   (if (climbing? world e (:pos e))
     (let [y (Math/max (double (v/y vel)) (- climb-limit))

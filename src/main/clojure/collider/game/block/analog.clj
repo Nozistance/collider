@@ -1,6 +1,6 @@
 (ns collider.game.block.analog
-  "The signal a comparator reads from a block whose block entity
-  decides it."
+  "The signal a comparator reads from a block whose block
+  entity decides it."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.stack :as stack]

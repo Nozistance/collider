@@ -97,8 +97,8 @@
   (.difference a b))
 
 (defn merge
-  "Returns the entries of all maps, with the rightmost value on a
-  shared key."
+  "Returns the entries of all maps, with the rightmost value on
+  a shared key."
   (^LongMap [] LongMap/EMPTY)
   (^LongMap [^LongMap a ^LongMap b] (.merge a b))
   (^LongMap [a b & more] (reduce merge a (cons b more))))

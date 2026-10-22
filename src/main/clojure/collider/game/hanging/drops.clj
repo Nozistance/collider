@@ -36,8 +36,8 @@
 
 (defn frame-drops
   "Returns the deltas of the items frame eid drops when causer
-  breaks or empties it. The frame itself drops when with-frame? is
-  true."
+  breaks or empties it. The frame itself drops when
+  with-frame? is true."
   [world eid e causer with-frame?]
   (when (and (drops? world) (not (endless? causer)))
     (let [s (:stack e)]

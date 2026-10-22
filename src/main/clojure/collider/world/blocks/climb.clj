@@ -34,8 +34,8 @@
 (defn climbing?
   "Returns true when living body e holds on to a climbable block at
   pos, its own place unless given. A glider passes through the vines
-  it can glide through, and a flying or spectating player climbs
-  nothing."
+  it can glide through, and a flying or spectating
+  player climbs nothing."
   ([chunks e] (climbing? chunks e (:pos e)))
   ([chunks e pos]
    (and (not (:flying e)) (not= :spectator (:game-mode e))

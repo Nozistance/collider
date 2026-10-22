@@ -39,8 +39,8 @@
      [:game-event (if open? :block-open :block-close)]]))
 
 (defn- turned
-  "Returns the state st takes at signal on, and whether it opens or
-  shuts."
+  "Returns the state st takes at signal on, and whether it
+  opens or shuts."
   [^long st on]
   (let [t (block/type-of st)
         st' (block/with st :powered (block/flag on))]

@@ -60,8 +60,8 @@
 
 (defn- arc-at
   "Returns how far a leap at sine sa and cosine ca with speed squared
-  vv takes a body that went ri across, toward x and z cosine cx and
-  sine sx."
+  vv takes a body that went ri across, toward x and z cosine cx
+  and sine sx."
   [[sa ca vv cx sx] ^double ri]
   (let [[sa ca vv] (map double [sa ca vv])]
     [(* ri (double cx))

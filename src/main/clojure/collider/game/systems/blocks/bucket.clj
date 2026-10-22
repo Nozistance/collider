@@ -116,8 +116,8 @@
 
 (defn empty-deltas
   "Returns the deltas of a player who empties a bucket of state.
-  It pours at the block in view. Out of creative the hand keeps an
-  empty bucket."
+  It pours at the block in view. Out of creative the hand keeps
+  an empty bucket."
   [world eid e item state]
   (emptied world eid e item (poured world eid e state nil)))
 
@@ -127,8 +127,8 @@
 
 (defn mob-deltas
   "Returns the deltas of a player who empties a bucket of a mob.
-  Its water pours like a water bucket, with the sound of the
-  mob bucket."
+  Its water pours like a water bucket, with the sound of
+  the mob bucket."
   [world eid e item]
   (let [{:keys [fluid sound]} (data/mob-bucket item)]
     (emptied world eid e item

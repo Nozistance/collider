@@ -21,8 +21,8 @@
           :else r)))
 
 (defn turned
-  "Returns yaw turned toward the offset xd zd by at most max degrees,
-  in floats."
+  "Returns yaw turned toward the offset xd zd by at most max
+  degrees, in floats."
   ^double [^double yaw ^double xd ^double zd ^double max]
   (let [d (math/f32 (math/degrees (math/atan2 zd xd)))
         to (math/f32 (- d 90.0))]

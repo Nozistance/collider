@@ -7,8 +7,8 @@
 
 (defn on-event
   "Returns a system that passes each event of the tick to the handler
-  of its tag. A handler takes the level and the event and returns
-  deltas."
+  of its tag. A handler takes the level and the event
+  and returns deltas."
   [handlers]
   (let [tags (set (keys handlers))
         heard? #(contains? tags (nth % 0))

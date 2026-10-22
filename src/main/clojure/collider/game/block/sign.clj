@@ -99,8 +99,8 @@
         (take 4 (concat lines (repeat "")))))
 
 (defn written
-  "Returns sign e with lines on the side front? names, closed to its
-  editor."
+  "Returns sign e with lines on the side front? names, closed
+  to its editor."
   [e front? lines]
   (-> e
       (assoc-in [(side front?) :lines] (four-lines lines))

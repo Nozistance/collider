@@ -35,8 +35,8 @@
              (random/of-longs tick eid (+ knock-key k 1)))))
 
 (defn- knock-side
-  "Returns xd zd, or a tiny random side push while they are too
-  short."
+  "Returns xd zd, or a tiny random side push while they
+  are too short."
   [tick eid ^double xd ^double zd]
   (loop [i 0 xd xd zd zd]
     (if (< (+ (* xd xd) (* zd zd)) least-turn)
@@ -99,8 +99,8 @@
   (max 0.0 (math/f32 (- (math/f32 health) (double damage)))))
 
 (defn- counted
-  "Returns entity e that counts one more hurt to show, when damage
-  took health."
+  "Returns entity e that counts one more hurt to show, when
+  damage took health."
   [e ^double damage]
   (if (zero? damage)
     e
@@ -143,8 +143,8 @@
 
 (defn- suffered
   "Returns e after amount from src reaches it past its armor,
-  resistance, protection and absorption, with the damage its health
-  took."
+  resistance, protection and absorption, with the damage
+  its health took."
   [e health amount src tick eid]
   (let [e (armor-worn e src amount tick eid)
         d (combat/damage-after e src (double amount))

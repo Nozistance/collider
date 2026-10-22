@@ -91,8 +91,8 @@
   (Chunk/at chunks (int cx) (int cz)))
 
 (defn chunk-section
-  "Returns section si of chunk, or nil when it is absent or outside
-  the column."
+  "Returns section si of chunk, or nil when it is absent or
+  outside the column."
   ^Section [^Chunk chunk ^long si]
   (.section chunk (int si)))
 
@@ -224,8 +224,8 @@
     (< (+ (* ax ax) (* az az)) (* v v))))
 
 (defn tracked-ids
-  "Returns the ids of the chunks that a viewer in cx cz keeps at view
-  distance v."
+  "Returns the ids of the chunks that a viewer in cx cz keeps at
+  view distance v."
   [^long cx ^long cz ^long v]
   (for [dx (range (- -1 v) (+ v 2))
         dz (range (- -1 v) (+ v 2))

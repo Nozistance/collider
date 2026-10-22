@@ -1,6 +1,6 @@
 (ns collider.game.input
-  "The events of a tick the world heeds, and what they did to
-  their players."
+  "The events of a tick the world heeds, and what they did
+  to their players."
   (:require [collider.game.player :as player]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]))

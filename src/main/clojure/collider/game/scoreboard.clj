@@ -114,8 +114,8 @@
           (when (= :add method) (score-fx sb nm))))
 
 (defn shows
-  "Returns sb with slot showing the objective called nm, none when nm
-  is nil."
+  "Returns sb with slot showing the objective called nm, none when
+  nm is nil."
   [sb slot nm]
   (if nm
     (assoc-in sb [:slots slot] nm)
@@ -145,8 +145,8 @@
     (first (reduce step [[] sb] (slots-of sb nm)))))
 
 (defn removed
-  "Returns sb without the objective called nm. The holders of its
-  scores stay."
+  "Returns sb without the objective called nm. The holders of
+  its scores stay."
   [sb nm]
   (-> (reduce #(shows %1 %2 nil) sb (slots-of sb nm))
       (update :objectives #(filterv (fn [o] (not= nm (:name o))) %))
@@ -172,8 +172,8 @@
   (keep (fn [[nm ss]] (when (contains? ss h) nm)) (:scores sb)))
 
 (defn unscored
-  "Returns sb without the score of holder h on the objective called
-  nm."
+  "Returns sb without the score of holder h on the
+  objective called nm."
   [sb nm h]
   (update-in sb [:scores nm] dissoc h))
 
@@ -292,8 +292,8 @@
   (filter #(= "trigger" (:criteria %)) (:objectives sb)))
 
 (defn triggerable
-  "Returns the names of the trigger objectives of sb that holder h may
-  trigger now."
+  "Returns the names of the trigger objectives of sb that holder h
+  may trigger now."
   [sb h]
   (for [o (triggers sb)
         :let [s (score sb (:name o) h)]

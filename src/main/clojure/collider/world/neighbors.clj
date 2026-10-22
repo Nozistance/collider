@@ -470,8 +470,8 @@
 
 (defn- unkept
   "Returns s after the signal kept for comparator or trapped chest old
-  at p goes, as its block entity goes when another block takes its
-  place."
+  at p goes, as its block entity goes when another block
+  takes its place."
   [s p old st]
   (if (and (#{:comparator :trapped-chest} (block/type-of old))
            (not= (block/block-of old) (block/block-of st))
@@ -724,8 +724,8 @@
   state, and [:signal pos v] keeps v as
   the signal of the comparator at pos. An op [:moving pos packed]
   keeps packed as the moving record at pos. A packed of 0 clears
-  it. A step fn of chunks gives the changes that follow the ops
-  before it."
+  it. A step fn of chunks gives the changes that follow the
+  ops before it."
   [chunks ctx ops]
   (run-each chunks ctx ops stepped))
 

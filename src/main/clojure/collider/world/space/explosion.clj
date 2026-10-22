@@ -181,8 +181,8 @@
 
 (defn reached
   "Returns the cells of hit, as rays returns them for a blast at
-  center, with the cells that hold a block and the count of all of
-  them."
+  center, with the cells that hold a block and the count of
+  all of them."
   [^bytes hit [cx cy cz]]
   (let [origin (ray-origin (double cx) (double cy) (double cz))]
     {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
@@ -197,8 +197,8 @@
 
 (defn frozen?
   "Returns true when the reads of e and of its grid change neither,
-  so that the rays and the bodies of one blast may read them at
-  once."
+  so that the rays and the bodies of one blast may read
+  them at once."
   [^Exposure e]
   (Exposure/frozen e))
 

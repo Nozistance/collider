@@ -162,8 +162,8 @@
             (map #(chime (:pos p) %) (:chimes acc)))))
 
 (defn player-pickup
-  "Returns the deltas of player pid taking up one of the orbs it
-  touches."
+  "Returns the deltas of player pid taking up one of the
+  orbs it touches."
   [world [pid p]]
   (when (and (entity/alive? p)
              (not (game-mode/spectator? p))

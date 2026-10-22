@@ -33,8 +33,8 @@
           (instances "world.item.SolidBucketItem"))))
 
 (defn mob-buckets
-  "Returns the fluid each bucket of a mob pours and the sound it
-  empties with."
+  "Returns the fluid each bucket of a mob pours and the sound
+  it empties with."
   []
   (let [c (cls "world.item.MobBucketItem")
         fluids (registry "FLUID")

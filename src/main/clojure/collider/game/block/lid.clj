@@ -37,8 +37,8 @@
       (half-free? (:chunks world) pos (:facing (block/props-of st)))))
 
 (defn positions
-  "Returns the positions of the containers whose lids menu m holds
-  open."
+  "Returns the positions of the containers whose lids menu
+  m holds open."
   [m]
   (case (:kind m)
     (:lectern :bench) []
@@ -135,8 +135,8 @@
         nil))))
 
 (defn animate-deltas
-  "Returns the deltas of one tick of every shulker box lid that
-  moves."
+  "Returns the deltas of one tick of every shulker box
+  lid that moves."
   [world]
   (mapcat #(animated world %) (:shulker-anim world)))
 
@@ -175,8 +175,8 @@
 
 (defn- signal-ops
   "Returns the ops of a trapped chest st at pos whose openers go from
-  prev to n, at most 15 of them powering its neighbours and the block
-  below."
+  prev to n, at most 15 of them powering its neighbours and
+  the block below."
   [pos st t prev n]
   (when (and (= :trapped-chest t) (not= (long prev) (long n)))
     [[:signal pos (min (long n) 15)]
@@ -249,8 +249,8 @@
 
 (defn recheck
   "Returns the block changes and deltas that recount who has the
-  container at pos open. Returns nil for a block that does not count
-  them."
+  container at pos open. Returns nil for a block that does
+  not count them."
   [world pos st]
   (let [t (block/type-of st)]
     (when (contains? counted t)

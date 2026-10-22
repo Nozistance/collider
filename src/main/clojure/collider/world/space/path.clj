@@ -181,8 +181,8 @@
       (map block/water? (range (data/block-state-count))))))
 
 (defn type-static
-  "Returns the path type of the cell x y z of level lv for a mob one
-  cell tall."
+  "Returns the path type of the cell x y z of level lv for a mob
+  one cell tall."
   [lv x y z]
   (nth path-types
        (Path/staticType (:chunks lv) @type-ids @forced-ids

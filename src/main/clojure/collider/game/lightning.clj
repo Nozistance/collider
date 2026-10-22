@@ -81,8 +81,8 @@
 (defn target
   "Returns the cell a storm strikes for the random cell pos of level
   world. A rod on top of its column within reach draws it, else a
-  living body under the sky near the column, else the top of the
-  column."
+  living body under the sky near the column, else the top
+  of the column."
   [world [x _ z]]
   (let [chunks (:chunks world)
         center [x (column/motion-blocking-height chunks x z) z]]

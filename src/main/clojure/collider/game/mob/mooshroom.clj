@@ -136,8 +136,8 @@
 
 (defn bowl-result
   "Returns what a bowl does to a grown mooshroom.
-  It fills with stew, and the stew is suspicious when a flower
-  was fed."
+  It fills with stew, and the stew is suspicious when a
+  flower was fed."
   [{:keys [world peid hand eid e item]}]
   (when (and (= :bowl item) (not (mobs/baby? e)))
     {:result :success :deltas (bowled world peid hand eid e)}))

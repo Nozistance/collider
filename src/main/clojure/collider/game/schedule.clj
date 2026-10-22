@@ -196,8 +196,8 @@
 
 (defn add-ordered
   "Returns ticks with each tick [at id ty priority order] of entries
-  added in its own order. A block keeps a tick of a type it already
-  has."
+  added in its own order. A block keeps a tick of a type
+  it already has."
   [ticks entries]
   (reduce (fn [t e] (apply added t e)) ticks entries))
 

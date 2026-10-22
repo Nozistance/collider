@@ -33,8 +33,8 @@
 
 (defn turned-deltas
   "Returns the deltas of player eid turning the wire, the repeater,
-  the comparator or the daylight detector at pos, nil when it does
-  not turn."
+  the comparator or the daylight detector at pos, nil when it
+  does not turn."
   [world eid pos]
   (let [chunks (:chunks world)
         st (changes/block-at world pos)]

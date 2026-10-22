@@ -71,8 +71,8 @@
           [0 1 2]))
 
 (defn- meets?
-  "Returns true when the ray from f along d starts in box b or
-  enters it."
+  "Returns true when the ray from f along d starts in box b
+  or enters it."
   [f d b]
   (let [ts (mapv #(span (f %) (d %) (b %) (b (+ % 3))) [0 1 2])
         t-in (double (reduce max (map first ts)))

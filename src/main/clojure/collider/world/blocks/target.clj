@@ -1,6 +1,6 @@
 (ns collider.world.blocks.target
-  "Targets, powered for a while by how near their centre a projectile
-  lands."
+  "Targets, powered for a while by how near their centre
+  a projectile lands."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]

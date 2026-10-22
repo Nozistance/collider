@@ -39,8 +39,8 @@
         :brewing-stand :hopper))
 
 (defn placed-state
-  "Returns the state a chest or barrel st takes as it is placed at
-  pos."
+  "Returns the state a chest or barrel st takes as it is
+  placed at pos."
   [chunks pos st face sneaking? yaw pitch]
   (let [t (block/type-of st)]
     (cond
@@ -188,8 +188,8 @@
 
 (defn provider-at
   "Returns the menu a spectator opens at pos.
-  An ender chest has none. A shulker box opens whatever blocks
-  its lid."
+  An ender chest has none. A shulker box opens whatever
+  blocks its lid."
   [world pos]
   (let [st (chest/state-at (:chunks world) pos)]
     (case (block/type-of st)
@@ -343,8 +343,8 @@
 
 (defn store-deltas
   "Returns the deltas that store items back into the blocks of menu
-  m of player eid. Each slot that changed wakes the comparators that
-  read them."
+  m of player eid. Each slot that changed wakes the comparators
+  that read them."
   [world eid m items]
   (cond
     (lectern? m) nil

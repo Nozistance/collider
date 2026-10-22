@@ -16,8 +16,8 @@
   (chunk/at (:chunks world) pos))
 
 (defn counted
-  "Returns the player entries that count for sleep, which are no
-  spectators."
+  "Returns the player entries that count for sleep, which
+  are no spectators."
   [entries]
   (remove (comp game-mode/spectator? val) entries))
 
@@ -75,8 +75,8 @@
                   eid :player))
 
 (defn wake
-  "Returns where player eid stands up, its yaw and the deltas of its
-  waking up."
+  "Returns where player eid stands up, its yaw and the deltas of
+  its waking up."
   [world eid]
   (let [e (get-in world [:entities eid])
         head (get-in e [:sleeping :pos])

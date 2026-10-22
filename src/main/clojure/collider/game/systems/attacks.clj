@@ -158,8 +158,8 @@
     (out/all (out/particles :sweep-attack nil at 0 0.0 spread))))
 
 (defn- sweep-damage
-  "Returns the damage the sweep of blow b of player a deals each
-  entity near."
+  "Returns the damage the sweep of blow b of player a deals
+  each entity near."
   ^double [a b]
   (let [r (math/f32 (attr a :sweeping-damage-ratio))
         d (math/f32 (+ 1.0 (* r (double (:damage b)))))]

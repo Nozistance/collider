@@ -130,8 +130,8 @@
   (reduce gone s (subseq (:removed s) >= lo <= hi)))
 
 (defn- seen-by
-  "Returns world with the bodies as turn t sees them, without the
-  spectators."
+  "Returns world with the bodies as turn t sees them,
+  without the spectators."
   [s world ^long t]
   (let [went (lm/range (:after s) Long/MIN_VALUE (dec t))
         now (lm/merge (:cur s) went)

@@ -108,8 +108,8 @@
 
 (defn player-deltas
   "Returns the deltas of the block player e of eid steps on and the
-  plates and string it presses in its tick, along the moves its
-  packets made."
+  plates and string it presses in its tick, along the moves
+  its packets made."
   [world [eid e]]
   (when-not (game-mode/spectator? e)
     (let [p (:pos e)

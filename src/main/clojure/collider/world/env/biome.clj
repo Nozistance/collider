@@ -76,8 +76,8 @@
     (double (float (- (float base) drop)))))
 
 (defn temperature
-  "Returns the temperature of biome at p. It falls above the
-  snow level."
+  "Returns the temperature of biome at p. It falls above
+  the snow level."
   ^double [biome p]
   (let [y (long (nth p 1))
         base (float (:temperature biome))]
@@ -94,8 +94,8 @@
   (not (warm-enough-to-rain? biome p)))
 
 (defn precipitation-at
-  "Returns :rain, :snow or :none for what falls from the sky of biome
-  at p."
+  "Returns :rain, :snow or :none for what falls from the sky of
+  biome at p."
   [biome p]
   (cond
     (not (:has-precipitation biome)) :none

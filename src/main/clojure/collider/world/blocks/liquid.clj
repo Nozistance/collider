@@ -116,8 +116,8 @@
 
 (defn height
   "Returns how high the fluid of st fills its cell. Given chunks and
-  p, returns 1.0 under the same fluid and nil for a state without
-  fluid."
+  p, returns 1.0 under the same fluid and nil for a
+  state without fluid."
   (^double [st] (math/f32 (/ (double (amount st)) 9.0)))
   ([chunks p st]
    (when-let [cls (liquid-class st)]

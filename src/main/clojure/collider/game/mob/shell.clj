@@ -26,8 +26,8 @@
   (delay (set (data/tag-values "damage_type" panic-tag))))
 
 (defn state
-  "Returns the state of armadillo e, which is idle, rolling, scared
-  or unrolling."
+  "Returns the state of armadillo e, which is idle, rolling,
+  scared or unrolling."
   [e]
   (or (:armadillo-state e) :idle))
 
@@ -41,8 +41,8 @@
 (defn in-state-ticks ^long [e] (long (or (:in-state-ticks e) 0)))
 
 (defn switched
-  "Returns armadillo e in state s. Only a new state starts its ticks
-  from zero."
+  "Returns armadillo e in state s. Only a new state starts its
+  ticks from zero."
   [e s]
   (if (= s (state e))
     e
@@ -87,8 +87,8 @@
         (switched :rolling))))
 
 (defn roll-out
-  "Returns scared armadillo e back out of its shell, or e when it is
-  not scared."
+  "Returns scared armadillo e back out of its shell, or e when it
+  is not scared."
   [e]
   (if (scared? e)
     (-> (said e :armadillo/unroll-finish) (switched :idle))

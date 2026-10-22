@@ -27,8 +27,8 @@
 
 (defn quoted
   "Returns string s quoted and escaped.
-  It uses double quotes unless the first quote inside s is a double
-  quote."
+  It uses double quotes unless the first quote inside s is
+  a double quote."
   [s]
   (let [q (quote-char s)]
     (str q (apply str (map #(escaped q %) s)) q)))
@@ -88,8 +88,8 @@
   (first r))
 
 (defn failed?
-  "Returns true when result r is an error, with or without a
-  partial value."
+  "Returns true when result r is an error, with or without
+  a partial value."
   [r]
   (#{:malformed :partial} (op-of r)))
 
@@ -112,8 +112,8 @@
 
 (defn settled
   "Returns result r of tag as a decoder result.
-  An error is malformed. The tag stays raw when the error text is
-  not modelled."
+  An error is malformed. The tag stays raw when the error text
+  is not modelled."
   [tag [_ v :as r]]
   (cond (not (failed? r)) r
         (nil? v) [:raw tag]
@@ -451,8 +451,8 @@
 
 (defn holder-set
   "Returns the decoder of a set of registry entries.
-  The set is a tag #id, a list of what element decodes, or one
-  of them."
+  The set is a tag #id, a list of what element decodes, or
+  one of them."
   [registry element]
   (fn [tag]
     (let [[op v :as r] (tag-key tag)]

@@ -42,8 +42,8 @@
         :else [q (.append sb (or (control c) (str c)))]))
 
 (defn- quoted
-  "Returns the quote mark and the escaped body of s as a tag string
-  writes them."
+  "Returns the quote mark and the escaped body of s as a tag
+  string writes them."
   [^String s]
   (let [[q sb] (reduce quote-step [nil (StringBuilder.)] s)]
     [(str (or q \")) (str sb)]))

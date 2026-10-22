@@ -1,6 +1,6 @@
 (ns collider.game.commands.scoreboard
-  "The scoreboard command, which keeps objectives and shows them in
-  display slots."
+  "The scoreboard command, which keeps objectives and shows them
+  in display slots."
   (:require [collider.game.commands.holders :as holders]
             [collider.game.commands.reply :as reply :refer [fail say]]
             [collider.game.out :as out]

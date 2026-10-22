@@ -1,6 +1,6 @@
 (ns collider.world.blocks.chorus
-  "Chorus plants and flowers with their support, connections
-  and growth."
+  "Chorus plants and flowers with their support,
+  connections and growth."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))

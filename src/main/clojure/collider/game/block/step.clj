@@ -56,8 +56,8 @@
     (eggs-deltas world p st)))
 
 (defn deltas
-  "Returns the deltas of the block body e of eid stands on. Sneaking
-  steps carefully."
+  "Returns the deltas of the block body e of eid stands on.
+  Sneaking steps carefully."
   [world eid e]
   (let [chunks (:chunks world)
         st (stepped-state chunks e)]

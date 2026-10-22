@@ -250,8 +250,8 @@
 (def ^:private extra-graph (memoize graph-of))
 
 (defn graph
-  "Returns the parse graph of the commands with the plugin forms
-  extra."
+  "Returns the parse graph of the commands with the
+  plugin forms extra."
   [extra]
   (if (empty? extra) @base-graph (extra-graph extra)))
 

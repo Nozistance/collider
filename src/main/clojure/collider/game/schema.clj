@@ -58,8 +58,8 @@
 
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
-  Ticks count as delays from now. Entries are its entities when
-  given."
+  Ticks count as delays from now. Entries are its
+  entities when given."
   ([w id]
    (let [own? #(chunk-entity? id (val %))]
      (chunk-payload w id (filter own? (:entities w)))))

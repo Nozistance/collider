@@ -30,8 +30,8 @@
     (format "%040x" (BigInteger. 1 (.digest md)))))
 
 (def sources
-  "The hash of the sources of the tool that makes the tables this
-  build reads."
+  "The hash of the sources of the tool that makes the tables
+  this build reads."
   (delay (or (some-> (io/resource "collider/tables.edn")
                      slurp edn/read-string)
              (let [here (io/file (io/resource "collider/data.clj"))
@@ -98,8 +98,8 @@
    'nbt/L long-array})
 
 (defn read-edn
-  "Returns the table in file name. Throws when no full set of tables
-  is found."
+  "Returns the table in file name. Throws when no full set of
+  tables is found."
   [name]
   (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
@@ -148,8 +148,8 @@
   [] (:transient-components @tables))
 
 (defn lang
-  "Returns the text of each translation key in the language of the
-  server."
+  "Returns the text of each translation key in the language
+  of the server."
   [] (:lang @tables))
 
 (defn spawns
@@ -238,8 +238,8 @@
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
 (defn full-id
-  "Returns resource location s, in the default namespace when it has
-  no namespace."
+  "Returns resource location s, in the default namespace when it
+  has no namespace."
   ^String [^String s]
   (if (str/includes? s ":") s (str "minecraft:" s)))
 
@@ -379,8 +379,8 @@
   [] @sent-tags)
 
 (defn registry-tags
-  "Returns the tags of registry path by name, or nil when it has
-  no tags."
+  "Returns the tags of registry path by name, or nil when it
+  has no tags."
   [path]
   (get @all-tags path))
 
@@ -539,8 +539,8 @@
   (get (info block) (if open? :open :close)))
 
 (defn pressed-ticks
-  "Returns how many ticks a pressed button or plate of block stays
-  pressed."
+  "Returns how many ticks a pressed button or plate of
+  block stays pressed."
   ^long [block]
   (if-some [n (:pressed (info block))]
     (long n)

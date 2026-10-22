@@ -75,8 +75,8 @@
   pos/one-in?)
 
 (defn- reduced-delay
-  "Returns ticks as passes of the goal selector, which runs on every
-  second tick."
+  "Returns ticks as passes of the goal selector, which runs on
+  every second tick."
   ^long [^long ticks]
   (quot (inc ticks) 2))
 
@@ -89,8 +89,8 @@
         (and (some? b) (<= (- (long t) (long b)) 1)))))
 
 (defn pass-after
-  "Returns the tick of the nth pass of the goals of mob eid after
-  tick t."
+  "Returns the tick of the nth pass of the goals of mob eid
+  after tick t."
   ^long [eid e ^long t ^long n]
   (loop [s (inc t) n n]
     (let [n (if (full-pass? eid e s) (dec n) n)]

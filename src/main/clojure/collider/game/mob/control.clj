@@ -168,8 +168,8 @@
     (not= :point (:type o)) (+ (entity/eye-height o))))
 
 (defn- look-pitch
-  "Returns the pitch at which mob e looks at the eyes of o, or at the
-  point o."
+  "Returns the pitch at which mob e looks at the eyes of o, or at
+  the point o."
   ^double [e o]
   (let [pos (:pos e)
         dy (- (eye-y o) (+ (v/y pos) (mobs/eye-height e)))

@@ -1,6 +1,6 @@
 (ns collider.game.command.forms
-  "The commands players run, with their arguments and permission
-  levels."
+  "The commands players run, with their arguments
+  and permission levels."
   (:require [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)

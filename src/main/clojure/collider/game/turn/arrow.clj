@@ -1,6 +1,6 @@
 (ns collider.game.turn.arrow
-  "The turn of an arrow in flight, in the ground and falling out of
-  it."
+  "The turn of an arrow in flight, in the ground and falling
+  out of it."
   (:require [collider.game.block.press :as press]
             [collider.game.effect :as effect]
             [collider.game.effect.account :as account]
@@ -335,8 +335,8 @@
       (flight-deltas world eid e))))
 
 (defn reach
-  "Returns the box [x0 z0 x1 z1] that arrow e sweeps in its move
-  this tick."
+  "Returns the box [x0 z0 x1 z1] that arrow e sweeps in its
+  move this tick."
   [e]
   (let [p (:pos e) q (if (:in-ground? e) p (v/add p (:vel e)))]
     [(min (v/x p) (v/x q)) (min (v/z p) (v/z q))

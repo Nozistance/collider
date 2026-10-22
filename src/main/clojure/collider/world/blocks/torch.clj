@@ -96,8 +96,8 @@
     ((:reshape support/rule) chunks p ctx)))
 
 (def rule
-  "The block rule of the redstone torch. It is held as attached blocks
-  are."
+  "The block rule of the redstone torch. It is held as
+  attached blocks are."
   (assoc support/rule
          :name :torch
          :match? (fn [_chunks st _p] (torch? st))

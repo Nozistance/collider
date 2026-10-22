@@ -14,8 +14,8 @@
 (set! *warn-on-reflection* true)
 
 (defn roll
-  "Returns a whole number from 0 below n that tick t, bat eid and key
-  k draw."
+  "Returns a whole number from 0 below n that tick t, bat eid and
+  key k draw."
   ^long [t eid k ^long n]
   (random/below (random/rnd t eid k) n))
 

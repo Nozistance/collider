@@ -47,8 +47,8 @@
 
 (defn cleared
   "Returns fall f of a body that moved from pos to pos'. It is 0.0
-  when a move of a block or more passed water or a block that resets
-  a fall."
+  when a move of a block or more passed water or a block that
+  resets a fall."
   ^double [world pos pos' ^double f]
   (if (and (not (zero? f)) (>= (v/dist-sq pos pos') 1.0)
            (fall/resets? (:chunks world) pos pos'))
@@ -249,8 +249,8 @@
 
 (defn landed
   "Returns the position and the deltas of living entity e that lands
-  at pos on block sup, after fall f0 before its move and f after
-  it."
+  at pos on block sup, after fall f0 before its move and
+  f after it."
   [world eid e pos sup f0 f]
   (let [f0 (double f0) f (double f)
         e (assoc e :pos pos :eid eid)

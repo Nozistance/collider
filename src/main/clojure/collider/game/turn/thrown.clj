@@ -47,8 +47,8 @@
    :experience-bottle 0.07})
 
 (defn gravity-of
-  "Returns how much a thrown item of kind type falls faster each
-  tick."
+  "Returns how much a thrown item of kind type falls
+  faster each tick."
   ^double [type]
   (double (gravity type 0.03)))
 
@@ -131,8 +131,8 @@
 
 (defn shot
   "Returns the position, motion, yaw and pitch of a projectile shot by
-  e of eid along dir at power, set drop below the eyes. It faces its
-  own motion."
+  e of eid along dir at power, set drop below the eyes. It faces
+  its own motion."
   [world eid e dir power drop]
   (let [p (:pos e)
         vel (shot-vel world eid dir (double power))
@@ -579,8 +579,8 @@
     (reduce f m ds)))
 
 (defn reach
-  "Returns the box [x0 z0 x1 z1] that thrown e sweeps in its move
-  this tick."
+  "Returns the box [x0 z0 x1 z1] that thrown e sweeps in its
+  move this tick."
   [world e]
   (if (entity/arrow? e)
     (arrow/reach e)

@@ -225,8 +225,8 @@
      ds]))
 
 (defn- body-moved
-  "Returns [fields deltas] of body e that a move mv asked as d
-  leaves."
+  "Returns [fields deltas] of body e that a move mv asked
+  as d leaves."
   [w id e d mv half ctx]
   (let [chunks (:chunks w)
         og (phys/on-ground? mv)
@@ -392,8 +392,8 @@
               (in-box w box)))))
 
 (defn pushes
-  "Returns the deltas of the bodies moving piston e at pos pushes in
-  its tick."
+  "Returns the deltas of the bodies moving piston e at pos pushes
+  in its tick."
   [w pos e]
   (let [bs (shape-boxes (related e) pos e)]
     (when (seq bs)

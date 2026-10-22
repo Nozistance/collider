@@ -46,8 +46,8 @@
                                   fly-into-wall))))))
 
 (defn- stuck-move
-  "Returns move [from to d] of player e cut short by the block that
-  held it."
+  "Returns move [from to d] of player e cut short by the block
+  that held it."
   [world e half height [f _ d]]
   (let [m (mapv * d (:stuck e))
         mv (phys/move (:chunks world) f m half height

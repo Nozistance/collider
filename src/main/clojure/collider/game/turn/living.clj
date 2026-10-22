@@ -36,8 +36,8 @@
 (defn touched
   "Returns living entity eid after the hurts ls of its landing in its
   move, the blocks it met on its moves this tick, the hurts cs of its
-  push and ds, with their deltas and the show of each hurt of its
-  turn."
+  push and ds, with their deltas and the show of each hurt
+  of its turn."
   [world eid e moves ds ls cs]
   (let [fd (hurt/fire-deltas world eid e moves)
         fs (if (or ls cs) (-> (vec ls) (into fd) (into cs)) fd)]
@@ -47,7 +47,7 @@
       (shown world eid e ds true))))
 
 (defn ended
-  "Returns the deltas that remove dead entity eid of world before its
-  step."
+  "Returns the deltas that remove dead entity eid of world
+  before its step."
   [world eid e]
   (hurt/timer-deltas world eid e))

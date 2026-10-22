@@ -115,8 +115,8 @@
 
 (defn placed
   "Returns the spike st placed at p by a player who looks along
-  pitch, or nil when nothing holds it. A sneaking player keeps it
-  from merging."
+  pitch, or nil when nothing holds it. A sneaking player keeps
+  it from merging."
   [chunks p st pitch sneaking?]
   (let [st (long st)
         self (block/block-of st)]

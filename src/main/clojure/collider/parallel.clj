@@ -63,8 +63,8 @@
 
 (defn select
   "Returns (into [] xf m) for a transducer xf that keeps no state.
-  Over a long map the work goes in parallel in parts of about leaf
-  entries."
+  Over a long map the work goes in parallel in parts of
+  about leaf entries."
   ([xf m] (select xf m select-leaf))
   ([xf m leaf]
    (if (lm/long-map? m)

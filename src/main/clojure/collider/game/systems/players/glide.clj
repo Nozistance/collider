@@ -32,8 +32,8 @@
 
 (defn player-deltas
   "Returns the deltas of player eid, e, gliding this tick. A glider
-  that sinks slower than half a block a tick has its fall cut to a
-  block."
+  that sinks slower than half a block a tick has its fall cut
+  to a block."
   [world [eid e]]
   (let [gliding? (and (:fall-flying e) (glide/can-glide? e))]
     (cond-> []

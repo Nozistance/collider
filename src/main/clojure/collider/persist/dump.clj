@@ -98,8 +98,8 @@
     (.write w "]\n")))
 
 (defn edn-of
-  "Returns the ticks of ring as EDN text, a line to each delta, plain
-  data only."
+  "Returns the ticks of ring as EDN text, a line to each delta,
+  plain data only."
   [ring]
   (let [w (StringWriter.)]
     (printed ring w)

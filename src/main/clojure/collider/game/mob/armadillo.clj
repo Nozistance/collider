@@ -84,7 +84,7 @@
     {:result :success :deltas (brushed t peid p hand eid e)}))
 
 (defn scared-result
-  "Returns the answer of a scared armadillo to any other click, which
-  is none."
+  "Returns the answer of a scared armadillo to any other click,
+  which is none."
   [{:keys [e]}]
   (when (shell/scared? e) {:result :pass}))

@@ -15,8 +15,8 @@
     (subs s n e)))
 
 (defn- relevant
-  "Returns the literal child that the next word names, else the
-  argument children."
+  "Returns the literal child that the next word names, else
+  the argument children."
   [node rd]
   (let [{lits :literal args :argument}
         (group-by :type (:children node))

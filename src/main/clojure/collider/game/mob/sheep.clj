@@ -158,8 +158,8 @@
 
 (defn shear-result
   "Returns what shears do to a sheep.
-  A grown sheep with wool loses it. Any other sheep swallows
-  the click."
+  A grown sheep with wool loses it. Any other sheep
+  swallows the click."
   [{:keys [t peid p hand eid e item]}]
   (when (= :shears item)
     (if (shearable? e)

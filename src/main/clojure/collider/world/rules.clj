@@ -154,8 +154,8 @@
 
 (def ^:const light-reach
   "How far a change moves light across.
-  Block light fades in 15 steps and so does sky light that leaves
-  a column."
+  Block light fades in 15 steps and so does sky light that
+  leaves a column."
   15)
 
 (defn lit?

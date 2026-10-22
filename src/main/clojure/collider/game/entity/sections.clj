@@ -136,8 +136,8 @@
 (defn- made [es] (of (seq es)))
 
 (defn index
-  "Returns the entities of level lv by section, in the order they
-  came there."
+  "Returns the entities of level lv by section, in the order
+  they came there."
   [lv]
   (stamp/value lv ::index made caught-up))
 
@@ -148,8 +148,8 @@
 
 (defn crossing
   "Returns [id from to] when entity id changes its section or the
-  time it came there between old and new. A section is nil where id
-  is not."
+  time it came there between old and new. A section is nil where
+  id is not."
   [id old new]
   (when-not (and old new (or (kept? old new) (stays? id old new)))
     [id (some-> old :pos key-of) (some-> new :pos key-of)]))
@@ -169,8 +169,8 @@
 
 (defn entered
   "Returns entity id as new, which was old before tick t, arrived in t
-  when it appeared or came to another section with no arrival of its
-  own."
+  when it appeared or came to another section with no arrival
+  of its own."
   [t id old new]
   (if-let [x (arrival-at t id old new)] (assoc new :arrived x) new))
 
@@ -185,8 +185,8 @@
 
 (defn moved
   "Returns level lv that keeps the index for entities es, which differ
-  from its own by the crossings xs alone. The level still holds its
-  own entities."
+  from its own by the crossings xs alone. The level still holds
+  its own entities."
   [lv es xs]
   (let [came-to #(when (nth % 2) (find es (nth % 0)))
         gone (into [] (keep #(when (nth % 1) (nth % 0))) xs)

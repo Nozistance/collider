@@ -78,8 +78,8 @@
   (+ centre (* spread (- a b))))
 
 (defn rnd
-  "Returns a number at least 0 and below 1 that tick t, eid and key k
-  decide."
+  "Returns a number at least 0 and below 1.
+  Tick t, eid and key k decide it."
   (^double [t eid k] (of-longs (long t) (long eid) (hash k)))
   (^double [t eid k i]
    (of-longs (long t) (long eid) (hash k) (long i))))

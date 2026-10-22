@@ -362,7 +362,7 @@
   (yellow-line "multiplayer.player.joined" shown))
 
 (defn left-text
-  "Returns the line chat shows when a player leaves, its name
-  shown."
+  "Returns the line chat shows when a player leaves,
+  its name shown."
   [shown]
   (yellow-line "multiplayer.player.left" shown))

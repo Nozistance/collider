@@ -13,8 +13,8 @@
 
 (defn played-deltas
   "Returns the deltas of the note block st at pos asked to play, which
-  entity source set off, nil for none. The note sounds when its block
-  event runs."
+  entity source set off, nil for none. The note sounds when its
+  block event runs."
   [pos ^long st source]
   (into [[:block-event-queued pos (block/block-of st) 0 0]]
         (signal/game-event :note-block-play pos source)))

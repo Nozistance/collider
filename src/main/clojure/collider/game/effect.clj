@@ -138,8 +138,8 @@
 (defn stepped
   "Returns [instance events] after one tick that did not stop it.
   The events are :refresh when a hidden instance took its place,
-  :gone when it ran out and :updated when the client needs its
-  duration again."
+  :gone when it ran out and :updated when the client needs
+  its duration again."
   [i]
   (let [[i down?] (downgraded (ticked-down i))
         d (long (:duration i))]

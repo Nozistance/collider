@@ -54,8 +54,8 @@
        (when (contains? v k) (str ", got " (pr-str (get v k))))))
 
 (defn complaints
-  "Returns the lines that say where v breaks schema, or nil when v
-  fits it."
+  "Returns the lines that say where v breaks schema, or nil when
+  v fits it."
   [schema v]
   (when-let [errors (me/humanize (m/explain schema v))]
     (map #(complaint v %) errors)))
@@ -67,8 +67,8 @@
     settings))
 
 (defn load-config
-  "Returns the settings in path over the defaults. Throws when they
-  are bad."
+  "Returns the settings in path over the defaults. Throws when
+  they are bad."
   ([] (load-config file))
   ([path]
    (merge defaults

@@ -1,6 +1,6 @@
 (ns collider.cli
-  "The command line of the server and its messages to the person who
-  runs it."
+  "The command line of the server and its messages to the person
+  who runs it."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -179,8 +179,8 @@
 
 (defn -main
   "Starts the server, or runs another command of the command line.
-  With no command or run, each argument is an edn map that overrides
-  the config."
+  With no command or run, each argument is an edn map that
+  overrides the config."
   [& args]
   (let [[c & more] args]
     (cond (or (nil? c) (edn-arg? c)) (serve! args)

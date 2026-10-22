@@ -51,8 +51,8 @@
   ^V3 [^Move m] (.vel m))
 
 (defn moved-y
-  "Returns how far up move m took the body, below zero when it went
-  down."
+  "Returns how far up move m took the body, below zero when
+  it went down."
   ^double [^Move m] (.dy m))
 
 (defn fallen
@@ -134,8 +134,8 @@
 (def ^:private ^:const boots-slot 8)
 
 (defn snow-walker?
-  "Returns true when body e walks on powder snow, by its kind or its
-  leather boots."
+  "Returns true when body e walks on powder snow, by its kind or
+  its leather boots."
   [e]
   (or (contains? @walkers (:type e))
       (= :leather-boots (:item (get (:inventory e) boots-slot)))))
@@ -177,8 +177,8 @@
   (apply @(resolve form) args))
 
 (defn dry?
-  "Returns true when no water or lava touches a body of that size
-  at pos."
+  "Returns true when no water or lava touches a body of that
+  size at pos."
   [chunks pos ^double half ^double height]
   (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
             half height))

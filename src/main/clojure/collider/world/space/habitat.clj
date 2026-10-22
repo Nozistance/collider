@@ -91,8 +91,8 @@
      (+ (double x) half) (+ (double y) height) (+ (double z) half)]))
 
 (defn mob-box-free?
-  "Returns true when box meets no block. Every block sees the box
-  above it."
+  "Returns true when box meets no block. Every block sees the
+  box above it."
   [chunks box]
   (phys/box-free? chunks box Double/MAX_VALUE))
 

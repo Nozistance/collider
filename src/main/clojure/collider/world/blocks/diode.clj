@@ -58,8 +58,8 @@
   (block/with st :locked (block/flag (held? chunks p st))))
 
 (defn prioritized?
-  "Returns true when diode st at p faces a diode that does not face
-  it back."
+  "Returns true when diode st at p faces a diode that does not
+  face it back."
   [chunks p ^long st]
   (let [d (dir/opposite (block/facing-of st))
         o (chunk/at chunks (dir/toward p d))]

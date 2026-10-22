@@ -11,8 +11,8 @@
 (defn- eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
 
 (defn night?
-  "Returns true when the time of day falls in the hours an eyeblossom
-  stays open."
+  "Returns true when the time of day falls in the hours an
+  eyeblossom stays open."
   [^long time]
   (<= 12600 (mod time 24000) 23400))
 

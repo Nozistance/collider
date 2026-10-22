@@ -1,6 +1,6 @@
 (ns collider.game.systems.hanging
-  "Hanging, use, breaking and support checks of paintings and item
-  frames."
+  "Hanging, use, breaking and support checks of paintings
+  and item frames."
   (:require [collider.game.areas :as areas]
             [collider.game.deltas :as deltas]
             [collider.game.hanging :as hanging]

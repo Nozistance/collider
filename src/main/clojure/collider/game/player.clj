@@ -100,8 +100,8 @@
 
 (defn respawn-at
   "Returns the world spawn as players respawn at it.
-  It moves inside the world border as the chunks of its level stand
-  now."
+  It moves inside the world border as the chunks of its
+  level stand now."
   [w]
   (let [pos (vec (:world-spawn w schema/world-spawn))]
     (if (in-border? pos) pos (centre-top (respawn-level w)))))
@@ -258,8 +258,8 @@
       e)))
 
 (defn equipment
-  "Returns the stacks that player e wears and holds, by equipment
-  slot."
+  "Returns the stacks that player e wears and holds,
+  by equipment slot."
   [e]
   (let [at (assoc slots/armor :mainhand (hand-slot e :main)
                   :offhand slots/offhand)]
@@ -289,8 +289,8 @@
 (defn swing-deltas
   "Returns the deltas of the arm swing of player eid.
   There are none while the arm is still busy with the swing before it.
-  The player sees its own swing only when the server, not the client,
-  started it."
+  The player sees its own swing only when the server, not the
+  client, started it."
   [eid e hand t self?]
   (when (swing-free? e (long t))
     (let [kind (if (= :off hand) :swing-off :swing)

@@ -11,8 +11,8 @@
 (set! *warn-on-reflection* true)
 
 (defn same-stack?
-  "Returns true when stacks a and b hold one item with one set of
-  components."
+  "Returns true when stacks a and b hold one item with one
+  set of components."
   [a b]
   (and (= (:item a) (:item b))
        (= (stack/saved (:components a)) (stack/saved (:components b)))

@@ -421,8 +421,8 @@
 
 (defn- tried
   "Returns [es out done?] after item i of es tried to merge with item
-  j. The smaller stack goes into the other. It is done when i went
-  into j."
+  j. The smaller stack goes into the other. It is done when i
+  went into j."
   [es gone fresh out i j]
   (let [a (nth (nth es i) 1) b (nth (nth es j) 1)
         ok? (and (merge-ready? b) (mergeable? a b))]
@@ -514,8 +514,8 @@
   (and (entity/alive? pe) (not (game-mode/spectator? pe))))
 
 (defn- touched
-  "Returns the items player pe can take up, in the order the game
-  visits them."
+  "Returns the items player pe can take up, in the order the
+  game visits them."
   [world pe]
   (let [es (:entities world) active (areas/active-chunks world)
         [lo hi] (pickup-box pe)

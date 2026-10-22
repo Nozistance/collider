@@ -34,8 +34,8 @@
     (not (can-eat? e (:always? f)))))
 
 (defn eaten
-  "Returns the food of player e after it ate nutrition points with
-  saturation."
+  "Returns the food of player e after it ate nutrition
+  points with saturation."
   [e ^long nutrition ^double saturation-gain]
   (let [f (min full (max 0 (+ (level e) nutrition)))
         s (math/f32 (+ saturation-gain (saturation e)))]

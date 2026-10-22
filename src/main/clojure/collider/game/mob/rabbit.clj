@@ -323,8 +323,8 @@
     [(gen/with e {:nav (nav-speed e s)}) nil]))
 
 (defn- avoid
-  "Returns the goal to flee what fear marks within r. The killer bunny
-  flees nothing."
+  "Returns the goal to flee what fear marks within r. The killer
+  bunny flees nothing."
   [kind fear r]
   {:kind kind :flags #{:move} :prio 4
    :start (fn [world eid e t _]

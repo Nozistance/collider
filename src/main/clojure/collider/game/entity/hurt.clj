@@ -176,8 +176,8 @@
   (or (block/lava? st) (block/fire? st) (= :soul-fire (block/type-of st))))
 
 (defn- in-lava?
-  "Returns true when entity e is in lava. It never is in its first
-  tick."
+  "Returns true when entity e is in lava. It never is in
+  its first tick."
   [world e]
   (and (not= 1 (entity/tick-count world e))
        (let [[half height] (box-of e)]
@@ -622,8 +622,8 @@
   (delay (block/state-table :boolean cauldron/layered?)))
 
 (defn in-layered-cauldron?
-  "Returns true when item or orb e lies in a cauldron of water or
-  snow."
+  "Returns true when item or orb e lies in a cauldron of
+  water or snow."
   [world e]
   (boolean (some-inside? (:chunks world) e @layered-cauldrons)))
 

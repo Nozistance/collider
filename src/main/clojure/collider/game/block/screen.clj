@@ -1,6 +1,6 @@
 (ns collider.game.block.screen
-  "The open menu of a player, its sync with the client and its
-  close."
+  "The open menu of a player, its sync with the client
+  and its close."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
@@ -223,8 +223,8 @@
 
 (defn menu-deltas
   "Returns the deltas of the menu of player eid in its turn. The
-  slots and data that moved go to the player, and a menu no longer
-  valid closes."
+  slots and data that moved go to the player, and a menu no
+  longer valid closes."
   [world eid e]
   (when-let [m (:menu e)]
     (let [ok? (valid? world m)]

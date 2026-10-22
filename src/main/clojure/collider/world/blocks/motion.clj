@@ -39,8 +39,8 @@
 (def ^:private unberried #{:fox :bee})
 
 (defn- holds
-  "Returns the factor block st holds a body by, nil when it does not
-  hold it."
+  "Returns the factor block st holds a body by, nil when it does
+  not hold it."
   [st snow? berry?]
   (case (block/type-of st)
     :web web-speed
@@ -252,8 +252,8 @@
 
 (defn- holds-support?
   "Returns true when a body on st looks no lower than st itself,
-  offset below its feet. A fence holds it only at half a block or
-  less."
+  offset below its feet. A fence holds it only at half a
+  block or less."
   [st ^double offset]
   (or (flagged? @supports (long st))
       (and (<= offset 0.5) (flagged? @fences (long st)))))

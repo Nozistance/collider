@@ -23,8 +23,8 @@
   (chunk/at chunks pos))
 
 (defn connected-direction
-  "Returns the direction from the half of a double chest st to its
-  other half."
+  "Returns the direction from the half of a double chest st to
+  its other half."
   [^long st]
   (let [{:keys [type facing]} (block/props-of st)]
     (if (= :left type)
@@ -41,8 +41,8 @@
   (dir/toward pos (connected-direction st)))
 
 (defn paired?
-  "Returns true when chest other is the other half of the double
-  chest st."
+  "Returns true when chest other is the other half of the
+  double chest st."
   [^long st ^long other]
   (let [a (block/props-of st) b (block/props-of other)]
     (and (connects? st other)

@@ -20,8 +20,8 @@
       :else (made now))))
 
 (defn with
-  "Returns level lv that keeps v under k for entities es, its own by
-  default."
+  "Returns level lv that keeps v under k for entities es, its
+  own by default."
   ([lv k v] (with lv k (entities lv) v))
   ([lv k es v]
    (let [[es0 v0] (get (meta lv) k)]

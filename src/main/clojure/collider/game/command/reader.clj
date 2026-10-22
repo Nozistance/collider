@@ -53,8 +53,8 @@
 (defn- arg-text [x] (if (nil? x) "null" (str x)))
 
 (defn- filled
-  "Returns template t with args in its places, or nil when they do not
-  fit."
+  "Returns template t with args in its places, or nil when they
+  do not fit."
   [^String t args]
   (let [^Matcher m (re-matcher format-spec t)]
     (loop [out "" at 0 n 0]

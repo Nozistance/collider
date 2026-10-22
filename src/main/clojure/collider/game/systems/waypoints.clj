@@ -201,8 +201,8 @@
       st)))
 
 (defn- recolored
-  "Returns st with the links to s made afresh where the colour of its
-  team changed."
+  "Returns st with the links to s made afresh where the colour of
+  its team changed."
   [st world [sid s :as se] ps]
   (if (contains? (:in st) sid)
     (let [color (color-of world sid s)]

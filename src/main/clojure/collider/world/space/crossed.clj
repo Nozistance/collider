@@ -162,8 +162,8 @@
 
 (defn cells
   "Returns the cells box b crosses on its way from point from to point
-  to, b being where it ends, as [x y z step] in the order it meets
-  them."
+  to, b being where it ends, as [x y z step] in the order
+  it meets them."
   [from to b]
   (let [d (mapv - to from)]
     (if (< (reduce + (map * d d)) still-sq)

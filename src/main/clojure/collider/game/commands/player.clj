@@ -259,8 +259,8 @@
                  (entity-name world x) (mode-name mode)))))
 
 (defn mode-change
-  "Returns the deltas that put the selected player x in game mode
-  mode."
+  "Returns the deltas that put the selected player x in
+  game mode mode."
   [world [id dim e] mode]
   (game-mode/change (targets/level-view world dim) id e mode))
 

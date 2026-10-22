@@ -23,8 +23,8 @@
     :else :solid))
 
 (defn- listed
-  "Returns a step that sorts one source cell for the copy and for the
-  clear."
+  "Returns a step that sorts one source cell for the copy and
+  for the clear."
   [from to off test]
   (fn [acc p]
     (let [st (state-at from p)

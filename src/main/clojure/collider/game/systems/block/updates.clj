@@ -203,8 +203,8 @@
     (fn [^long i p ty] (< i (long (get @at [p ty] -1))))))
 
 (defn- unqueued
-  "Returns the block ticks of world without the ticks a run of list k
-  takes."
+  "Returns the block ticks of world without the ticks a run of
+  list k takes."
   [world k taken]
   (cond-> (:block-ticks world)
     (= :block-ticks k) (schedule/without taken)))

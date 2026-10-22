@@ -31,8 +31,8 @@
 
 (defn timelines
   "Returns the timelines of the vanilla pack, by id.
-  Each names the clock it reads, its period in ticks and its time
-  markers."
+  Each names the clock it reads, its period in ticks and
+  its time markers."
   []
   @timeline-table)
 
@@ -271,8 +271,8 @@
               (get track "ease") at))))
 
 (defn tracked?
-  "Returns true when a timeline of level dim has a track for
-  attribute id."
+  "Returns true when a timeline of level dim has a track
+  for attribute id."
   [dim id]
   (boolean (some #(get-in (timeline-of (data/wire %)) [:tracks id])
                  (:timelines (dimension/type-of dim)))))

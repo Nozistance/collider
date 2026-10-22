@@ -1,6 +1,6 @@
 (ns collider.game.mob.goat
-  "Goats, the screaming ones, their horns and the cooldowns they are
-  born with."
+  "Goats, the screaming ones, their horns and the cooldowns they
+  are born with."
   (:require [collider.game.mob.brain :as b]
             [collider.random :as random]))
 

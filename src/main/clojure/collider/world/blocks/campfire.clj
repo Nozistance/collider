@@ -35,8 +35,8 @@
                         :signal-fire (block/flag signal?)))))
 
 (defn dowsed
-  "Returns the lit campfire st put out. Returns nil when st is no
-  lit campfire."
+  "Returns the lit campfire st put out. Returns nil when st is
+  no lit campfire."
   [^long st]
   (when (and (campfire? st) (= :true (:lit (block/props-of st))))
     (block/with st :lit :false)))

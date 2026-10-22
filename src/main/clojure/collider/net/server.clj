@@ -235,8 +235,8 @@
           (^[long] Thread/.join w (max 1 left)))))))
 
 (defn close-all!
-  "Disconnects everyone with text and waits up to ms for it to
-  reach them."
+  "Disconnects everyone with text and waits up to ms for it
+  to reach them."
   [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]

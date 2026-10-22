@@ -188,8 +188,8 @@
   (boolean (trait e k)))
 
 (defn eating-sound
-  "Returns the sound mob e eats with, or nil for a breed that eats
-  in silence."
+  "Returns the sound mob e eats with, or nil for a breed that
+  eats in silence."
   [e]
   (when (:eats-aloud? (types (:type e))) (sound-of e :eat)))
 

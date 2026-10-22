@@ -41,8 +41,8 @@
 (defn length ^double [v] (Math/sqrt (dot v v)))
 
 (defn normalized
-  "Returns v scaled to length one. Returns zero when v is shorter
-  than eps."
+  "Returns v scaled to length one. Returns zero when v is
+  shorter than eps."
   ^V3 [v ^double eps]
   (let [l (length v)]
     (if (< l eps)

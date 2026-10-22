@@ -153,8 +153,8 @@
          (catch Exception _ nil))))
 
 (defn build-commit
-  "Returns the commit of the running code, or nil when it is not
-  known."
+  "Returns the commit of the running code, or nil when it
+  is not known."
   []
   (or (git-commit)
       (some-> (io/resource "collider/build.edn") slurp edn/read-string

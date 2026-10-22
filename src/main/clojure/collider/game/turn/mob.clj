@@ -190,8 +190,8 @@
 
 (defn- brained
   "Returns mob e with a fresh brain of its breed when it has none, as
-  it first thinks at tick t. The brain keeps what e remembered
-  before."
+  it first thinks at tick t. The brain keeps what
+  e remembered before."
   [e t eid]
   (let [m (:brain e)]
     (if-let [b (when-not (:breed m) (:brain (spec/of (:type e))))]
@@ -311,8 +311,8 @@
     (reduce f 0 (push/touching index eid e half height))))
 
 (defn- crammed?
-  "Returns true when mob e, crowded, takes cramming damage this
-  tick."
+  "Returns true when mob e, crowded, takes cramming
+  damage this tick."
   [world index es eid e pos t]
   (and (push/alive? e)
        (push/cramming-draw? t eid)
@@ -381,8 +381,8 @@
    :ticking (push/ticks-of bodies at) :riders riders :after after})
 
 (defn- walk
-  "Returns the deltas of the island isl stepped in the order of its
-  bodies."
+  "Returns the deltas of the island isl stepped in the order
+  of its bodies."
   [world tempters t {:keys [es index ticking]}]
   (let [vels (object-array (count es))]
     (loop [i 0 es (transient es) index index acc (transient [])]
@@ -608,8 +608,8 @@
 
 (defn- clocked
   "Returns entry as its mob ticks at t, thawed when it ticks again
-  after a freeze. It adds to acc the change that freezes or thaws the
-  mob."
+  after a freeze. It adds to acc the change that freezes or
+  thaws the mob."
   [^objects acc active t [eid e :as entry]]
   (let [on? (areas/active-at? active (:pos e))
         frozen? (clock/frozen? e)]
@@ -748,8 +748,8 @@
   "Returns the herds of world, which are the islands of bodies with
   a mob among them, with the mobs that bite or tell this tick, the
   mobs whose death ends and the changes to the clocks of mobs. All
-  four are in id order. The thrown things of rs ride the herds they
-  reach."
+  four are in id order. The thrown things of rs ride the
+  herds they reach."
   ([world active t] (herds world active t nil))
   ([world active t rs]
    (let [f (scan (areas/loaded-zone world) active t)
@@ -782,8 +782,8 @@
   (into [] (mapcat (fn [[eid e]] (living/ended world eid e))) ends))
 
 (defn- stepper
-  "Returns the fn that tells whether the entity of an id steps this
-  tick."
+  "Returns the fn that tells whether the entity of an id
+  steps this tick."
   [world active]
   (let [held (areas/loaded-zone world) es (:entities world)]
     (fn [eid]

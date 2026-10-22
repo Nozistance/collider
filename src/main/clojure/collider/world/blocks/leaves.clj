@@ -13,8 +13,8 @@
     :else 7))
 
 (defn distance-state
-  "Returns the leaves st at p with the distance that its
-  neighbours give."
+  "Returns the leaves st at p with the distance that
+  its neighbours give."
   ^long [chunks p ^long st]
   (let [at (fn [off] (chunk/at-void chunks (mapv + p off)))
         step (fn [d off] (min (long d) (inc (distance-at (at off)))))

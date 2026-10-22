@@ -56,8 +56,8 @@
       (furnace/award-deltas e centre roll :spill))))
 
 (defn removed-deltas
-  "Returns the deltas of the block entity at pos going with its
-  block old."
+  "Returns the deltas of the block entity at pos going with
+  its block old."
   [world pos old]
   (when-let [e (be/at world pos)]
     (case (:kind e)

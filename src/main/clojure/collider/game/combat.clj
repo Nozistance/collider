@@ -73,7 +73,7 @@
 
 (defn damage-after
   "Returns the damage d from src that reaches the health and
-  absorption of living entity e, after its armor, resistance and
-  protection."
+  absorption of living entity e, after its armor,
+  resistance and protection."
   ^double [e src ^double d]
   (magic e src (armored e src d)))

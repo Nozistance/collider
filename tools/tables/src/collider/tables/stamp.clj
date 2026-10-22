@@ -10,8 +10,8 @@
 (def game "26.2")
 
 (defn fingerprint
-  "Returns the hex SHA-1 of the files under dir, each with its path
-  from dir."
+  "Returns the hex SHA-1 of the files under dir, each with its
+  path from dir."
   [dir]
   (let [root (.toPath (io/file dir))
         md (MessageDigest/getInstance "SHA-1")

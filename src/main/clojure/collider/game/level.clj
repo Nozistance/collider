@@ -49,8 +49,8 @@
   (update world :tick inc))
 
 (defn clocks-advanced
-  "Returns the world with its clocks one tick on when its rules let
-  them run."
+  "Returns the world with its clocks one tick on when its rules
+  let them run."
   [world]
   (cond-> world
           (clock/advancing? world) (update :clocks clock/advanced)))
@@ -82,8 +82,8 @@
 
 (defn level
   "Returns the level dim of world.
-  It also holds the shared keys of world and the shape of
-  its dimension."
+  It also holds the shared keys of world and the shape
+  of its dimension."
   [world dim]
   (holding world (get (:levels world) dim {}) dim))
 
@@ -114,8 +114,8 @@
 
 (defn with-level
   "Returns world with lv as its level dim.
-  The shared keys that lv changed go to the top of world and to its
-  other levels."
+  The shared keys that lv changed go to the top of world and to
+  its other levels."
   [world dim lv]
   (let [ks (changed world lv)
         w (refreshed world lv ks)
@@ -274,8 +274,8 @@
 
 (defn read-absent
   "Returns the payload of a chunk read while it is absent.
-  A saved chunk is read from the store at once. Any other chunk
-  is generated."
+  A saved chunk is read from the store at once. Any other
+  chunk is generated."
   [world id]
   (or (when (contains? (:stored world) id)
         (when-let [read (:read-chunk world)]

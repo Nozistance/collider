@@ -184,8 +184,8 @@
       (curveless? st) (conj (self-told p st' moved?)))))
 
 (defn- signal-block?
-  "Returns true when the block of old is a signal source in its
-  default state."
+  "Returns true when the block of old is a signal source in
+  its default state."
   [^long old]
   (block/signal-source? (block/state (block/block-of old))))
 

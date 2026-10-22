@@ -45,8 +45,8 @@
               (signal/game-event (event true) pos eid)))))
 
 (defn switch-deltas
-  "Returns the deltas of player eid using the lever or button state
-  at pos."
+  "Returns the deltas of player eid using the lever or button
+  state at pos."
   [world eid pos state]
   (if (= :lever (block/type-of state))
     (pulled world pos state)

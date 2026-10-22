@@ -16,8 +16,8 @@
 
 (defn player-radius
   "Returns the view distance a player is sent chunks for.
-  It is what the client asked for, held between two and the
-  server value."
+  It is what the client asked for, held between two and
+  the server value."
   ^long [world p]
   (-> (long (or (:view-distance p) 2))
       (max 2)

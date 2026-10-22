@@ -323,8 +323,8 @@
       ds)))
 
 (defn sequences
-  "Returns the last block action sequence of each player in events,
-  by eid."
+  "Returns the last block action sequence of each player in
+  events, by eid."
   [events]
   (reduce (fn [m [tag eid & args]]
             (if-let [sq (sequence-of tag args)]

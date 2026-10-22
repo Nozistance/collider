@@ -163,8 +163,8 @@
 
 (defn effect-deltas
   "Returns the deltas of the consume effects of c on player eid.
-  They come in their order. Draw returns the next number from 0 to 1
-  each call."
+  They come in their order. Draw returns the next number from 0 to
+  1 each call."
   [world eid e stack c draw]
   (let [src (drinker-source eid e)
         acc (-> (account/account eid e) (assoc :world world)

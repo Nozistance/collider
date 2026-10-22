@@ -181,8 +181,8 @@
   "Returns (f [id e d12 seen]) for each body of index idx that blast
   b reaches, in section order, with the share seen of it that b
   sees. Function now gives the body of an id as it is, nil when it
-  is gone. Function f must be pure, and its nil results are left
-  out."
+  is gone. Function f must be pure, and its nil results
+  are left out."
   [b idx now f]
   (let [reached (reach b now) seen (sight b)
         one (fn [entry] (some-> (reached entry) seen f))
@@ -294,8 +294,8 @@
       (:cause src) (assoc :owner (:cause src)))))
 
 (defn- xp-deltas
-  "Returns the orbs of the blocks a blast that a player caused
-  destroys."
+  "Returns the orbs of the blocks a blast that a
+  player caused destroys."
   [{:keys [world rg src]} destroy]
   (when (:player? src)
     (mapcat #(changes/xp-deltas world % (block-at rg %)
@@ -316,8 +316,8 @@
   8)
 
 (defn- gust-cells
-  "Returns how many cells the rays of the gust of b reach. A gust
-  breaks nothing."
+  "Returns how many cells the rays of the gust of b reach. A
+  gust breaks nothing."
   [{:keys [rg exposure center power seed]}]
   (let [hit (explosion/rays rg exposure center power seed 1 true)]
     {:ds [] :spawns [] :count (:count (explosion/reached hit center))}))
@@ -369,8 +369,8 @@
         hits))
 
 (defn deltas
-  "Returns the deltas of the blast of spec in world, every body where
-  it stands."
+  "Returns the deltas of the blast of spec in world, every body
+  where it stands."
   [world spec]
   (let [b (of world spec)
         es (:entities world)

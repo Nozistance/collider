@@ -133,8 +133,8 @@
 
 (defn input-changed
   "Returns the furnace with stack in its input slot.
-  A different item restarts the cooking timer at the total time of
-  its recipe."
+  A different item restarts the cooking timer at the total time
+  of its recipe."
   [e stack]
   (let [old (nth (:items e) 0)
         e (assoc-in e [:items 0] stack)]

@@ -19,8 +19,8 @@
 
 (defn- incoming
   "Returns the power the wires beside p give it, one less than the
-  strongest, reaching a step up past a conductor and a step down past
-  anything else."
+  strongest, reaching a step up past a conductor and a step down
+  past anything else."
   ^long [chunks p]
   (let [at #(chunk/at chunks %)
         up-open? (not (block/conductor? (at (dir/toward p :up))))
@@ -60,8 +60,8 @@
         true (into (map (fn [q] [:notify q nil st])) (told-cells p))))))
 
 (defn- corner
-  "Returns the step that tells the cells at and around q when q holds
-  wire."
+  "Returns the step that tells the cells at and around q when
+  q holds wire."
   [q]
   (fn [chunks]
     (let [st (chunk/at chunks q)]

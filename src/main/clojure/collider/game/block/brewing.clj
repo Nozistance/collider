@@ -122,8 +122,8 @@
 
 (defn tick
   "Returns the stand after one tick.
-  It also returns whether a brew finished and what the ingredient
-  remainder spilled."
+  It also returns whether a brew finished and what the
+  ingredient remainder spilled."
   [e]
   (let [e (refuel e)
         left (dec (long (:brew e 0)))]

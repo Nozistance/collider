@@ -31,8 +31,8 @@
   (.writeDouble b v))
 
 (defn write-bytes!
-  "Writes the bytes of src, a byte array or a Buf. A Buf src ends with
-  nothing unread."
+  "Writes the bytes of src, a byte array or a Buf. A Buf src ends
+  with nothing unread."
   ([^Buf b src]
    (if (instance? Buf src)
      (.writeBytes b ^Buf src)
@@ -131,7 +131,7 @@
   (.deflateInput b deflater))
 
 (defn deflate!
-  "Writes what deflater gives into the free room of b. That room does
-  not grow."
+  "Writes what deflater gives into the free room of b. That room
+  does not grow."
   [^Buf b ^Deflater deflater]
   (.deflate b deflater))

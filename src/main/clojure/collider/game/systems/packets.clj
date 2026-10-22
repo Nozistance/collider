@@ -1,6 +1,6 @@
 (ns collider.game.systems.packets
-  "The packet events of the tick, one after another in the order they
-  came."
+  "The packet events of the tick, one after another in the
+  order they came."
   (:require [collider.game.apply :as apply]
             [collider.game.bow :as bow]
             [collider.game.camera :as camera]

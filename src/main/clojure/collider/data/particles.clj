@@ -15,7 +15,7 @@
    :geyser-poof :geyser-base})
 
 (defn kind
-  "Returns the shape of the options of particle type k, :none when it
-  has none."
+  "Returns the shape of the options of particle type k, :none when
+  it has none."
   [k]
   (get option-kinds k :none))

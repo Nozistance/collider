@@ -79,8 +79,8 @@
       (game-mode/spectator? e) (assoc :on-ground false))))
 
 (defn player-deltas
-  "Returns the deltas that set the water state and the pose of
-  player eid."
+  "Returns the deltas that set the water state and the pose
+  of player eid."
   [world [eid e]]
   (when (game-mode/ticks? (:chunks world) e)
     (let [same? (fn [[k vl]] (= vl (get e k)))

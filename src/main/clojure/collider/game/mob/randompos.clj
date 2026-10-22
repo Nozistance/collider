@@ -137,8 +137,8 @@
 
 (defn land-pos
   "Returns a walk goal on dry land that costs the mob nothing.
-  The goal is lifted out of the ground. Returns nil when ten tries
-  find none."
+  The goal is lifted out of the ground. Returns nil when ten
+  tries find none."
   [world e t eid k h v]
   (let [pos (:pos e) w (mobs/walker (:type e))]
     (best-pos (fn [c] (walk-target-value world e c))

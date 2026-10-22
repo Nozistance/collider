@@ -55,15 +55,15 @@
   [[:sound kind (math/f32 0.4) (math/f32 pitch)] [:game-event event]])
 
 (defn- detach-pitch
-  "Returns the pitch of the detach sound for the random float r, in
-  float steps."
+  "Returns the pitch of the detach sound for the random float r,
+  in float steps."
   ^double [^double r]
   (let [f math/f32]
     (f (/ (f 1.2) (f (+ (f (* r (f 0.2))) (f 0.9)))))))
 
 (defn- emitted
-  "Returns the fx of a hook at p turning from was to now, each
-  [attached powered]."
+  "Returns the fx of a hook at p turning from was to now,
+  each [attached powered]."
   [p tick [a pw] [was-a was-pw]]
   (cond
     (and pw (not was-pw)) (sound :block.tripwire.click-on 0.6

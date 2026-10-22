@@ -64,8 +64,8 @@
                     #(random/of-key (:tick world) pos %)))
 
 (defn xp-deltas
-  "Returns the orbs of the experience of the block st at pos broken
-  with tool."
+  "Returns the orbs of the experience of the block st at pos
+  broken with tool."
   [world pos st tool]
   (when (get-in world [:rules :block-drops] true)
     (let [n (loot/block-xp st tool
@@ -102,8 +102,8 @@
 
 (defn primed-deltas
   "Returns the deltas of the TNT at pos lit by entity source, or by
-  nothing when source is nil. Gives none when the rules keep TNT from
-  exploding."
+  nothing when source is nil. Gives none when the rules keep
+  TNT from exploding."
   [world pos source]
   (when (get-in world [:rules :tnt-explodes] true)
     (let [e (cond-> (tnt/primed pos [(:tick world) pos])
@@ -368,8 +368,8 @@
 
 (defn placed-by-use-deltas
   "Returns the deltas of a player placing blocks from the stack in
-  hand, which spends one of it. The place sound goes to everyone
-  else."
+  hand, which spends one of it. The place sound goes
+  to everyone else."
   ([world eid pos state] (placed-by-use-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [base (dec (long (:tick world)))

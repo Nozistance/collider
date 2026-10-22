@@ -214,8 +214,8 @@
           [0 1 2]))
 
 (defn- victim?
-  "Returns true when o is a player or a mob with health left that
-  meets box."
+  "Returns true when o is a player or a mob with health left
+  that meets box."
   [box [_ o]]
   (and (or (= :player (:type o)) (mobs/mob-type? (:type o)))
        (pos? (double (:health o 0.0)))

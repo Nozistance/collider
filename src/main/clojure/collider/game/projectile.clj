@@ -64,8 +64,8 @@
        (axis-overlaps? (a 2) (a 5) (b 2) (b 5))))
 
 (defn gap-sq
-  "Returns the square of the gap between boxes a and b, 0 when they
-  touch."
+  "Returns the square of the gap between boxes a and b, 0
+  when they touch."
   ^double [a b]
   (let [gap (fn ^double [^long i]
               (max (- (double (a i)) (double (b (+ i 3))))
@@ -252,8 +252,8 @@
       b {:kind :block :at to :face (b 1) :cell (nth b 2)})))
 
 (defn left-owner?
-  "Returns true once projectile e moving by d no longer touches its
-  owner."
+  "Returns true once projectile e moving by d no longer
+  touches its owner."
   [world e d]
   (or (boolean (:left-owner? e))
       (if-let [o (get-in world [:entities (:owner e)])]
@@ -273,8 +273,8 @@
     (math/f32 (+ old (math/f32 (* (math/f32 0.2) (math/f32 (- new old))))))))
 
 (defn rotated
-  "Returns the yaw and the pitch of projectile e turned towards its
-  motion d."
+  "Returns the yaw and the pitch of projectile e turned towards
+  its motion d."
   [e d]
   (let [[yaw pitch] (facing d)]
     [(lerp-rotation (double (:yaw e 0.0)) yaw)

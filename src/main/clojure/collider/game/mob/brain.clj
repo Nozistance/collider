@@ -441,8 +441,8 @@
     e))
 
 (def memory-types
-  "The vanilla id of each memory a mob may hold and whether a save
-  keeps it."
+  "The vanilla id of each memory a mob may hold and whether a
+  save keeps it."
   {:attack-target ["attack_target" false]
    :breed-target ["breed_target" false]
    :cant-reach-walk-target-since

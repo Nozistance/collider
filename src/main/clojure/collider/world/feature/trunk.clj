@@ -24,8 +24,8 @@
                         (lv/in? (lv/at l p))))))
 
 (defn free?
-  "Returns true when trunk placer tp may set a log at p or a log is
-  there already."
+  "Returns true when trunk placer tp may set a log at p or a log
+  is there already."
   [l tp p]
   (or (valid? l tp p) (block/tagged? (lv/at l p) "logs")))
 
@@ -35,8 +35,8 @@
     st))
 
 (defn log
-  "Returns l with a log at p when the cell takes one, turned to axis
-  when given."
+  "Returns l with a log at p when the cell takes one, turned to
+  axis when given."
   ([l cfg p] (log l cfg p nil))
   ([l cfg p axis]
    (if (valid? l (:trunk-placer cfg) p)

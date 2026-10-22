@@ -20,14 +20,14 @@
   [:fx (assoc msg :except eid)])
 
 (defn team-except
-  "Returns msg as an effect for every player of the team called name
-  but eid."
+  "Returns msg as an effect for every player of the team called
+  name but eid."
   [name eid msg]
   [:fx (assoc msg :to-team name :except eid)])
 
 (defn team-others
-  "Returns msg as an effect for every player out of the team called
-  name."
+  "Returns msg as an effect for every player out of the
+  team called name."
   [name msg]
   [:fx (assoc msg :to-others-of name)])
 
@@ -51,8 +51,8 @@
   {:msg :objective :method method :objective o})
 
 (defn score
-  "Returns the effect that shows score s of holder h on the objective
-  called nm."
+  "Returns the effect that shows score s of holder h on the
+  objective called nm."
   [h nm s]
   {:msg :score :holder h :objective nm :value (:value s)
    :display (:display s) :format (:format s)})
@@ -97,8 +97,8 @@
 
 (defn time
   "Returns the effect that sets the game time age and the clocks,
-  their network state by clock. No clocks leaves the clocks of the
-  client running."
+  their network state by clock. No clocks leaves the clocks of
+  the client running."
   [age clocks]
   {:msg :time :age age :clocks clocks})
 
@@ -284,8 +284,8 @@
 (defn waypoint
   "Returns the effect that puts op (:track, :update or :untrack) on
   the point of uuid in the locator bar, coloured color when given.
-  Kind is :block, :chunk or :azimuth, with at a block, a chunk or an
-  angle."
+  Kind is :block, :chunk or :azimuth, with at a block, a chunk
+  or an angle."
   ([op uuid kind at] (waypoint op uuid kind at nil))
   ([op uuid kind at color]
    (cond-> {:msg :waypoint :op op :uuid uuid :kind kind :at at}
@@ -319,8 +319,8 @@
   {:msg :tab-game-mode :uuid uuid :mode mode})
 
 (defn camera
-  "Returns the effect that tells a spectator the entity of id it
-  looks through."
+  "Returns the effect that tells a spectator the entity of id
+  it looks through."
   [id]
   {:msg :camera :id id})
 
@@ -395,8 +395,8 @@
 
 (defn sound
   "Returns the effect of a sound at pos.
-  Source names the mixer channel when it is not the one the sound is
-  listed under."
+  Source names the mixer channel when it is not the one the sound
+  is listed under."
   ([kind pos volume pitch] (sound kind pos volume pitch nil))
   ([kind pos volume pitch source]
    (cond-> {:msg :sound :kind kind :pos pos
@@ -404,8 +404,8 @@
      source (assoc :source source))))
 
 (def sound-sources
-  "The mixer channels of sounds, in the order the client numbers
-  them."
+  "The mixer channels of sounds, in the order the
+  client numbers them."
   ["master" "music" "record" "weather" "block" "hostile" "neutral"
    "player" "ambient" "voice" "ui"])
 

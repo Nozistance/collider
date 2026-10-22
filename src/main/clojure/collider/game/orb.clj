@@ -43,8 +43,8 @@
 
 (defn make
   "Returns an orb of value at pos with a random yaw and a random push
-  turned to face roughly. The orb also moves half its size along that
-  rough direction."
+  turned to face roughly. The orb also moves half its size along
+  that rough direction."
   ([pos value roll] (make pos [0.0 0.0 0.0] value roll))
   ([pos roughly ^long value roll]
    (let [yaw (math/f32 (* (math/f32 (roll :yaw)) 360.0))

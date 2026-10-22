@@ -233,8 +233,8 @@
 
 (defn recompute-path
   "Returns mob e with its path to the same goal built again.
-  Sooner than 20 ticks after the last one it only asks for a
-  later recomputation."
+  Sooner than 20 ticks after the last one it only asks for
+  a later recomputation."
   [world e]
   (let [nav (nav-of e) t (long (:tick world))]
     (cond

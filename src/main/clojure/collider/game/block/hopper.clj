@@ -1,6 +1,6 @@
 (ns collider.game.block.hopper
-  "A hopper moves one item toward the block it faces and takes one
-  from above."
+  "A hopper moves one item toward the block it faces and takes
+  one from above."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.changes :as changes]
             [collider.game.entity.bodies :as bodies]

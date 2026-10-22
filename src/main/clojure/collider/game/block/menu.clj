@@ -332,8 +332,8 @@
     :else (deselected m slot b)))
 
 (defn- overridden
-  "Returns the click as a bundle takes it, and whether the bundle
-  took it."
+  "Returns the click as a bundle takes it, and whether the
+  bundle took it."
   [m layout slot clicked carried primary?]
   (if-let [m' (when (bundle/bundle? carried)
                 (stacked-on-other

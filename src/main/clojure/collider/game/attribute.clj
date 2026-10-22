@@ -1,6 +1,6 @@
 (ns collider.game.attribute
-  "Attributes of living entities as their effects and equipment
-  change them."
+  "Attributes of living entities as their effects and
+  equipment change them."
   (:require [collider.data :as data]
             [collider.game.effect :as effect]
             [collider.game.enchantment :as enchantment]
