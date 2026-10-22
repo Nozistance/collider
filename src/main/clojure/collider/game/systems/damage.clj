@@ -7,7 +7,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.arrows :as arrows]
             [collider.game.entity.hurt :as hurt]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
@@ -17,7 +17,7 @@
 (def ^:private loose-types #{:item :experience-orb})
 
 (defn- chunk-coord ^long [^double a]
-  (bit-shift-right (num/floor a) 4))
+  (bit-shift-right (math/floor a) 4))
 
 (defn- has-chunk? [chunks x z]
   (some? (get chunks (chunk/pos->id x z))))

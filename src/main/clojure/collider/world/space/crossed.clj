@@ -1,19 +1,19 @@
 (ns collider.world.space.crossed
   "The cells a box crosses on its way, in the order a body meets them."
-  (:require [collider.num :as num]))
+  (:require [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private eps (double (float 1.0E-5)))
 
-(def ^:private still-sq (double (num/fmul (float 1.0E-5) (float 1.0E-5))))
+(def ^:private still-sq (double (math/fmul (float 1.0E-5) (float 1.0E-5))))
 
 (defn- step-of ^long [^double a] (if (>= a 0.0) 1 -1))
 
 (defn- sign ^long [^double a]
   (cond (zero? a) 0 (> a 0.0) 1 :else -1))
 
-(defn- frac ^double [^double a] (- a (double (num/floor a))))
+(defn- frac ^double [^double a] (- a (double (math/floor a))))
 
 (defn- between-corners
   "Returns the cells from corner a to corner b, first the one that
@@ -40,7 +40,7 @@
           k (range (inc (span c)))]
       (at i j k))))
 
-(defn- cell-of [[x y z]] [(num/floor x) (num/floor y) (num/floor z)])
+(defn- cell-of [[x y z]] [(math/floor x) (math/floor y) (math/floor z)])
 
 (defn- furthest-corner [[dx dy dz]]
   (let [x (Math/abs (double dx)) y (Math/abs (double dy))
@@ -135,7 +135,7 @@
           (if-let [hit (clip cx cy cz from to)]
             (let [n (inc n)
                   far (mapv (fn [k]
-                              (num/floor
+                              (math/floor
                                 (- (inside (hit k) (c k))
                                    (* (double (size k))
                                       (double (dir k))))))

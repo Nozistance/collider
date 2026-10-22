@@ -4,25 +4,31 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- frac ^double [^long h]
+(defn- frac
+  "Returns 24 bits of h as a fraction at least 0 and below 1."
+  ^double [^long h]
   (/ (double (bit-and h 0xFFFFFF)) 16777216.0))
 
-(defn- step ^long [^long h o]
+(defn- mix-key ^long [^long h o]
   (unchecked-add-int (unchecked-multiply-int (unchecked-int h) 31)
                      (Util/hasheq o)))
 
-(defn- coll-hash ^long [^long h ^long n]
+(defn- ordered-hash
+  "Returns the hash n keys share from running hash h."
+  ^long [^long h ^long n]
   (Murmur3/mixCollHash (unchecked-int h) (unchecked-int n)))
 
 (defn of-key
   "Returns a number at least 0 and below 1 for the given key or keys.
-  The same keys always give the same number."
+  The same keys always give the same number. Two, three or four keys
+  give the same number as one collection of them in that order."
   (^double [ks] (frac (hash ks)))
-  (^double [a b] (frac (coll-hash (step (step 1 a) b) 2)))
+  (^double [a b] (frac (ordered-hash (mix-key (mix-key 1 a) b) 2)))
   (^double [a b c]
-   (frac (coll-hash (step (step (step 1 a) b) c) 3)))
+   (frac (ordered-hash (mix-key (mix-key (mix-key 1 a) b) c) 3)))
   (^double [a b c d]
-   (frac (coll-hash (step (step (step (step 1 a) b) c) d) 4))))
+   (frac (ordered-hash
+          (mix-key (mix-key (mix-key (mix-key 1 a) b) c) d) 4))))
 
 (defn pitch
   "Returns a sound pitch from 0.8 below 1.2 that the keys decide."
@@ -47,7 +53,8 @@
     (bit-xor z (unsigned-bit-shift-right z 31))))
 
 (defn of-longs
-  "Returns a number at least 0 and below 1 for the given longs."
+  "Returns a number at least 0 and below 1 for the given longs.
+  Near longs give far apart numbers."
   (^double [^long a ^long b ^long c]
    (let [h (mix64 (unchecked-add (mix64 a) b))]
      (frac (mix64 (unchecked-add h c)))))

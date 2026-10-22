@@ -1,7 +1,7 @@
 (ns collider.world.blocks.plate
   "Pressure plates and the count of the bodies on them."
   (:require [collider.data :as data]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
@@ -49,8 +49,8 @@
   ^long [^long most ^long n]
   (if (pos? n)
     (let [m (double most)
-          part (num/fdiv (min (double n) m) m)]
-      (long (Math/ceil (num/fmul part 15.0))))
+          part (math/fdiv (min (double n) m) m)]
+      (long (Math/ceil (math/fmul part 15.0))))
     0))
 
 (defn- counted

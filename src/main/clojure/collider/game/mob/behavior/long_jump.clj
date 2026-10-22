@@ -9,7 +9,7 @@
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -94,7 +94,7 @@
 (defn- speed-squared ^double [rad ^double r2 ^double y]
   (let [ca (Math/cos rad)]
     (/ (* r2 gravity)
-       (- (* (Math/sqrt r2) (Math/sin (num/fmul 2.0 rad)))
+       (- (* (Math/sqrt r2) (Math/sin (math/fmul 2.0 rad)))
           (* (* 2.0 y) (Math/pow ca 2.0))))))
 
 (defn jump-vector
@@ -103,7 +103,7 @@
   on the way."
   [world e to a top]
   (let [p (vec (:pos e)) [xz r2 y] (aim p (vec to))
-        rad (num/fdiv (num/fmul a (num/f32 Math/PI)) 180.0)
+        rad (math/fdiv (math/fmul a (math/f32 Math/PI)) 180.0)
         vv (speed-squared rad r2 y) v0 (Math/sqrt vv)
         sa (Math/sin rad) ca (Math/cos rad) r (Math/sqrt r2)
         k [sa ca vv (Math/cos xz) (Math/sin xz)]
@@ -202,8 +202,8 @@
             :else [false (given-up e t eid i span)]))))
 
 (defn- top-speed ^double [e mult]
-  (num/f32 (* (mobs/attribute (:type e) :jump-strength)
-              (num/f32 mult))))
+  (math/f32 (* (mobs/attribute (:type e) :jump-strength)
+              (math/f32 mult))))
 
 (defn- chosen [world eid e t i [w h mult]]
   (let [cells (spots world e t eid i w h)

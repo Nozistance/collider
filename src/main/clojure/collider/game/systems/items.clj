@@ -21,7 +21,7 @@
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
             [collider.game.turn.overlay :as overlay]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par])
   (:import (clojure.lang MapEntry)))
 
@@ -126,8 +126,8 @@
     (liquid/fluid-info chunks pos (item-half) (item-height) vel dim)))
 
 (defn- air-at? [chunks ^double x ^double y ^double z]
-  (zero? (chunk/block-state chunks (num/floor x) (num/floor y)
-                            (num/floor z))))
+  (zero? (chunk/block-state chunks (math/floor x) (math/floor y)
+                            (math/floor z))))
 
 (defn- in-air?
   "Returns true when only air lies in the cells that the box of an
@@ -169,7 +169,7 @@
 (defn- ground-friction ^double [chunks pos sup]
   (let [st (motion/below-state chunks pos sup motion/drop-offset)
         f (motion/friction st)]
-    (num/f32 (* air-drag f))))
+    (math/f32 (* air-drag f))))
 
 (defn- moved-speed [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
@@ -330,8 +330,8 @@
           (bit-and y 0xFFF)))
 
 (defn- cell-of ^long [pos]
-  (cell-key (num/floor (v/x pos)) (num/floor (v/y pos))
-            (num/floor (v/z pos))))
+  (cell-key (math/floor (v/x pos)) (math/floor (v/y pos))
+            (math/floor (v/z pos))))
 
 (defn- merge-index [items]
   (persistent!
@@ -347,9 +347,9 @@
             (+ (long z) (dec (rem c 3)))))
 
 (defn- neighbour-idxs [index pos]
-  (let [x (num/floor (v/x pos))
-        y (num/floor (v/y pos))
-        z (num/floor (v/z pos))
+  (let [x (math/floor (v/x pos))
+        y (math/floor (v/y pos))
+        z (math/floor (v/z pos))
         at (fn [c] (get index (neighbour-key x y z c) []))]
     (sort (persistent!
             (reduce (fn [acc c] (reduce conj! acc (at c)))
@@ -365,9 +365,9 @@
           (assoc! b (conj (get index b []) i))))))
 
 (defn- crossed? [from to]
-  (or (not (== (num/floor (v/x from)) (num/floor (v/x to))))
-      (not (== (num/floor (v/y from)) (num/floor (v/y to))))
-      (not (== (num/floor (v/z from)) (num/floor (v/z to))))))
+  (or (not (== (math/floor (v/x from)) (math/floor (v/x to))))
+      (not (== (math/floor (v/y from)) (math/floor (v/y to))))
+      (not (== (math/floor (v/z from)) (math/floor (v/z to))))))
 
 (defn- merge-rate ^long [from to]
   (if (crossed? from to) moved-rate resting-rate))

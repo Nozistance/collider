@@ -6,7 +6,7 @@
             [collider.game.mob.brain :as b]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sensor :as sensor]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]))
 
@@ -36,7 +36,7 @@
           :else (b/remember r :look-target tr forever))))
 
 (defn- glance [kind max-dist interval]
-  (let [d (num/f32 max-dist) r2 (num/fmul d d)]
+  (let [d (math/f32 max-dist) r2 (math/fmul d d)]
     (fn [w eid e t i]
       (let [ok? (fn [_ o]
                   (and (= kind (:type o))

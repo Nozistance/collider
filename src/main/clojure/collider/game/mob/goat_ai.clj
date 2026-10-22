@@ -11,7 +11,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sensor :as sensor]
             [collider.game.stack :as stack]
-            [collider.num :as num])
+            [collider.math :as math])
   (:import (java.util Random UUID)))
 
 (set! *warn-on-reflection* true)
@@ -70,9 +70,9 @@
         :else :right-horn?))
 
 (defn- spread [t eid i k lo hi]
-  (let [r (num/f32 (c/roll t eid i k))
-        lo (num/f32 lo) w (num/f32 (- (num/f32 hi) lo))]
-    (double (num/f32 (+ (num/f32 (* r w)) lo)))))
+  (let [r (math/f32 (c/roll t eid i k))
+        lo (math/f32 lo) w (math/f32 (- (math/f32 hi) lo))]
+    (double (math/f32 (+ (math/f32 (* r w)) lo)))))
 
 (defn- hornless? [e]
   (and (false? (:left-horn? e)) (false? (:right-horn? e))))

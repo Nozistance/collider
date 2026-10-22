@@ -7,7 +7,7 @@
             [collider.data.loot :as loot]
             [collider.data.recipes :as recipes]
             [collider.data.tags :as tags]
-            [collider.num :as num])
+            [collider.math :as math])
   (:import (clojure.lang PersistentArrayMap)
            (java.io File PushbackReader)
            (java.nio.file Files)
@@ -532,8 +532,8 @@
 (defn placed-sound [block item]
   (let [t (get (sounds) (:sound (info block)))]
     {:kind   (or (get-in (items) [item :place-sound]) (:place t))
-     :volume (num/f32 (/ (+ 1.0 (num/f32 (:volume t 1.0))) 2.0))
-     :pitch  (num/f32 (* (num/f32 0.8) (num/f32 (:pitch t 1.0))))}))
+     :volume (math/f32 (/ (+ 1.0 (math/f32 (:volume t 1.0))) 2.0))
+     :pitch  (math/f32 (* (math/f32 0.8) (math/f32 (:pitch t 1.0))))}))
 
 (defn open-sound [block open?]
   (get (info block) (if open? :open :close)))

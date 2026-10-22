@@ -10,7 +10,7 @@
             [collider.game.turn.rocket :as rocket]
             [collider.game.turn.thrown :as thrown]
             [collider.game.using :as using]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]))
 
 (set! *warn-on-reflection* true)
@@ -36,7 +36,7 @@
       slot {:stack one :slot slot :rest (stack/shrunk found 1)})))
 
 (defn- end-sound [world eid e]
-  (let [f num/f32
+  (let [f math/f32
         r (f (random/of-key (:tick world) eid :crossbow))
         pitch (f (+ (f (/ (f 1.0) (f (+ (f (* r (f 0.5))) (f 1.0)))))
                     (f 0.2)))]
@@ -69,7 +69,7 @@
   remaining ticks of use left. The sound flags are one pair for every
   player, as vanilla keeps them on the item."
   [world eid e ^long remaining]
-  (let [f num/f32
+  (let [f math/f32
         p (f (/ (f (- using/bow-ticks remaining)) (f charge-ticks)))
         hand (get-in e [:using :hand])
         loads? (and (>= p 1.0)

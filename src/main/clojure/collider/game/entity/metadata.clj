@@ -6,7 +6,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
             [collider.game.potion :as potion]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -76,7 +76,7 @@
            :pose        (or (:pose e) :standing)
            :skin-parts  (long (or (:skin-parts e) 0))
            :main-hand   (or (:main-hand e) :right)
-           :health      (num/f32 (double (:health e 20.0)))}
+           :health      (math/f32 (double (:health e 20.0)))}
           (:sleeping e)
           (assoc :sleeping-pos (get-in e [:sleeping :pos]))
           (pos? (double (:absorption e 0.0)))

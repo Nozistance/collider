@@ -15,7 +15,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.tools :as tools]
@@ -108,7 +108,7 @@
 (def ^:private ^:const slice-food 2)
 
 (def ^:private slice-saturation
-  (num/fmul (num/fmul slice-food (num/f32 0.1)) 2.0))
+  (math/fmul (math/fmul slice-food (math/f32 0.1)) 2.0))
 
 (defn- eat-deltas [world eid pos cake fx]
   (when (eats? world eid)
@@ -167,7 +167,7 @@
 
 (defn- bush-stacks [world pos ^long a]
   (let [roll (random/of-key (:tick world) pos :bush-count)
-        n (inc (num/floor (* berry-rolls (double roll))))
+        n (inc (math/floor (* berry-rolls (double roll))))
         rolled {:item :sweet-berries :count n}]
     (if (= bush-max-age a)
       [{:item :sweet-berries :count 1} rolled]

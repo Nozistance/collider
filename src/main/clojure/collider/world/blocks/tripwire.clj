@@ -1,6 +1,6 @@
 (ns collider.world.blocks.tripwire
   "Tripwire hooks and the string between them."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.support :as support]
@@ -52,13 +52,13 @@
                      (or hit here?))))))
 
 (defn- sound [kind pitch event]
-  [[:sound kind (num/f32 0.4) (num/f32 pitch)] [:game-event event]])
+  [[:sound kind (math/f32 0.4) (math/f32 pitch)] [:game-event event]])
 
 (defn- detach-pitch
   "Returns the pitch of the detach sound for the random float r, in
   float steps."
   ^double [^double r]
-  (let [f num/f32]
+  (let [f math/f32]
     (f (/ (f 1.2) (f (+ (f (* r (f 0.2))) (f 0.9)))))))
 
 (defn- emitted
@@ -74,7 +74,7 @@
                                :block-attach)
     (and (not a) was-a)
     (sound :block.tripwire.detach
-           (detach-pitch (num/f32 (random/of-key tick p :detach)))
+           (detach-pitch (math/f32 (random/of-key tick p :detach)))
            :block-detach)))
 
 (defn- heard [p fx]

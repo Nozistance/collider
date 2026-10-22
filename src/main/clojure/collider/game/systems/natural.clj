@@ -9,7 +9,7 @@
             [collider.game.mob.variant :as variant]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -216,16 +216,16 @@
     (into [] (keep box) (sections/in-chunk idx cx cz))))
 
 (defn- blocked? [ctx box]
-  (let [cx (bit-shift-right (num/floor (box 0)) 4)
-        cz (bit-shift-right (num/floor (box 2)) 4)
+  (let [cx (bit-shift-right (math/floor (box 0)) 4)
+        cz (bit-shift-right (math/floor (box 2)) 4)
         hits? #(some (fn [b] (phys/joined? box b)) %)]
     (some #(hits? ((:blockers ctx) %))
           (chunk/around-ids cx cz 1))))
 
 (defn- clear? [ctx k x y z]
-  (let [h (/ (num/f32 (:width k)) 2.0)
+  (let [h (/ (math/f32 (:width k)) 2.0)
         at [(+ (long x) 0.5) y (+ (long z) 0.5)]]
-    (and (phys/dry? (:chunks ctx) at h (num/f32 (:height k)))
+    (and (phys/dry? (:chunks ctx) at h (math/f32 (:height k)))
          (not (blocked? ctx (mob-box k x y z))))))
 
 (defn- attempt [ctx k d2 [x y z]]

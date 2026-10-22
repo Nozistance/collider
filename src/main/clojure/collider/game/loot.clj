@@ -6,7 +6,7 @@
             [collider.game.enchantment :as enchantment]
             [collider.game.item-predicate :as ip]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
@@ -138,17 +138,17 @@
 
 (defn- level-value ^double [v ^long lvl]
   (cond
-    (number? v) (num/f32 v)
+    (number? v) (math/f32 v)
     (= :linear (:type v))
-    (let [per (num/f32 (:per-level-above-first v))]
-      (num/f32 (+ (num/f32 (:base v)) (num/f32 (* per (dec lvl))))))
+    (let [per (math/f32 (:per-level-above-first v))]
+      (math/f32 (+ (math/f32 (:base v)) (math/f32 (* per (dec lvl))))))
     :else (fail "unknown level value" {:value v})))
 
 (defn- bonus-chance ^double [c ctx]
   (let [lvl (level-of ctx (:enchantment c))]
     (if (pos? lvl)
       (level-value (:enchanted-chance c) lvl)
-      (num/f32 (:unenchanted-chance c)))))
+      (math/f32 (:unenchanted-chance c)))))
 
 (defn- tool-level ^long [ctx ench]
   (long (get (stack/component (:tool ctx) :enchantments) ench 0)))
@@ -232,7 +232,7 @@
         lim (long (:limit f 0))]
     (if (zero? lvl)
       stack
-      (let [add (num/f32 (* lvl (float-of (:count f) roll s)))
+      (let [add (math/f32 (* lvl (float-of (:count f) roll s)))
             n (+ (long (:count stack 1)) (Math/round (float add)))]
         (assoc stack :count (if (pos? lim) (min n lim) n))))))
 
@@ -343,8 +343,8 @@
 (defn- weight-of
   "Returns the weight of leaf e under luck, never below 0."
   ^long [[e _] ^double luck]
-  (let [q (num/f32 (* (num/f32 (:quality e 0)) luck))]
-    (max 0 (long (Math/floor (num/f32 (+ (long (:weight e 1)) q)))))))
+  (let [q (math/f32 (* (math/f32 (:quality e 0)) luck))]
+    (max 0 (long (Math/floor (math/f32 (+ (long (:weight e 1)) q)))))))
 
 (defn- pick [leaves ^double r ^double luck]
   (let [w #(weight-of % luck)
@@ -390,8 +390,8 @@
   "Returns the rolls that the luck of ctx adds to pool p."
   ^long [p ctx roll s]
   (if-let [b (:bonus-rolls p)]
-    (let [luck (num/f32 (:luck ctx 0.0))
-          n (num/f32 (* (num/f32 (float-of b roll s)) luck))]
+    (let [luck (math/f32 (:luck ctx 0.0))
+          n (math/f32 (* (math/f32 (float-of b roll s)) luck))]
       (long (Math/floor n)))
     0))
 

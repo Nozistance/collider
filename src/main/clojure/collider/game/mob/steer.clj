@@ -2,7 +2,7 @@
   "The move control of a mob. It holds what the mob does (:op), where
   it walks to, the speed modifier it was given and the speed and
   forward input it drives with."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -11,21 +11,21 @@
   "Returns a turned toward b by at most max degrees, brought back into
   one turn, in floats."
   ^double [^double a ^double b ^double max]
-  (let [a (num/f32 a) m (num/f32 max)
-        d (num/wrap-degrees (- (num/f32 b) a))
+  (let [a (math/f32 a) m (math/f32 max)
+        d (math/wrap-degrees (- (math/f32 b) a))
         d (if (> d m) m d)
         d (if (< d (- m)) (- m) d)
-        r (num/f32 (+ a d))]
-    (cond (< r 0.0) (num/f32 (+ r 360.0))
-          (> r 360.0) (num/f32 (- r 360.0))
+        r (math/f32 (+ a d))]
+    (cond (< r 0.0) (math/f32 (+ r 360.0))
+          (> r 360.0) (math/f32 (- r 360.0))
           :else r)))
 
 (defn turned
   "Returns yaw turned toward the offset xd zd by at most max degrees,
   in floats."
   ^double [^double yaw ^double xd ^double zd ^double max]
-  (let [d (num/f32 (num/degrees (num/atan2 zd xd)))
-        to (num/f32 (- d 90.0))]
+  (let [d (math/f32 (math/degrees (math/atan2 zd xd)))
+        to (math/f32 (- d 90.0))]
     (rotlerp yaw to max)))
 
 (def ^:private idle
@@ -54,14 +54,14 @@
   "Returns control m driving at speed, rounded to a float. It jumps
   when jump? is true and waits otherwise."
   [m speed jump?]
-  (let [s (or m idle) f (num/f32 (double speed))]
+  (let [s (or m idle) f (math/f32 (double speed))]
     (kept s (assoc s :op (if jump? :jumping :wait) :speed f :zza f))))
 
 (defn jumped
   "Returns control m in its jump at speed, rounded to a float. The
   jump ends on landing."
   [m speed landed?]
-  (let [s (or m idle) f (num/f32 (double speed))]
+  (let [s (or m idle) f (math/f32 (double speed))]
     (kept s (assoc s :op (if landed? :wait (:op s)) :speed f :zza f))))
 
 (defn halted

@@ -14,7 +14,7 @@
             [collider.game.turn.landing :as landing]
             [collider.game.turn.thrown :as thrown]
             [collider.game.turn.tnt :as tnt]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.fall :as fall]
@@ -156,7 +156,7 @@
 
 (def ^:private ^:const drag (double (float 0.98)))
 
-(def ^:private living-drag (num/fsub 1.0 (num/fsub 1.0 drag)))
+(def ^:private living-drag (math/fsub 1.0 (math/fsub 1.0 drag)))
 
 (defn- unliving-fall [t]
   (or (case t
@@ -381,7 +381,8 @@
        (or (rests? (:chunks w) b pos) (over? box b))))
 
 (defn stuck
-  "Returns the deltas of the bodies honey e at pos drags."
+  "Returns the deltas of bodies dragged along with honey block entity
+  e at pos."
   [w pos e]
   (when (and (= :honey-block (block/block-of (:moved e)))
              (flat? (movement e)))

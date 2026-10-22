@@ -10,7 +10,7 @@
             [collider.game.level :as level]
             [collider.game.projectile :as projectile]
             [collider.game.reach :as reach]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.geyser :as geyser]
@@ -22,9 +22,9 @@
 
 (def ^:private ^:const countdown-period 20)
 
-(def ^:private lift (num/f32 0.2))
+(def ^:private lift (math/f32 0.2))
 
-(def ^:private base-speed (num/f32 0.3))
+(def ^:private base-speed (math/f32 0.3))
 
 (def ^:private unmoved-tag "not_affected_by_geysers")
 

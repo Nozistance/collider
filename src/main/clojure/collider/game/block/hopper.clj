@@ -153,16 +153,11 @@
         (when-let [r (or (pull world pos e) (sucked world pos e))]
           (pack r)))))
 
-(defn tick-deltas
-  [world [pos e]]
-  (let [st (chunk/at (:chunks world) pos)
-        cd (dec (long (:cooldown e -1)))
-        open? (= :true (:enabled (block/props-of st)))
-        [e' extra] (when (and (not (pos? cd)) open?)
-                     (moved world pos e))
-        moved? (some? e')
-        e' (assoc (or e' e) :cooldown (if moved? 8 cd))
-        be? #(= :set-block-entity (first %))
+(defn- cooled [e ^long cd moved?]
+  (assoc e :cooldown (if moved? 8 cd)))
+
+(defn- transfer-deltas [world pos e e' extra]
+  (let [be? #(= :set-block-entity (first %))
         sig? #(= :output-signal (first %))
         ops (when (not= (:items e) (:items e'))
               (into [[:output-signal pos]] (filter sig? extra)))]
@@ -171,3 +166,13 @@
         world (into [[:set-block-entity pos e']] (filter be? extra))
         ops (:tick world))
       (remove #(or (be? %) (sig? %)) extra))))
+
+(defn tick-deltas
+  [world [pos e]]
+  (let [st (chunk/at (:chunks world) pos)
+        cd (dec (long (:cooldown e -1)))
+        open? (= :true (:enabled (block/props-of st)))
+        [e' extra] (when (and (not (pos? cd)) open?)
+                     (moved world pos e))
+        moved? (some? e')]
+    (transfer-deltas world pos e (cooled (or e' e) cd moved?) extra)))

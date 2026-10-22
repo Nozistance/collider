@@ -9,7 +9,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.reach :as reach]
             [collider.game.schedule :as schedule]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -19,14 +19,14 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- degrees ^double [^double rad] (num/f32 (num/degrees rad)))
+(defn- degrees ^double [^double rad] (math/f32 (math/degrees rad)))
 
 (defn facing
   "Returns the yaw and the pitch that point along vel."
   [vel]
   (let [x (v/x vel) y (v/y vel) z (v/z vel)
         d (Math/sqrt (+ (* x x) (* z z)))]
-    [(degrees (num/atan2 x z)) (degrees (num/atan2 y d))]))
+    [(degrees (math/atan2 x z)) (degrees (math/atan2 y d))]))
 
 (defn box-of
   "Returns the box of half width w and height h standing at pos."
@@ -120,7 +120,7 @@
        (<= (double (b 2)) (v/z p)) (< (v/z p) (double (b 5)))))
 
 (defn- dot ^double [d k]
-  (let [[x y z] (dir/offset k) f num/f32]
+  (let [[x y z] (dir/offset k) f math/f32]
     (f (+ (f (+ (f (* (f (v/x d)) (double x)))
                 (f (* (f (v/y d)) (double y)))))
           (f (* (f (v/z d)) (double z)))))))
@@ -213,7 +213,7 @@
   with its age."
   ^double [e]
   (let [lived (dec (long (:age e 0)))]
-    (max 0.0 (min (num/f32 0.3) (num/f32 (/ (num/f32 lived) 20.0))))))
+    (max 0.0 (min (math/f32 0.3) (math/f32 (/ (math/f32 lived) 20.0))))))
 
 (defn- entity-clip [world eid e from d]
   (let [m (margin e) from [(v/x from) (v/y from) (v/z from)]]
@@ -262,15 +262,15 @@
         true)))
 
 (defn- wrapped ^double [^double old ^double new]
-  (cond (< (num/f32 (- new old)) -180.0) (recur (num/f32 (- old 360.0)) new)
-        (>= (num/f32 (- new old)) 180.0) (recur (num/f32 (+ old 360.0)) new)
+  (cond (< (math/f32 (- new old)) -180.0) (recur (math/f32 (- old 360.0)) new)
+        (>= (math/f32 (- new old)) 180.0) (recur (math/f32 (+ old 360.0)) new)
         :else old))
 
 (defn lerp-rotation
   "Returns angle old turned a fifth of the way to new, in floats."
   ^double [^double old ^double new]
-  (let [old (wrapped (num/f32 old) new)]
-    (num/f32 (+ old (num/f32 (* (num/f32 0.2) (num/f32 (- new old))))))))
+  (let [old (wrapped (math/f32 old) new)]
+    (math/f32 (+ old (math/f32 (* (math/f32 0.2) (math/f32 (- new old))))))))
 
 (defn rotated
   "Returns the yaw and the pitch of projectile e turned towards its

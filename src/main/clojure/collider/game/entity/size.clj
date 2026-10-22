@@ -1,24 +1,24 @@
 (ns collider.game.entity.size
   "The bounding boxes and eye heights of entity types."
   (:require [collider.data :as data]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
 (defn- measured [{:keys [width height eye baby poses]}]
-  (cond-> {:box [(* 0.5 (num/f32 width)) (num/f32 height)]
-           :eye (num/f32 eye)}
+  (cond-> {:box [(* 0.5 (math/f32 width)) (math/f32 height)]
+           :eye (math/f32 eye)}
     baby (assoc :baby (measured baby))
     poses (assoc :poses (update-vals poses measured))))
 
 (def ^:private ^:table sizes
   (delay (update-vals (data/entities) measured)))
 
-(def ^:private scales {:goat {:long-jumping (num/f32 0.7)}})
+(def ^:private scales {:goat {:long-jumping (math/f32 0.7)}})
 
 (defn- scaled [{[half h] :box eye :eye} ^double f]
-  {:box [(* 0.5 (num/fmul (* 2.0 (double half)) f)) (num/fmul h f)]
-   :eye (num/fmul eye f)})
+  {:box [(* 0.5 (math/fmul (* 2.0 (double half)) f)) (math/fmul h f)]
+   :eye (math/fmul eye f)})
 
 (defn- size-of [e]
   (let [s (get @sizes (:type e))
@@ -35,7 +35,7 @@
   radius is as wide as the radius makes it."
   [e]
   (if-some [r (when (= :area-effect-cloud (:type e)) (:radius e))]
-    [(num/f32 r) (num/f32 0.5)]
+    [(math/f32 r) (math/f32 0.5)]
     (:box (size-of e))))
 
 (defn eye

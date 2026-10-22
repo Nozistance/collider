@@ -1,6 +1,6 @@
 (ns collider.game.experience
   "Player experience and the values of experience orbs."
-  (:require [collider.num :as num :refer [f32 i32]]))
+  (:require [collider.math :as math :refer [f32 i32]]))
 
 (set! *warn-on-reflection* true)
 
@@ -138,7 +138,7 @@
 (defn points
   "Returns the points of the current level acc holds."
   ^long [acc]
-  (num/floor (f32 (* (double (:progress acc)) (need acc)))))
+  (math/floor (f32 (* (double (:progress acc)) (need acc)))))
 
 (defn death-reward
   "Returns the points a dying player drops."

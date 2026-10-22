@@ -20,7 +20,7 @@
             [collider.game.team :as team]
             [collider.game.using :as using]
             [collider.random :as random]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys]
@@ -231,7 +231,7 @@
   clamped to straight up or down. An angle that is not finite keeps
   the old one."
   [e yaw pitch]
-  (let [y (num/frem yaw 360.0)
+  (let [y (math/frem yaw 360.0)
         x (Math/clamp (double pitch) -90.0 90.0)]
     (cond-> e
       (Double/isFinite y) (assoc :yaw y)
@@ -249,8 +249,8 @@
   (get-in e [:inventory (hand-slot e hand)]))
 
 (defn- snapped [e hand rot]
-  (let [y (num/wrap-degrees (:yaw rot 0.0))
-        x (num/wrap-degrees (:pitch rot 0.0))]
+  (let [y (math/wrap-degrees (:yaw rot 0.0))
+        x (math/wrap-degrees (:pitch rot 0.0))]
     (if (and rot (:item (hand-stack e hand))
              (not (and (== y (double (:yaw e 0.0)))
                        (== x (double (:pitch e 0.0))))))
@@ -662,8 +662,8 @@
   "Returns the yaw and pitch that move changes ask of player e, cut to
   under a turn either way. An angle the move leaves out is e's own."
   [e changes]
-  [(num/wrap-degrees (:yaw changes (:yaw e 0.0)))
-   (num/wrap-degrees (:pitch changes (:pitch e 0.0)))])
+  [(math/wrap-degrees (:yaw changes (:yaw e 0.0)))
+   (math/wrap-degrees (:pitch changes (:pitch e 0.0)))])
 
 (defn move
   "Returns w after the event [:move eid changes]."

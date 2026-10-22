@@ -6,7 +6,7 @@
             [collider.game.player :as player]
             [collider.game.turn.thrown :as thrown]
             [collider.game.using :as using]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]))
 
 (set! *warn-on-reflection* true)
@@ -16,7 +16,7 @@
 (defn power
   "Returns the power of a bow drawn for ticks, full at 20."
   ^double [^long ticks]
-  (let [f num/f32
+  (let [f math/f32
         p (f (/ (f ticks) (f 20.0)))]
     (min 1.0 (f (/ (f (+ (f (* p p)) (f (* p (f 2.0))))) (f 3.0))))))
 
@@ -33,7 +33,7 @@
          flight))
 
 (defn- shoot-sound [world eid e ^double pow]
-  (let [f num/f32
+  (let [f math/f32
         r (f (random/of-key (:tick world) eid :bow))
         d (f (+ (f (* r (f 0.4))) (f 1.2)))
         pitch (f (+ (f (/ (f 1.0) d)) (f (* pow (f 0.5)))))]

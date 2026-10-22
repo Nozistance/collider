@@ -1,7 +1,7 @@
 (ns collider.game.jump
   "A player jumping off the ground, as the server sees it from the
   moves the client sends."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.vec :as v]
             [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]))
@@ -27,11 +27,11 @@
 
 (defn- boost-power ^double [e]
   (if-let [b (get (:effects e) :jump-boost)]
-    (num/fmul boost (double (float (inc (long (:amplifier b))))))
+    (math/fmul boost (double (float (inc (long (:amplifier b))))))
     0.0))
 
 (defn- power ^double [world e]
-  (double (float (+ (num/fmul strength (block-factor (:chunks world) e))
+  (double (float (+ (math/fmul strength (block-factor (:chunks world) e))
                     (boost-power e)))))
 
 (defn jumped
@@ -43,8 +43,8 @@
       vel
       (let [v [(v/x vel) (Math/max p (double (v/y vel))) (v/z vel)]]
         (if (:sprinting? e)
-          (let [a (num/f32 (* (num/f32 (double (:yaw e 0.0))) num/deg->rad))]
-            [(+ (double (v/x v)) (* (- (num/sin a)) sprint-push))
+          (let [a (math/f32 (* (math/f32 (double (:yaw e 0.0))) math/deg->rad))]
+            [(+ (double (v/x v)) (* (- (math/sin a)) sprint-push))
              (v/y v)
-             (+ (double (v/z v)) (* (num/cos a) sprint-push))])
+             (+ (double (v/z v)) (* (math/cos a) sprint-push))])
           v)))))

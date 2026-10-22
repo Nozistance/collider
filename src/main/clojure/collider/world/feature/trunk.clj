@@ -1,7 +1,7 @@
 (ns collider.world.feature.trunk
   "The trunk placers of trees, with the logs they set and the places
   where foliage grows."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.feature.level :as lv :refer [off]]))
@@ -82,7 +82,7 @@
 (defn- jungle-branch [[l atts] cfg o ^long y]
   (let [turn (float (* 2 Math/PI))
         angle (double (float (* (lv/next-float l) turn)))
-        c (num/cos angle) s (num/sin angle)
+        c (math/cos angle) s (math/sin angle)
         at #(off o (spoke c %) (+ (- y 3) (quot (long %) 2))
                  (spoke s %))
         tip (off o (spoke c 4) y (spoke s 4))
@@ -319,7 +319,7 @@
         steps (reduce max (map #(Math/abs (long %)) d))
         f (mapv #(/ (float %) (float steps)) d)
         at (fn [i c]
-             (num/floor (float (+ 0.5 (float (* (float i) c))))))]
+             (math/floor (float (+ 0.5 (float (* (float i) c))))))]
     (for [i (range (inc steps))]
       (mapv + s (mapv #(at i %) f)))))
 
@@ -343,8 +343,8 @@
 (defn- cluster [[l coords] cfg o y shape top]
   (let [radius (* shape (+ (lv/next-float l) 0.328))
         angle (* (double (float (* (lv/next-float l) 2.0))) Math/PI)
-        dx (num/floor (+ (* radius (Math/sin angle)) 0.5))
-        dz (num/floor (+ (* radius (Math/cos angle)) 0.5))
+        dx (math/floor (+ (* radius (Math/sin angle)) 0.5))
+        dz (math/floor (+ (* radius (Math/cos angle)) 0.5))
         s (off o dx (dec y) dz)]
     (if-not (limb-free? l cfg s (up s 5))
       [l coords]
@@ -372,11 +372,11 @@
           l kept))
 
 (defn- layers-per-y ^long [^long height]
-  (min 1 (num/floor (+ 1.382 (Math/pow (/ height 13.0) 2.0)))))
+  (min 1 (math/floor (+ 1.382 (Math/pow (/ height 13.0) 2.0)))))
 
 (defn- fancy [l cfg h o]
   (let [height (+ (long h) 2)
-        trunk (num/floor (* height 0.618))
+        trunk (math/floor (* height 0.618))
         l (below l cfg (up o -1))
         top (+ (long (o 1)) trunk)
         per-y (layers-per-y height)

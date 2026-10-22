@@ -16,7 +16,7 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.use :as use]
             [collider.game.reach :as reach]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -114,7 +114,7 @@
 (defn- staged [eid pos stage]
   (out/except eid (out/destroy-stage eid pos stage)))
 
-(defn- stage-of ^long [^double p] (long (num/f32 (* p 10.0))))
+(defn- stage-of ^long [^double p] (long (math/f32 (* p 10.0))))
 
 (defn- worn-deltas [world eid e st]
   (let [stack (player/hand-stack e :main)
@@ -202,9 +202,9 @@
         st (changes/block-at world pos)]
     (when (and (= pos (:pos d)) (pos? st))
       (let [n (inc (- (long (:tick world)) (long (:start d))))
-            prog (num/f32 (* (dig/progress e st) n))]
+            prog (math/f32 (* (dig/progress e st) n))]
         (cond
-          (>= prog (num/f32 0.7))
+          (>= prog (math/f32 0.7))
           (concat [[:merge-entity eid {:dig (assoc d :active? false)}]
                    (staged eid pos -1)]
                   (destroyed world eid e pos))
@@ -258,7 +258,7 @@
 
 (defn- ticked-progress ^double [world e st start]
   (let [n (+ 2 (- (long (:tick world)) (long start)))]
-    (num/f32 (* (dig/progress e st) n))))
+    (math/f32 (* (dig/progress e st) n))))
 
 (defn- restaged [eid d pos ^double prog]
   (let [stage (stage-of prog)]

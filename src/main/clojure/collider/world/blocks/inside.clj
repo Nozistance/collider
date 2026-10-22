@@ -1,6 +1,6 @@
 (ns collider.world.blocks.inside
   "The blocks and fluids a body meets on its moves of a tick."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.cauldron :as cauldron]
@@ -155,11 +155,11 @@
           (recur (rest ps) (Math/min x0 x) (Math/min y0 y) (Math/min z0 z)
                  (Math/max x1 x) (Math/max y1 y) (Math/max z1 z)))
         (phys/some-cell? chunks marks
-                         (num/floor (- x0 half)) (num/floor y0)
-                         (num/floor (- z0 half))
-                         (inc (num/floor (+ x1 half)))
-                         (inc (num/floor (+ y1 height)))
-                         (inc (num/floor (+ z1 half))))))))
+                         (math/floor (- x0 half)) (math/floor y0)
+                         (math/floor (- z0 half))
+                         (inc (math/floor (+ x1 half)))
+                         (inc (math/floor (+ y1 height)))
+                         (inc (math/floor (+ z1 half))))))))
 
 (defn met
   "Returns the blocks a body of half width half and height met on its

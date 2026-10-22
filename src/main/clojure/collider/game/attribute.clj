@@ -5,7 +5,7 @@
             [collider.game.effect :as effect]
             [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -17,13 +17,13 @@
 
 (def ^:private templates
   {:speed
-   [[:movement-speed :effect.speed (num/f32 0.2) multiply-total]]
+   [[:movement-speed :effect.speed (math/f32 0.2) multiply-total]]
    :slowness
-   [[:movement-speed :effect.slowness (num/f32 -0.15) multiply-total]]
+   [[:movement-speed :effect.slowness (math/f32 -0.15) multiply-total]]
    :haste
-   [[:attack-speed :effect.haste (num/f32 0.1) multiply-total]]
+   [[:attack-speed :effect.haste (math/f32 0.1) multiply-total]]
    :mining-fatigue
-   [[:attack-speed :effect.mining-fatigue (num/f32 -0.1)
+   [[:attack-speed :effect.mining-fatigue (math/f32 -0.1)
      multiply-total]]
    :strength [[:attack-damage :effect.strength 3.0 add-value]]
    :jump-boost
@@ -82,7 +82,7 @@
 (defn- sprint-modifiers [e attr]
   (when (and (= :movement-speed attr) (= :player (:type e))
              (:sprinting? e))
-    [[:sprinting (num/f32 sprint-boost) multiply-total]]))
+    [[:sprinting (math/f32 sprint-boost) multiply-total]]))
 
 (def ^:private creative-reach
   {:block-interaction-range [:creative-mode-block-range 0.5 add-value]

@@ -4,7 +4,7 @@
             [collider.data :as data]
             [collider.game.changes :as changes]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.blocks.button :as button]
             [collider.world.env.signal :as signal]
@@ -26,10 +26,10 @@
 
 (defn- pulled [world pos st]
   (let [on? (not (button/powered? st))
-        pitch (num/f32 (if on? 0.6 0.5))]
+        pitch (math/f32 (if on? 0.6 0.5))]
     (concat (switched world pos (button/powered st on?))
             [(out/all (out/block-sound :block.lever.click pos
-                                       (num/f32 0.3) pitch))]
+                                       (math/f32 0.3) pitch))]
             (signal/game-event (event on?) pos nil))))
 
 (defn- pressed [world eid pos st]

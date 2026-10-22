@@ -5,7 +5,7 @@
   (:require [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.experience :as xp]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.fall :as fall]
@@ -47,7 +47,7 @@
   rough direction."
   ([pos value roll] (make pos [0.0 0.0 0.0] value roll))
   ([pos roughly ^long value roll]
-   (let [yaw (num/f32 (* (num/f32 (roll :yaw)) 360.0))
+   (let [yaw (math/f32 (* (math/f32 (roll :yaw)) 360.0))
          side #(* (- (* (double (roll %)) 0.2) 0.1) 2.0)
          push [(side :vx) (* (double (roll :vy)) 0.2 2.0) (side :vz)]
          push (if (neg? (v/dot roughly push)) (mapv - push) push)
@@ -150,7 +150,7 @@
 
 (defn- normal [x y z]
   (let [d (Math/sqrt (+ (* x x) (* y y) (* z z)))]
-    (if (< d (num/f32 1.0E-5))
+    (if (< d (math/f32 1.0E-5))
       [0.0 0.0 0.0]
       [(/ x d) (/ y d) (/ z d)])))
 
@@ -159,7 +159,7 @@
   [vel pos p]
   (let [pp (:pos p)
         dx (- (v/x pp) (v/x pos))
-        dy (- (+ (v/y pp) (/ (num/f32 (entity/eye-height p)) 2.0))
+        dy (- (+ (v/y pp) (/ (math/f32 (entity/eye-height p)) 2.0))
               (v/y pos))
         dz (- (v/z pp) (v/z pos))
         power (- 1.0 (/ (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
@@ -177,8 +177,8 @@
 (defn eye-in-water?
   [chunks pos]
   (let [ey (+ (v/y pos) (eye))
-        x (num/floor (v/x pos)) y (num/floor ey)
-        z (num/floor (v/z pos))
+        x (math/floor (v/x pos)) y (math/floor ey)
+        z (math/floor (v/z pos))
         st (cell-state chunks x y z)]
     (boolean
       (when (block/water? st)
@@ -188,8 +188,8 @@
 (defn in-lava?
   "Returns true when the block an orb at pos is in holds lava."
   [chunks pos]
-  (let [x (num/floor (v/x pos)) y (num/floor (v/y pos))
-        z (num/floor (v/z pos))]
+  (let [x (math/floor (v/x pos)) y (math/floor (v/y pos))
+        z (math/floor (v/z pos))]
     (block/lava? (cell-state chunks x y z))))
 
 (defn colliding?
@@ -202,9 +202,9 @@
 (defn swum
   "Returns velocity vel of an orb whose eye is in water."
   [vel]
-  [(* (v/x vel) (num/f32 0.99))
-   (min (+ (v/y vel) (num/f32 5.0E-4)) (num/f32 0.06))
-   (* (v/z vel) (num/f32 0.99))])
+  [(* (v/x vel) (math/f32 0.99))
+   (min (+ (v/y vel) (math/f32 5.0E-4)) (math/f32 0.06))
+   (* (v/z vel) (math/f32 0.99))])
 
 (defn fallen
   "Returns velocity vel of an orb after one tick of gravity."
@@ -214,16 +214,16 @@
 (defn tossed
   "Returns the velocity lava throws an orb up with."
   [roll]
-  (let [draw #(num/f32 (roll %))
-        side #(num/fmul (num/fsub (draw [% 0]) (draw [% 1]))
-                        (num/f32 0.2))]
-    [(side :lx) (num/f32 0.2) (side :lz)]))
+  (let [draw #(math/f32 (roll %))
+        side #(math/fmul (math/fsub (draw [% 0]) (draw [% 1]))
+                        (math/f32 0.2))]
+    [(side :lx) (math/f32 0.2) (side :lz)]))
 
 (defn- friction ^double [chunks pos sup on-ground]
-  (let [air (num/f32 0.98)]
+  (let [air (math/f32 0.98)]
     (if on-ground
       (let [st (motion/below-state chunks pos sup motion/drop-offset)]
-        (num/f32 (* air (motion/friction st))))
+        (math/f32 (* air (motion/friction st))))
       air)))
 
 (defn- supported [chunks mv]
@@ -233,7 +233,7 @@
 (defn- sped [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
         sf (motion/block-speed-factor chunks p sup motion/drop-offset)
-        drag (num/f32 0.98)
+        drag (math/f32 0.98)
         w (fall/landed-vel chunks mv sup vy gravity drag false)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (if on-ground (motion/stepped-speed chunks p vel) vel)))

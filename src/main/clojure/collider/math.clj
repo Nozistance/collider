@@ -1,4 +1,4 @@
-(ns collider.num
+(ns collider.math
   "Scalar arithmetic at the precision the game computes in."
   (:import (collider Mth)))
 
@@ -56,7 +56,9 @@
   (let [pi (double (unchecked-float Math/PI))]
     (double (unchecked-float (/ 180.0 pi)))))
 
-(def ^:const deg->rad (double (unchecked-float (/ Math/PI 180.0))))
+(def ^:const deg->rad
+  "The factor from degrees to radians, rounded to a float."
+  (double (unchecked-float (/ Math/PI 180.0))))
 
 (defn degrees
   "Returns radians r as degrees, multiplied by a float constant."

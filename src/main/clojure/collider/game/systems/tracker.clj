@@ -13,7 +13,7 @@
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.systems.tracker.track :refer [->Track]]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as vv])
   (:import (collider.game.deltas.record Deltas)
            (collider.game.systems.tracker.track Frame Track)))
@@ -95,8 +95,8 @@
 (defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
     (->Track [(double x) (double y) (double z)]
-             (num/pack-degrees yaw) (num/pack-degrees pitch)
-             (num/pack-degrees (head-yaw e))
+             (math/pack-degrees yaw) (math/pack-degrees pitch)
+             (math/pack-degrees (head-yaw e))
              (boolean on-ground)
              (or (:kept-mdata e) (metadata/of e))
              (equipment-stacks e)
@@ -257,9 +257,9 @@
         dy (- (fixed y) (fixed by))
         dz (- (fixed z) (fixed bz))
         ticks (- (long t) (long (tr-t0 tr)))
-        yaw (num/pack-degrees (:yaw e))
-        pitch (num/pack-degrees (:pitch e))
-        head (num/pack-degrees (head-yaw e))
+        yaw (math/pack-degrees (:yaw e))
+        pitch (math/pack-degrees (:pitch e))
+        head (math/pack-degrees (head-yaw e))
         ground (boolean (:on-ground e))
         since (if due?
                 (inc (long (tr-since-tp tr)))

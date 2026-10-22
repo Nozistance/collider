@@ -6,7 +6,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.shell :as shell]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
@@ -51,8 +51,8 @@
   "Returns scared armadillo e with its head turned to its body."
   [e]
   (let [hy (double (or (:head-yaw e) (:yaw e)))
-        d (num/wrap-degrees (num/fsub (control/body-yaw e) hy))]
-    (assoc e :head-yaw (num/f32 (+ hy d)))))
+        d (math/wrap-degrees (math/fsub (control/body-yaw e) hy))]
+    (assoc e :head-yaw (math/f32 (+ hy d)))))
 
 (defn- head-held [e]
   (if (shell/scared? e) (head-clamped e) e))

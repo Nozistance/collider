@@ -20,7 +20,7 @@
             [collider.game.stack :as stack]
             [collider.game.scoreboard :as scoreboard]
             [collider.game.team :as team]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -154,8 +154,8 @@
     (boolean
       (and n (pos? (double (:health e 0.0)))
            (or (<= (long (or (:hurt-resist e) 0)) 10)
-               (> (num/f32 n)
-                  (num/f32 (or (:last-damage e) 0.0))))))))
+               (> (math/f32 n)
+                  (math/f32 (or (:last-damage e) 0.0))))))))
 
 (defn damage-deltas
   "Returns the deltas of entity eid taking amount from src, none when
@@ -449,8 +449,8 @@
   (when (and (pos? f)
              (not (zero? (motion/below-state (:chunks world) (:pos e)
                                              (:support e) 0.2))))
-    (num/fmul (num/f32 -0.05)
-              (num/f32 (/ (double (min f freeze-ticks)) freeze-ticks)))))
+    (math/fmul (math/f32 -0.05)
+              (math/f32 (/ (double (min f freeze-ticks)) freeze-ticks)))))
 
 (defn- freeze-deltas
   "Returns the deltas of the frost of entity eid after a tick in or
@@ -1129,7 +1129,7 @@
                                          0.8)))
              2.0)
         ey (+ (v/y p) (entity/eye-height e))
-        r (fn [c d] (range (num/floor (- c d)) (inc (num/floor (+ c d)))))]
+        r (fn [c d] (range (math/floor (- c d)) (inc (math/floor (+ c d)))))]
     (for [x (r (v/x p) w) y (r ey 5.0E-7) z (r (v/z p) w)]
       [[x y z] [(- (v/x p) w) (- ey 5.0E-7) (- (v/z p) w)
                 (+ (v/x p) w) (+ ey 5.0E-7) (+ (v/z p) w)]])))

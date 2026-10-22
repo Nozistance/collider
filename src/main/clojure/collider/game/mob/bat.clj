@@ -5,7 +5,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -98,9 +98,9 @@
   (+ v (* (- (* (Math/signum d) s) v) pull)))
 
 (defn- yaw-to ^double [^double yaw vel]
-  (let [r (num/degrees (num/atan2 (v/z vel) (v/x vel)))
-        d (num/fsub (num/f32 r) 90.0)]
-    (num/f32 (+ yaw (num/wrap-degrees (num/fsub d yaw))))))
+  (let [r (math/degrees (math/atan2 (v/z vel) (v/x vel)))
+        d (math/fsub (math/f32 r) 90.0)]
+    (math/f32 (+ yaw (math/wrap-degrees (math/fsub d yaw))))))
 
 (defn- offset ^double [c ^double o ^double a] (- (+ (long c) o) a))
 

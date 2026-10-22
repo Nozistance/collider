@@ -4,7 +4,7 @@
             [collider.game.entity.gen :as gen]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.steer :as steer]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -107,12 +107,12 @@
   "Returns target pulled back toward base by no more than max degrees.
   Each step rounds to a float."
   ^double [^double base ^double target ^double max]
-  (let [d (num/wrap-degrees (- target base))]
+  (let [d (math/wrap-degrees (- target base))]
     (flt (- target (Math/clamp d (- max) max)))))
 
 (defn- rotate-towards
   ^double [^double from ^double to ^double max]
-  (let [d (num/wrap-degrees (- to from))]
+  (let [d (math/wrap-degrees (- to from))]
     (flt (+ from (Math/clamp d (- max) max)))))
 
 (defn- faced-forward
@@ -174,7 +174,7 @@
   (let [pos (:pos e)
         dy (- (eye-y o) (+ (v/y pos) (mobs/eye-height e)))
         dh (Math/sqrt (v/dist-xz-sq pos (:pos o)))]
-    (double (float (- (num/degrees (num/atan2 dy dh)))))))
+    (double (float (- (math/degrees (math/atan2 dy dh)))))))
 
 (defn- active-look [e ^long t]
   (let [look (:look e)]
@@ -188,7 +188,7 @@
 (defn- look-yaw ^double [e o]
   (let [xd (- (v/x (:pos o)) (v/x (:pos e)))
         zd (- (v/z (:pos o)) (v/z (:pos e)))]
-    (num/f32 (- (num/f32 (num/degrees (num/atan2 zd xd)))
+    (math/f32 (- (math/f32 (math/degrees (math/atan2 zd xd)))
                 90.0))))
 
 (defn- look-aim [world e look]

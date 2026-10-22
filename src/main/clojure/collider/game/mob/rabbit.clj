@@ -14,7 +14,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.mob.steer :as steer]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.grow.common :as grow]
@@ -100,7 +100,7 @@
 
 (defn- faced ^double [e ^double x ^double z]
   (let [p (:pos e)
-        a (num/degrees (num/atan2 (- z (v/z p)) (- x (v/x p))))]
+        a (math/degrees (math/atan2 (- z (v/z p)) (- x (v/x p))))]
     (double (float (- (float a) (float 90.0))))))
 
 (defn- next-node [e]
@@ -209,9 +209,9 @@
   (let [up (if (mobs/baby? e) 0.5 1.5)
         d (Math/sqrt (+ (* up up) 1.0))
         yaw (double (float (:yaw e)))
-        r (double (float (* yaw num/deg->rad)))]
+        r (double (float (* yaw math/deg->rad)))]
     [(* (/ up d) hop-push) (* (/ 1.0 d) hop-push)
-     (double (float (num/sin r))) (double (float (num/cos r)))]))
+     (double (float (math/sin r))) (double (float (math/cos r)))]))
 
 (defn- flat-sq ^double [vel]
   (+ (* (v/x vel) (v/x vel)) (* (v/z vel) (v/z vel))))

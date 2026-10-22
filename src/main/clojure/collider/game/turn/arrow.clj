@@ -11,7 +11,7 @@
             [collider.game.potion :as potion]
             [collider.game.projectile :as projectile]
             [collider.game.team :as team]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -24,15 +24,15 @@
 
 (def ^:const drag
   "How much of its speed an arrow in the air keeps each tick."
-  (num/f32 0.99))
+  (math/f32 0.99))
 
-(def ^:private ^:const water-drag (num/f32 0.6))
+(def ^:private ^:const water-drag (math/f32 0.6))
 
 (def ^:const gravity
   "How much an arrow falls faster each tick."
   0.05)
 
-(def ^:private ^:const set-back (num/f32 0.05))
+(def ^:private ^:const set-back (math/f32 0.05))
 
 (def ^:private ^:const shake-ticks 7)
 
@@ -96,10 +96,10 @@
       :else (into (lain eid e (assoc m :life life)) out))))
 
 (defn- hit-sound [world eid e]
-  (let [r (num/f32 (random/of-key (:tick world) eid :arrow-hit))
-        d (num/f32 (+ (num/f32 (* r (num/f32 0.2))) (num/f32 0.9)))]
+  (let [r (math/f32 (random/of-key (:tick world) eid :arrow-hit))
+        d (math/f32 (+ (math/f32 (* r (math/f32 0.2))) (math/f32 0.9)))]
     (out/all (out/sound (:hit-sound e :arrow/hit) (:pos e) 1.0
-                        (num/f32 (/ (num/f32 1.2) d))))))
+                        (math/f32 (/ (math/f32 1.2) d))))))
 
 (defn- stuck-at [at d]
   (let [back #(- (double %1) (* set-back (Math/signum (double %2))))]
@@ -177,7 +177,7 @@
     (sort-by #(v/dist-sq from (:pos (nth % 1))) met)))
 
 (defn- damage ^long [world eid e]
-  (let [pow (num/f32 (v/length (:vel e)))
+  (let [pow (math/f32 (v/length (:vel e)))
         n (long (Math/ceil (min (* pow 2.0) 2.147483647E9)))]
     (if (:crit? e)
       (let [bound (+ 2 (quot n 2))
@@ -228,21 +228,21 @@
         (into (told-owner world e oid o))
         (conj (hit-sound world eid e) [:remove-entity eid]))))
 
-(def ^:private ^:const bounce-turn (num/f32 20.0))
+(def ^:private ^:const bounce-turn (math/f32 20.0))
 
 (defn- bounced [world eid e]
-  (let [r (num/f32 (random/of-key (:tick world) eid :bounce))
-        turn (num/f32 (+ (num/f32 170.0)
-                         (num/f32 (* r bounce-turn))))]
+  (let [r (math/f32 (random/of-key (:tick world) eid :bounce))
+        turn (math/f32 (+ (math/f32 170.0)
+                         (math/f32 (* r bounce-turn))))]
     (assoc e :vel (scaled (scaled (:vel e) -0.5) 0.2)
-           :yaw (num/f32 (+ (num/f32 (:yaw e 0.0)) turn)))))
+           :yaw (math/f32 (+ (math/f32 (:yaw e 0.0)) turn)))))
 
 (defn- dropped [world eid e]
   (when (= :allowed (:pickup e))
     (let [[x y z] (:pos e)
           vel (entity/pop-velocity [(:tick world) eid :drop])]
       [[:spawn-entity
-        (entity/item [x (+ (double y) (double (num/f32 0.1))) z]
+        (entity/item [x (+ (double y) (double (math/f32 0.1))) z]
                      vel (:stack e))]])))
 
 (defn- struck [world eid {:keys [e ds] :as acc} [oid o]]

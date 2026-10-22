@@ -9,7 +9,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.slots :as slots]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v])
   (:import (collider.game.entity.records Mob)))
@@ -96,7 +96,7 @@
 (defn- lost
   "Returns health after damage, in float precision."
   ^double [health damage]
-  (max 0.0 (num/f32 (- (num/f32 health) (double damage)))))
+  (max 0.0 (math/f32 (- (math/f32 health) (double damage)))))
 
 (defn- counted
   "Returns entity e that counts one more hurt to show, when damage
@@ -149,15 +149,15 @@
   (let [e (armor-worn e src amount tick eid)
         d (combat/damage-after e src (double amount))
         abs (double (or (:absorption e) 0.0))
-        left (max 0.0 (num/f32 (- d abs)))
+        left (max 0.0 (math/f32 (- d abs)))
         e (cond-> e
-            (pos? abs) (assoc :absorption (num/f32 (- abs (- d left)))))]
+            (pos? abs) (assoc :absorption (math/f32 (- abs (- d left)))))]
     [(assoc e :health (lost health left)) left]))
 
 (defn- hurt-again [e health amount src tick]
-  (let [last-d (num/f32 (or (:last-damage e) 0.0))
+  (let [last-d (math/f32 (or (:last-damage e) 0.0))
         amount (double amount)
-        more (num/f32 (- amount last-d))]
+        more (math/f32 (- amount last-d))]
     (if (> amount last-d)
       (-> (let [[e lost-hp] (suffered e health more src tick nil)]
             (counted (assoc e :last-damage amount) lost-hp))
@@ -212,7 +212,7 @@
   ([e amount] (hurt e amount nil 0 0))
   ([e amount src tick eid]
    (let [health (double (or (:health e) 0.0))
-         amount (max 0.0 (breed-taken e (num/f32 amount)))]
+         amount (max 0.0 (breed-taken e (math/f32 amount)))]
      (cond
        (not (pos? health)) e
        (contains? #{:item :experience-orb} (:type e))

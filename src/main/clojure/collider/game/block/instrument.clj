@@ -2,14 +2,14 @@
   "The note a note block plays."
   (:require [collider.data :as data]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
 (defn- pitch ^double [^long note]
-  (num/f32 (Math/pow 2.0 (/ (- note 12) 12.0))))
+  (math/f32 (Math/pow 2.0 (/ (- note 12) 12.0))))
 
 (defn played-deltas
   "Returns the deltas of the note block st at pos asked to play, which

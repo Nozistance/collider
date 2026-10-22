@@ -1,7 +1,7 @@
 (ns collider.game.effect
   "Mob effects on living entities."
   (:require [collider.data :as data]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -83,8 +83,8 @@
 (defn scaled
   "Returns instance i lasting scale of its time, at least a tick."
   [i scale]
-  (let [k (num/f32 scale)
-        f #(max 1 (long (Math/floor (num/f32 (* (num/f32 %) k)))))]
+  (let [k (math/f32 scale)
+        f #(max 1 (long (Math/floor (math/f32 (* (math/f32 %) k)))))]
     (timed i f)))
 
 (defn- ticked-down [i]
@@ -107,7 +107,7 @@
    :hunger [:always] :absorption [:always]})
 
 (defn- shift-int ^long [^long a ^long n]
-  (num/i32 (bit-shift-left a (bit-and n 31))))
+  (math/i32 (bit-shift-left a (bit-and n 31))))
 
 (defn strength
   "Returns base shifted left by amplifier a, at scale, half up."
@@ -133,7 +133,7 @@
 
 (defn harm-amount
   ^double [^long a]
-  (num/f32 (shift-int 6 a)))
+  (math/f32 (shift-int 6 a)))
 
 (defn stepped
   "Returns [instance events] after one tick that did not stop it.

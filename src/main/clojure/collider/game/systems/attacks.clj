@@ -12,7 +12,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.team :as team]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]))
 
@@ -45,17 +45,17 @@
   (let [n (if-let [from (:strength-from a)]
             (- t (long from))
             Integer/MAX_VALUE)
-        delay (num/f32 (* (/ 1.0 (attr a :attack-speed)) 20.0))
-        s (num/f32 (/ (num/f32 (+ (num/f32 n) 0.5)) delay))]
+        delay (math/f32 (* (/ 1.0 (attr a :attack-speed)) 20.0))
+        s (math/f32 (/ (math/f32 (+ (math/f32 n) 0.5)) delay))]
     (max 0.0 (min 1.0 s))))
 
 (defn- strength-factor ^double [^double s]
-  (let [sq (num/f32 (* s s))]
-    (num/f32 (+ weak-floor (num/f32 (* sq strong-share))))))
+  (let [sq (math/f32 (* s s))]
+    (math/f32 (+ weak-floor (math/f32 (* sq strong-share))))))
 
 (defn- scaled
   ^double [^double base ^double s]
-  (num/f32 (* base (strength-factor s))))
+  (math/f32 (* base (strength-factor s))))
 
 (defn- crit?
   [world a t]
@@ -70,7 +70,7 @@
   [a]
   (let [c (or (:client-vel a) [0.0 0.0 0.0])
         speed (attribute/value a (:effects a) :movement-speed)
-        m (* (num/f32 speed) 2.5)]
+        m (* (math/f32 speed) 2.5)]
     (and (:on-ground a) (player/sword? (held a))
          (< (+ (* (v/x c) (v/x c)) (* (v/z c) (v/z c))) (* m m)))))
 
@@ -80,15 +80,15 @@
         full? (> s full-strength)
         knock? (and full? (boolean (:sprinting? a)))
         crit? (and full? (crit? world a target))
-        d (scaled (num/f32 (attr a :attack-damage)) s)
+        d (scaled (math/f32 (attr a :attack-damage)) s)
         bonus (enchantment/damage-bonus (player/hand-stack a :main)
                                         (:type target))
-        magic (num/f32 (* s bonus))
-        base (if crit? (num/f32 (* d crit-multiplier)) d)]
+        magic (math/f32 (* s bonus))
+        base (if crit? (math/f32 (* d crit-multiplier)) d)]
     {:s s :full? full? :knock? knock? :crit? crit?
      :sweep? (and full? (not crit?) (not knock?) (sweep? a))
      :magic magic
-     :damage (num/f32 (+ base magic))}))
+     :damage (math/f32 (+ base magic))}))
 
 (defn- source [eid a]
   {:type :player-attack :cause eid :direct eid :from (:pos a)
@@ -100,8 +100,8 @@
 (defn- facing
   "Returns the sine and the negated cosine of the yaw of player a."
   [a]
-  (let [r (num/f32 (* (num/f32 (:yaw a)) num/deg->rad))]
-    [(num/sin r) (- (num/cos r))]))
+  (let [r (math/f32 (* (math/f32 (:yaw a)) math/deg->rad))]
+    [(math/sin r) (- (math/cos r))]))
 
 (defn- hurt-of
   [world eid e d src]
@@ -110,13 +110,13 @@
     e))
 
 (defn- base-knockback ^double [a]
-  (num/f32 (+ (num/f32 (attribute/value a (:effects a) :attack-knockback))
+  (math/f32 (+ (math/f32 (attribute/value a (:effects a) :attack-knockback))
               (enchantment/knockback-bonus (player/hand-stack a :main)))))
 
 (defn- extra-knock
   [eid a tid knock?]
-  (let [kb (num/f32 (/ (base-knockback a) 2.0))
-        k (num/f32 (+ kb (if knock? sprint-knockback 0.0)))
+  (let [kb (math/f32 (/ (base-knockback a) 2.0))
+        k (math/f32 (+ kb (if knock? sprint-knockback 0.0)))
         [sx cz] (facing a)]
     (when (pos? k)
       [[:knockback tid k sx cz]
@@ -161,8 +161,8 @@
   "Returns the damage the sweep of blow b of player a deals each
   entity near."
   ^double [a b]
-  (let [r (num/f32 (attr a :sweeping-damage-ratio))
-        d (num/f32 (+ 1.0 (* r (double (:damage b)))))]
+  (let [r (math/f32 (attr a :sweeping-damage-ratio))
+        d (math/f32 (+ 1.0 (* r (double (:damage b)))))]
     (* d (double (:s b)))))
 
 (defn- sweep-deltas
@@ -171,7 +171,7 @@
         near (filter #(swept? (:teams world) a box % eid tid)
                      (:entities world))]
     (concat [(sound a :entity.player.attack.sweep)]
-            (mapcat #(swept-deltas world src (num/f32 s) dir %) near)
+            (mapcat #(swept-deltas world src (math/f32 s) dir %) near)
             [(sweep-particle a)])))
 
 (defn- plain-sound [a full?]
@@ -188,7 +188,7 @@
           :else [(plain-sound a full?)])))
 
 (defn- lost-health ^double [target h]
-  (num/f32 (- (double (:health target)) (double (:health h)))))
+  (math/f32 (- (double (:health target)) (double (:health h)))))
 
 (defn- hearts
   [target h]
@@ -257,7 +257,7 @@
         dy (gap ey (v/y p) (+ (v/y p) (double ht)))
         dz (gap (v/z q) (- (v/z p) h) (+ (v/z p) h))
         d (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
-    (<= d (+ (num/f32 (player/entity-reach a)) range-buffer))))
+    (<= d (+ (math/f32 (player/entity-reach a)) range-buffer))))
 
 (defn- target? [eid tid target]
   (and target (not= eid tid) (some? (:health target))

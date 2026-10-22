@@ -10,7 +10,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -151,7 +151,7 @@
       nil)))
 
 (defn- section ^long [^double rel ^long n]
-  (min (dec n) (max 0 (num/floor (* rel n)))))
+  (min (dec n) (max 0 (math/floor (* rel n)))))
 
 (defn hit-slot
   "Returns which slot of a grid drawn on the block face was clicked."

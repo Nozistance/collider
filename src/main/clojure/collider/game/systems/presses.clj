@@ -10,7 +10,7 @@
             [collider.game.entity.size :as size]
             [collider.game.input :as input]
             [collider.game.mode :as game-mode]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.blocks.inside :as inside]
             [collider.world.blocks.plate :as plate]
@@ -22,7 +22,7 @@
   #{:player :painting :item-frame :glow-item-frame :leash-knot
     :lightning-bolt :area-effect-cloud})
 
-(defn- sec ^long [^double a] (bit-shift-right (num/floor a) 4))
+(defn- sec ^long [^double a] (bit-shift-right (math/floor a) 4))
 
 (defn- holds-at? [chunks ^long cx ^long sy ^long cz]
   (if-let [s (chunk/chunk-section (chunk/chunk-at chunks cx cz)

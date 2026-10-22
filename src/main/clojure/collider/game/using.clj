@@ -5,7 +5,7 @@
             [collider.data.pack :refer [kw]]
             [collider.game.bundle :as bundle]
             [collider.game.stack :as stack]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -43,8 +43,8 @@
 (defn instrument-ticks
   "Returns the ticks a use of instrument lasts."
   ^long [ins]
-  (let [d (num/f32 (:duration ins))]
-    (num/floor (num/f32 (* d 20.0)))))
+  (let [d (math/f32 (:duration ins))]
+    (math/floor (math/f32 (* d 20.0)))))
 
 (defn consume-ticks
   "Returns the ticks it takes to eat or drink with consumable c."

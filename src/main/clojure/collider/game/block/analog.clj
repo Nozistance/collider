@@ -4,7 +4,7 @@
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.blocks.chest :as chest]
             [collider.world.blocks.lectern :as lectern]
@@ -19,16 +19,16 @@
                       data/kebab)))
 
 (defn- part ^double [s]
-  (num/f32 (/ (double (stack/size s)) (double (stack/max-size s)))))
+  (math/f32 (/ (double (stack/size s)) (double (stack/max-size s)))))
 
 (defn filled
   "Returns the signal of a container that holds items in its slots,
   by how full they are on average."
   ^long [items]
-  (let [add (fn [^double a s] (if s (num/f32 (+ a (part s))) a))
+  (let [add (fn [^double a s] (if s (math/f32 (+ a (part s))) a))
         sum (reduce add 0.0 items)
-        f (num/f32 (/ sum (double (count items))))]
-    (+ (num/floor (num/f32 (* f 14.0))) (if (pos? f) 1 0))))
+        f (math/f32 (/ sum (double (count items))))]
+    (+ (math/floor (math/f32 (* f 14.0))) (if (pos? f) 1 0))))
 
 (defn- entity
   "Returns the block entity of kind k at p in bes, nil when the block
@@ -69,10 +69,10 @@
   (let [book (:book e)
         n (page-count book)
         f (if (> n 1)
-            (num/f32 (/ (double (:page e 0)) (double (dec n))))
+            (math/f32 (/ (double (:page e 0)) (double (dec n))))
             1.0)]
     (if (lectern/has-book? st)
-      (+ (num/floor (num/f32 (* f 14.0))) (if book 1 0))
+      (+ (math/floor (math/f32 (* f 14.0))) (if book 1 0))
       0)))
 
 (defn- shelf-signal ^long [e ^long st side]

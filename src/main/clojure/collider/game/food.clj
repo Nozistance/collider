@@ -4,7 +4,7 @@
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
             [collider.game.mode :as game-mode]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -38,33 +38,33 @@
   saturation."
   [e ^long nutrition ^double saturation-gain]
   (let [f (min full (max 0 (+ (level e) nutrition)))
-        s (num/f32 (+ saturation-gain (saturation e)))]
+        s (math/f32 (+ saturation-gain (saturation e)))]
     {:food f :saturation (min (double f) (max 0.0 s))}))
 
 (defn exhausted
   "Returns player e with amount more exhaustion, at most 40."
   [e ^double amount]
-  (let [x (num/f32 (+ (exhaustion e) amount))]
+  (let [x (math/f32 (+ (exhaustion e) amount))]
     (assoc e :exhaustion (min 40.0 x))))
 
 (defn- health ^double [e] (double (:health e 0.0)))
 
 (defn- top ^double [e]
-  (num/f32 (attribute/value e (:effects e) :max-health)))
+  (math/f32 (attribute/value e (:effects e) :max-health)))
 
 (defn- hurt? [e]
   (< 0.0 (health e) (top e)))
 
 (defn- healed [e ^double amount]
   (if (pos? (health e))
-    (assoc e :health (min (top e) (num/f32 (+ (health e) amount))))
+    (assoc e :health (min (top e) (math/f32 (+ (health e) amount))))
     e))
 
 (defn- peaceful-step [e ^long lived]
   (cond-> e
     (and (zero? (rem lived 20)) (< (health e) (top e))) (healed 1.0)
     (and (zero? (rem lived 20)) (< (saturation e) 20.0))
-    (assoc :saturation (num/f32 (+ (saturation e) 1.0)))
+    (assoc :saturation (math/f32 (+ (saturation e) 1.0)))
     (and (zero? (rem lived 10)) (< (level e) full))
     (assoc :food (inc (level e)))))
 
@@ -76,9 +76,9 @@
 
 (defn- spent [e]
   (if (> (exhaustion e) 4.0)
-    (cond-> (assoc e :exhaustion (num/fsub (exhaustion e) 4.0))
+    (cond-> (assoc e :exhaustion (math/fsub (exhaustion e) 4.0))
       (pos? (saturation e))
-      (assoc :saturation (max 0.0 (num/fsub (saturation e) 1.0))))
+      (assoc :saturation (max 0.0 (math/fsub (saturation e) 1.0))))
     e))
 
 (defn- timed [e ^long wait heal cost]
@@ -95,7 +95,7 @@
         s (saturation e)]
     (cond
       (and regen? (pos? s) (hurt? e) (>= (level e) full))
-      (timed e 10 (num/fdiv (min s 6.0) 6.0) (min s 6.0))
+      (timed e 10 (math/fdiv (min s 6.0) 6.0) (min s 6.0))
       (and regen? (>= (level e) 18) (hurt? e)) (timed e 80 1.0 6.0)
       :else (assoc e :food-timer 0))))
 

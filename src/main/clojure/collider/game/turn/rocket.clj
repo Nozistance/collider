@@ -12,7 +12,7 @@
             [collider.game.out :as out]
             [collider.game.projectile :as projectile]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.world.direction :as dir]
@@ -70,10 +70,10 @@
 (defn- distance
   "Returns how far t is from at, in floats as an entity measures it."
   ^double [at t]
-  (let [[dx dy dz] (map #(num/f32 (- (double %1) (double %2))) at (:pos t))
-        sq (num/f32 (+ (num/f32 (+ (num/f32 (* dx dx)) (num/f32 (* dy dy))))
-                       (num/f32 (* dz dz))))]
-    (num/f32 (Math/sqrt sq))))
+  (let [[dx dy dz] (map #(math/f32 (- (double %1) (double %2))) at (:pos t))
+        sq (math/f32 (+ (math/f32 (+ (math/f32 (* dx dx)) (math/f32 (* dy dy))))
+                       (math/f32 (* dz dz))))]
+    (math/f32 (Math/sqrt sq))))
 
 (defn- hit-deltas [world src [oid t hit]]
   (when-let [ds (hurt/damage-deltas world oid t hit src)]
@@ -86,14 +86,14 @@
   [world eid e at]
   (let [n (stars e)]
     (when (pos? n)
-      (let [amount (num/f32 (+ 5.0 (* 2.0 n)))
+      (let [amount (math/f32 (+ 5.0 (* 2.0 n)))
             src (source world eid e at)
             cid (:attached e)
             c (get-in world [:entities cid])
             around (for [[oid t] (near world at cid)
                          :let [d (distance at t)
                                k (Math/sqrt (/ (- 5.0 d) 5.0))]]
-                     [oid t (num/f32 (* amount (num/f32 k)))])]
+                     [oid t (math/f32 (* amount (math/f32 k)))])]
         (mapcat #(hit-deltas world src %)
                 (cond->> around c (cons [cid c amount])))))))
 
@@ -118,7 +118,7 @@
         off? (and (held? :off) (not (held? :main)))
         right? (not= off? (= :right (:main-hand c :right)))
         turn (if right? 80.0 -80.0)
-        yaw (num/f32 (+ (num/f32 (:yaw c 0.0)) turn))]
+        yaw (math/f32 (+ (math/f32 (:yaw c 0.0)) turn))]
     (mapv #(* 0.5 (double %)) (glide/look 0.0 yaw))))
 
 (defn- carrier

@@ -12,7 +12,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.sleep :as sleep]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
   (:import (java.util Locale)))
@@ -25,8 +25,8 @@
 
 (defn- pitch-set ^double [^double x]
   (if (Double/isFinite x)
-    (let [r (num/f32 (rem (float x) (float 360.0)))]
-      (num/f32 (max -90.0 (min 90.0 r))))
+    (let [r (math/f32 (rem (float x) (float 360.0)))]
+      (math/f32 (max -90.0 (min 90.0 r))))
     x))
 
 (defn- turn-props
@@ -236,8 +236,8 @@
 (defn- source-turn [world eid [ry yv] [rp pv]]
   (let [src (get-in world [:entities eid])
         own #(if %1 (double (%2 src 0.0)) 0.0)]
-    [(num/f32 (+ (double yv) (own ry :yaw)))
-     (num/f32 (+ (double pv) (own rp :pitch)))]))
+    [(math/f32 (+ (double yv) (own ry :yaw)))
+     (math/f32 (+ (double pv) (own rp :pitch)))]))
 
 (defn- turned-by [rel? v old]
   (if rel?
@@ -254,7 +254,7 @@
     (tp-at world eid (targets/selected world eid s) [x y z]
            #(rotated-turn % turn (first yaw) (first pitch)) nil)))
 
-(def ^:private deg (num/f32 (/ 180.0 (num/f32 Math/PI))))
+(def ^:private deg (math/f32 (/ 180.0 (math/f32 Math/PI))))
 
 (defn- look-angles
   "Returns the yaw and pitch that look from feet at from to pos."
@@ -262,10 +262,10 @@
   (let [xd (- (double px) (double fx)) yd (- (double py) (double fy))
         zd (- (double pz) (double fz))
         sd (Math/sqrt (+ (* xd xd) (* zd zd)))
-        pitch (targets/wrapped (float (- (* (num/atan2 yd sd) deg))))
-        turn (float (* (num/atan2 zd xd) deg))
+        pitch (targets/wrapped (float (- (* (math/atan2 yd sd) deg))))
+        turn (float (* (math/atan2 zd xd) deg))
         yaw (targets/wrapped (- turn (float 90.0)))]
-    [(num/f32 yaw) (pitch-set pitch)]))
+    [(math/f32 yaw) (pitch-set pitch)]))
 
 (defn- anchored [e anchor]
   (let [[x y z] (xyz (:pos e))]
@@ -309,12 +309,12 @@
   e, and the values the player packet carries."
   [world eid e [ry yv] [rp pv]]
   (let [src (get-in world [:entities eid])
-        arg #(num/f32 (if %1 (+ (double %2) (double (or %3 0.0))) %2))
+        arg #(math/f32 (if %1 (+ (double %2) (double (or %3 0.0))) %2))
         y (arg ry yv (:yaw src)) x (arg rp pv (:pitch src))
-        dy (if ry (num/f32 (- y (num/f32 (:yaw e 0.0)))) y)
-        dx (if rp (num/f32 (- x (num/f32 (:pitch e 0.0)))) x)
-        ay (if ry (num/f32 (+ (num/f32 (:yaw e 0.0)) dy)) dy)
-        ax (if rp (num/f32 (+ (num/f32 (:pitch e 0.0)) dx)) dx)
+        dy (if ry (math/f32 (- y (math/f32 (:yaw e 0.0)))) y)
+        dx (if rp (math/f32 (- x (math/f32 (:pitch e 0.0)))) x)
+        ay (if ry (math/f32 (+ (math/f32 (:yaw e 0.0)) dy)) dy)
+        ax (if rp (math/f32 (+ (math/f32 (:pitch e 0.0)) dx)) dx)
         sent [dy (boolean ry) dx (boolean rp)]]
     [ay (pitch-set (max -90.0 (min 90.0 ax))) sent]))
 

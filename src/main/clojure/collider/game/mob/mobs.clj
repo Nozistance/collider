@@ -5,7 +5,7 @@
             [collider.game.mob.goat :as goat]
             [collider.game.mob.shell :as shell]
             [collider.game.mob.variant :as variant]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.world.space.path :as path]))
 
@@ -179,7 +179,7 @@
   "Returns pitch p of a voice sound as mob e makes it."
   ^double [e ^double p]
   (if-let [k (trait e :pitch)]
-    (num/fmul (num/f32 p) (num/f32 (double k)))
+    (math/fmul (math/f32 p) (math/f32 (double k)))
     p))
 
 (defn flag?
@@ -222,7 +222,7 @@
   (let [health (:health e (max-health (:type e)))]
     (cond-> (assoc (own-metadata e)
                    :baby? (some? (:baby-until e)) :burning? (burning? e)
-                   :health (num/f32 (double health)))
+                   :health (math/f32 (double health)))
       (:age-locked? e) (assoc :age-locked? true)
       (:custom-name e) (assoc :custom-name (:custom-name e))
       (:custom-name-visible e) (assoc :custom-name-visible true))))
@@ -332,7 +332,7 @@
   "Returns how much higher jump boost lifts mob e."
   ^double [e]
   (if-let [b (get (:effects e) :jump-boost)]
-    (num/fmul jump-boost (double (float (inc (long (:amplifier b))))))
+    (math/fmul jump-boost (double (float (inc (long (:amplifier b))))))
     0.0))
 
 (def ^:private ^:const shallow-eye 0.4)

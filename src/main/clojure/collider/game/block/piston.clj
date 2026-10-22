@@ -72,26 +72,30 @@
     [[:set [arm m [[:carry e]]] 324]
      [:moving arm (moving/packed e)]]))
 
+(defn- dropped [gone]
+  (for [[q o] gone]
+    [:set [q 0 [[:drop o] [:game-event :block-destroy nil]]] 18]))
+
+(defn- cleared-gone [gone]
+  (for [[q o] gone
+        op [[:removal q o false] [:indirect q o 2] [:notify q nil o]]]
+    op))
+
 (defn- move-ops
-  "Returns the ops of moveBlocks of the piston at pos facing f of
-  type t, extending when ext?, for its resolved cells."
+  "Returns the ops of the piston at pos facing f of type t, extending
+  when ext?, for the cells it has resolved."
   [chunks pos f t ext? {:keys [push destroy]}]
   (let [d (if ext? f (dir/opposite f))
         arm (dir/toward pos f)
         gone (reversed destroy (mapv #(chunk/at chunks %) destroy))
         left (left chunks push d (when ext? arm))]
-    (concat
-      (for [[q o] gone]
-        [:set [q 0 [[:drop o] [:game-event :block-destroy nil]]] 18])
-      (mapcat #(carried chunks % d f ext?) (rseq push))
-      (when ext? (arm-ops pos f t))
-      (left-ops left)
-      (for [[q o] gone
-            op [[:removal q o false] [:indirect q o 2]
-                [:notify q nil o]]]
-        op)
-      (for [q (rseq push)] [:notify q nil (chunk/at chunks q)])
-      (when ext? [[:notify arm nil (head f t)]]))))
+    (concat (dropped gone)
+            (mapcat #(carried chunks % d f ext?) (rseq push))
+            (when ext? (arm-ops pos f t))
+            (left-ops left)
+            (cleared-gone gone)
+            (for [q (rseq push)] [:notify q nil (chunk/at chunks q)])
+            (when ext? [[:notify arm nil (head f t)]]))))
 
 (defn- seen
   "Returns w with the block entities that ops carry where none stands

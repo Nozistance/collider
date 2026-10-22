@@ -1,7 +1,7 @@
 (ns collider.world.blocks.motion
   "What the blocks an entity touches do to the speed it keeps."
   (:require [collider.data :as data]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.inside :as inside]
@@ -23,9 +23,9 @@
 
 (def ^:private ^:const step-slope 0.2)
 
-(defn- lo ^long [^double v] (num/floor (+ v deflate)))
+(defn- lo ^long [^double v] (math/floor (+ v deflate)))
 
-(defn- hi ^long [^double v] (num/floor (- v deflate)))
+(defn- hi ^long [^double v] (math/floor (- v deflate)))
 
 (defn- state-at ^long [chunks ^long x ^long y ^long z]
   (if (chunk/in-range? y) (chunk/block-state chunks x y z) 0))
@@ -64,9 +64,9 @@
 
 (defn- snow-at-feet? [chunks [x y z]]
   (= :powder-snow
-     (block/type-of (state-at chunks (num/floor (double x))
-                              (num/floor (double y))
-                              (num/floor (double z))))))
+     (block/type-of (state-at chunks (math/floor (double x))
+                              (math/floor (double y))
+                              (math/floor (double z))))))
 
 (def ^:private ^:table holding
   (delay (block/state-table :boolean #(some? (holds % true true)))))
@@ -155,9 +155,9 @@
             (inside/met chunks moves half height @pushing))))
 
 (defn- below-of ^long [chunks [x y z]]
-  (state-at chunks (num/floor (double x))
-            (num/floor (- (double y) step-offset))
-            (num/floor (double z))))
+  (state-at chunks (math/floor (double x))
+            (math/floor (- (double y) step-offset))
+            (math/floor (double z))))
 
 (defn- on-slime? [chunks pos]
   (= :slime (block/type-of (below-of chunks pos))))
@@ -207,7 +207,7 @@
   [st vy dy g drag living?]
   (let [vy (double vy) dy (double dy) g (double g) drag (double drag)
         b (factor-of @bounces (long st))
-        b (if living? b (num/fmul b lifeless-bounce))]
+        b (if living? b (math/fmul b lifeless-bounce))]
     (when (and (pos? b) (not (< (- vy) g))
                (not (block/tagged? st "suppresses_bounce")))
       (let [p (/ dy vy)
@@ -264,11 +264,11 @@
   offset is how far below its feet the body looks."
   (^long [chunks pos sup] (below-state chunks pos sup below-offset))
   (^long [chunks pos sup ^double offset]
-   (let [y (num/floor (- (v/y pos) offset))
+   (let [y (math/floor (- (v/y pos) offset))
          st (when sup (chunk/at chunks sup))
          xz (or sup pos)
-         x (num/floor (v/x xz))
-         z (num/floor (v/z xz))]
+         x (math/floor (v/x xz))
+         z (math/floor (v/z xz))]
      (if (and sup (holds-support? st offset))
        st
        (state-at chunks x y z)))))
@@ -279,12 +279,12 @@
   (if (and sup (holds-support? (chunk/at chunks sup) offset))
     sup
     (let [xz (or sup pos)]
-      [(num/floor (v/x xz)) (num/floor (- (v/y pos) offset))
-       (num/floor (v/z xz))])))
+      [(math/floor (v/x xz)) (math/floor (- (v/y pos) offset))
+       (math/floor (v/z xz))])))
 
 (defn- feet-state ^long [chunks pos]
-  (state-at chunks (num/floor (v/x pos)) (num/floor (v/y pos))
-            (num/floor (v/z pos))))
+  (state-at chunks (math/floor (v/x pos)) (math/floor (v/y pos))
+            (math/floor (v/z pos))))
 
 (defn block-speed-factor
   "Returns what the blocks at and under a body at pos multiply its

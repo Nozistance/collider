@@ -2,7 +2,6 @@
   "Player water state, swimming and pose."
   (:require [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
-            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]

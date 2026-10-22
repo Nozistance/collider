@@ -24,7 +24,7 @@
             [collider.game.turn.arrow :as arrow]
             [collider.game.turn.overlay :as overlay]
             [collider.game.turn.rocket :as rocket]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -103,13 +103,13 @@
 
 (defn- f* ^double [^double a ^double b] (f32 (* a b)))
 
-(defn- rad ^double [^double deg] (f* (f32 deg) num/deg->rad))
+(defn- rad ^double [^double deg] (f* (f32 deg) math/deg->rad))
 
 (defn- aim [^double yaw ^double pitch ^double off]
   (let [y (rad yaw) p (rad pitch)
         up (rad (f32 (+ (f32 pitch) off)))]
-    [(f* (- (num/sin y)) (num/cos p)) (- (num/sin up))
-     (f* (num/cos y) (num/cos p))]))
+    [(f* (- (math/sin y)) (math/cos p)) (- (math/sin up))
+     (f* (math/cos y) (math/cos p))]))
 
 (defn- normalized [[x y z]]
   (let [x (double x) y (double y) z (double z)
@@ -212,8 +212,8 @@
         h (Math/sqrt (+ (* x x) (* z z)))]
     (if (zero? (+ (* h h) (* y y)))
       [(:yaw e 0.0) (:pitch e 0.0)]
-      (let [yaw (f32 (+ (deg (num/atan2 z x)) 90.0))
-            pitch (f32 (- (deg (num/atan2 h y)) 90.0))]
+      (let [yaw (f32 (+ (deg (math/atan2 z x)) 90.0))
+            pitch (f32 (- (deg (math/atan2 h y)) 90.0))]
         [(projectile/lerp-rotation (double (:yaw e 0.0)) yaw)
          (projectile/lerp-rotation (double (:pitch e 0.0)) pitch)]))))
 
@@ -280,7 +280,7 @@
      :yaw      0.0 :pitch 0.0 :on-ground false :owner (:owner e)
      :radius   3.0 :stack stack :color (potion/color stack)
      :waiting? false :age 0 :duration 600 :wait-time 10
-     :radius-per-tick (num/f32 (/ -3.0 600.0)) :radius-on-use -0.5
+     :radius-per-tick (math/f32 (/ -3.0 600.0)) :radius-on-use -0.5
      :victims {}}))
 
 (defn- floored [at] (mapv #(long (Math/floor (double %))) at))
@@ -503,7 +503,7 @@
       (> (v/dist-xz-sq (:pos e) (:pos o)) (* (double r) (double r)))))
 
 (defn- shrunk ^double [e r]
-  (num/f32 (+ (double r) (double (:radius-on-use e)))))
+  (math/f32 (+ (double r) (double (:radius-on-use e)))))
 
 (defn- used
   "Returns [radius victims deltas] after the cloud lays its potion on
@@ -529,7 +529,7 @@
                        :victims victims}]])
 
 (defn- cloud-active [world eid e ^long age]
-  (let [r (num/f32 (+ (double (:radius e))
+  (let [r (math/f32 (+ (double (:radius e))
                      (double (:radius-per-tick e))))]
     (if (< r cloud-min-radius)
       [[:remove-entity eid]]

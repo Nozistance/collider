@@ -17,7 +17,7 @@
             [collider.game.hanging :as hanging]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -29,10 +29,10 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- twice ^double [power] (num/f32 (* 2.0 (double power))))
+(defn- twice ^double [power] (math/f32 (* 2.0 (double power))))
 
 (defn- blast-damage ^double [^double k power]
-  (num/f32 (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 (twice power)))))
+  (math/f32 (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 (twice power)))))
 
 (def ^:private ^:const unit-least (double (float 1.0E-5)))
 

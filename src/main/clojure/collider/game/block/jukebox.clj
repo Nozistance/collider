@@ -1,7 +1,7 @@
 (ns collider.game.block.jukebox
   "Jukeboxes and the songs of music discs."
   (:require [collider.data :as data]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.game.out :as out]
             [collider.world.env.signal :as signal]))
 
@@ -17,7 +17,7 @@
 
 (defn length ^long [song]
   (let [s (float (get @seconds song 0.0))]
-    (long (Math/ceil (num/f32 (* s 20.0))))))
+    (long (Math/ceil (math/f32 (* s 20.0))))))
 
 (defn finished? [song ^long ticks]
   (>= ticks (+ (length song) 20)))

@@ -13,7 +13,7 @@
             [collider.game.orb :as orb]
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -116,8 +116,8 @@
 
 (defn- born-yaw [spec t eid]
   (if (= :item (:type spec))
-    (let [r (num/f32 (random/of-key t eid :item-yaw))]
-      (assoc spec :yaw (num/f32 (* r 360.0))))
+    (let [r (math/f32 (random/of-key t eid :item-yaw))]
+      (assoc spec :yaw (math/f32 (* r 360.0))))
     spec))
 
 (defn- spawned [w spec]

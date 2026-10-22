@@ -1,7 +1,7 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
   (:require [collider.game.changes :as changes]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]))
@@ -13,13 +13,13 @@
 (def ^:private ^:const half-width 0.3)
 
 (defn- span [^double c]
-  (let [a (num/floor (+ (- c half-width) epsilon))
-        b (num/floor (- (+ c half-width) epsilon))]
+  (let [a (math/floor (+ (- c half-width) epsilon))
+        b (math/floor (- (+ c half-width) epsilon))]
     (if (= a b) [a] [a b])))
 
 (defn- foot-cells [e]
   (let [p (:pos e)
-        y (num/floor (v/y p))
+        y (math/floor (v/y p))
         zs (span (double (v/z p)))]
     (into [] (mapcat (fn [x] (mapv (fn [z] [x y z]) zs)))
           (span (double (v/x p))))))

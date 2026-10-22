@@ -1,6 +1,6 @@
 (ns collider.world.blocks.liquid
   "Water and lava with their spread, mixing and push on entities."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -118,7 +118,7 @@
   "Returns how high the fluid of st fills its cell. Given chunks and
   p, returns 1.0 under the same fluid and nil for a state without
   fluid."
-  (^double [st] (num/f32 (/ (double (amount st)) 9.0)))
+  (^double [st] (math/f32 (/ (double (amount st)) 9.0)))
   ([chunks p st]
    (when-let [cls (liquid-class st)]
      (if (same? cls (above-at chunks p)) 1.0 (height st)))))
@@ -136,7 +136,7 @@
 (defn- below-pull ^double [chunks cls h [nx y nz]]
   (let [j (own-at chunks cls [nx (dec (long y)) nz])]
     (if (pos? j)
-      (num/fsub h (num/fsub j fall-drop))
+      (math/fsub h (math/fsub j fall-drop))
       0.0)))
 
 (defn- neighbor-pull [chunks cls h p face]
@@ -145,7 +145,7 @@
         j (own-at chunks cls q)]
     (cond
       (other-class? cls ns) 0.0
-      (pos? j) (num/fsub h j)
+      (pos? j) (math/fsub h j)
       (not (blocks-movement? ns)) (below-pull chunks cls h q)
       :else 0.0)))
 
@@ -242,11 +242,11 @@
 (defn- fluid-around [chunks [x y z] half height]
   (let [x (double x) yd (double y) z (double z) a (double half)]
     (scan-cells chunks y
-                (num/floor (+ (- x a) fluid-margin))
+                (math/floor (+ (- x a) fluid-margin))
                 (ceil (- (+ x a) fluid-margin))
-                (num/floor (+ yd fluid-margin))
+                (math/floor (+ yd fluid-margin))
                 (ceil (- (+ yd (double height)) fluid-margin))
-                (num/floor (+ (- z a) fluid-margin))
+                (math/floor (+ (- z a) fluid-margin))
                 (ceil (- (+ z a) fluid-margin)))))
 
 (defn fluid-height
@@ -563,9 +563,9 @@
 (defn bubble-push
   "Returns the vertical speed vy of a body at pos after bubbles push."
   ^double [chunks pos ^double vy]
-  (let [x (num/floor (v/x pos))
-        y (num/floor (v/y pos))
-        z (num/floor (v/z pos))
+  (let [x (math/floor (v/x pos))
+        y (math/floor (v/y pos))
+        z (math/floor (v/z pos))
         st (raw-at chunks x y z)]
     (if (bubble-column? st)
       (column-pushed chunks st [x y z] vy)
@@ -575,9 +575,9 @@
   "Returns the cell of the bubble column a body at pos is in, when it
   is open above."
   [chunks pos]
-  (let [x (num/floor (v/x pos))
-        y (num/floor (v/y pos))
-        z (num/floor (v/z pos))]
+  (let [x (math/floor (v/x pos))
+        y (math/floor (v/y pos))
+        z (math/floor (v/z pos))]
     (when (and (bubble-column? (raw-at chunks x y z))
                (open-above? (raw-at chunks x (inc y) z)))
       [x y z])))
@@ -755,8 +755,8 @@
   surface of water."
   [chunks pos ^double eye]
   (let [ey (+ (v/y pos) eye)
-        cx (num/floor (v/x pos)) cy (num/floor ey)
-        cz (num/floor (v/z pos))]
+        cx (math/floor (v/x pos)) cy (math/floor ey)
+        cz (math/floor (v/z pos))]
     (boolean
       (when (chunk/in-range? cy)
         (let [st (chunk/block-state chunks cx cy cz)]

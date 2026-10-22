@@ -10,7 +10,7 @@
             [collider.game.level :as level]
             [collider.game.schema :as schema]
             [collider.game.team :as team]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]))
 
@@ -86,7 +86,7 @@
 (defn wrapped
   "Returns angle a in degrees as a float from -180 up to 180."
   [a]
-  (num/wrap-degrees a))
+  (math/wrap-degrees a))
 
 (defn- turned? [[lo hi] rot]
   (let [a (wrapped (or lo 0.0)) b (wrapped (or hi 359.0))

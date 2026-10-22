@@ -5,7 +5,7 @@
             [collider.game.mob.brain :as brain]
             [collider.game.mob.steer :as steer]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.env.signal :as signal]))
@@ -121,7 +121,7 @@
   "Returns damage amount as armadillo e takes it, halved past the
   first point when scared. It may go below zero."
   ^double [e ^double amount]
-  (if (scared? e) (num/fdiv (num/fsub amount 1.0) 2.0) amount))
+  (if (scared? e) (math/fdiv (math/fsub amount 1.0) 2.0) amount))
 
 (defn- startled [e t]
   (let [k :danger-detected-recently

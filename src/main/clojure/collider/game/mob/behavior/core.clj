@@ -8,7 +8,7 @@
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sensor :as sensor]
             [collider.game.mode :as game-mode]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]))
 
@@ -38,7 +38,7 @@
    {:eid oid :eye? eye? :target-eye? target-eye?}))
 
 (defn walk-target [to speed close]
-  {:to to :speed (num/f32 speed) :close close})
+  {:to to :speed (math/f32 speed) :close close})
 
 (defn- eye-pos [o]
   (let [p (:pos o)]
@@ -76,7 +76,7 @@
   (assoc e :look {:at p :until (+ (long t) 2)}))
 
 (defn swim [chance]
-  (let [c (num/f32 chance)
+  (let [c (math/f32 chance)
         wet? (fn [w _ e t & _] (animal/afloat? w e t nil))]
     {:id :swim :start? wet? :continue? wet?
      :tick (fn [_ eid e t i]
@@ -159,26 +159,26 @@
                    forever)))})
 
 (defn- look-vec [^double pitch ^double yaw]
-  (let [r num/deg->rad pi (num/f32 Math/PI)
-        ya (num/fsub (num/fmul (- yaw) r) pi)
-        xa (num/fmul (- pitch) r)
-        xc (- (num/cos xa))]
-    [(num/fmul (num/sin ya) xc)
-     (num/sin xa)
-     (num/fmul (num/cos ya) xc)]))
+  (let [r math/deg->rad pi (math/f32 Math/PI)
+        ya (math/fsub (math/fmul (- yaw) r) pi)
+        xa (math/fmul (- pitch) r)
+        xc (- (math/cos xa))]
+    [(math/fmul (math/sin ya) xc)
+     (math/sin xa)
+     (math/fmul (math/cos ya) xc)]))
 
 (defn- glanced [e ^double r1 ^double r2 [lo hi yaw]]
   (let [pitch (Math/max -90.0 (Math/min 90.0
-                (num/f32 (+ (num/fmul r1 (num/fsub hi lo)) lo))))
-        swing (num/fmul (num/fmul 2.0 r2) yaw)
-        rot (num/wrap-degrees
-              (num/fsub (num/f32 (+ (num/f32 (:yaw e)) swing)) yaw))
+                (math/f32 (+ (math/fmul r1 (math/fsub hi lo)) lo))))
+        swing (math/fmul (math/fmul 2.0 r2) yaw)
+        rot (math/wrap-degrees
+              (math/fsub (math/f32 (+ (math/f32 (:yaw e)) swing)) yaw))
         [dx dy dz] (look-vec pitch rot)
         [x y z] (eye-pos e)]
     {:pos [(+ x dx) (+ y dy) (+ z dz)]}))
 
 (defn random-look-around [interval max-yaw lo hi]
-  (let [ps [(num/f32 lo) (num/f32 hi) (num/f32 max-yaw)]]
+  (let [ps [(math/f32 lo) (math/f32 hi) (math/f32 max-yaw)]]
     {:id :random-look-around
      :needs {:look-target :absent :gaze-cooldown-ticks :absent}
      :start (fn [_ eid e t i]

@@ -1,6 +1,6 @@
 (ns collider.world.blocks.fall
   "Falling blocks, and what a block does with a fall onto it."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.dragonegg :as dragonegg]
@@ -23,9 +23,9 @@
   "Returns the cell of the block a body at pos lands on. sup is the
   block the body rests on, or nil."
   [chunks pos sup]
-  (let [y (num/floor (- (v/y pos) legacy-offset))]
+  (let [y (math/floor (- (v/y pos) legacy-offset))]
     (cond
-      (nil? sup) [(num/floor (v/x pos)) y (num/floor (v/z pos))]
+      (nil? sup) [(math/floor (v/x pos)) y (math/floor (v/z pos))]
       (keeps-support? (chunk/at chunks sup)) sup
       :else [(nth sup 0) y (nth sup 2)])))
 

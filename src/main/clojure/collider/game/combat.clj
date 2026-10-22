@@ -4,7 +4,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.enchantment :as enchantment]
             [collider.game.slots :as slots]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,19 +14,19 @@
 (defn after-armor
   "Returns damage after armor of the given toughness."
   ^double [damage armor toughness]
-  (let [d (num/f32 damage) a (num/f32 armor)
-        t (num/f32 (+ 2.0 (num/f32 (/ (num/f32 toughness) 4.0))))
-        real (clamp (num/f32 (- a (num/f32 (/ d t))))
-                    (num/f32 (* a 0.2)) 20.0)
-        frac (num/f32 (/ real 25.0))]
-    (num/f32 (* d (num/f32 (- 1.0 frac))))))
+  (let [d (math/f32 damage) a (math/f32 armor)
+        t (math/f32 (+ 2.0 (math/f32 (/ (math/f32 toughness) 4.0))))
+        real (clamp (math/f32 (- a (math/f32 (/ d t))))
+                    (math/f32 (* a 0.2)) 20.0)
+        frac (math/f32 (/ real 25.0))]
+    (math/f32 (* d (math/f32 (- 1.0 frac))))))
 
 (defn after-protection
   "Returns damage after protection points."
   ^double [damage points]
-  (let [real (clamp (num/f32 points) 0.0 20.0)]
-    (num/f32 (* (num/f32 damage)
-                (num/f32 (- 1.0 (num/f32 (/ real 25.0))))))))
+  (let [real (clamp (math/f32 points) 0.0 20.0)]
+    (math/f32 (* (math/f32 damage)
+                (math/f32 (- 1.0 (math/f32 (/ real 25.0))))))))
 
 (defn tagged?
   "Returns true when damage of type t is in damage type tag tag."
@@ -37,7 +37,7 @@
   (Math/floor (attribute/value e (:effects e) :armor)))
 
 (defn- toughness-of ^double [e]
-  (num/f32 (attribute/value e (:effects e) :armor-toughness)))
+  (math/f32 (attribute/value e (:effects e) :armor-toughness)))
 
 (defn- armored ^double [e src ^double d]
   (if (tagged? (:type src) "bypasses_armor")
@@ -49,7 +49,7 @@
     (if (and amp (not (tagged? (:type src) "bypasses_resistance")))
       (let [absorb (* (inc (long amp)) 5)
             left (- 25 absorb)]
-        (max (num/f32 (/ (num/f32 (* d left)) 25.0)) 0.0))
+        (max (math/f32 (/ (math/f32 (* d left)) 25.0)) 0.0))
       d)))
 
 (defn- worn-enchantments [e]

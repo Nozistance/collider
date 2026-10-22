@@ -11,7 +11,7 @@
             [collider.game.out :as out]
             [collider.game.systems.chunks :as chunks]
             [collider.game.team :as team]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
@@ -19,7 +19,7 @@
 
 (def ^:private ^:const really-far 332.0)
 
-(def ^:private turn (num/f32 0.008726646))
+(def ^:private turn (math/f32 0.008726646))
 
 (defn- block-of [e]
   (let [p (:pos e)]
@@ -32,18 +32,18 @@
   "Returns the distance of a to b, counted in floats."
   ^double [a b]
   (let [p (:pos a) q (:pos b)
-        x (num/f32 (- (v/x p) (v/x q)))
-        y (num/f32 (- (v/y p) (v/y q)))
-        z (num/f32 (- (v/z p) (v/z q)))
-        sq (num/f32 (+ (num/f32 (+ (num/f32 (* x x)) (num/f32 (* y y))))
-                       (num/f32 (* z z))))]
-    (num/f32 (Math/sqrt sq))))
+        x (math/f32 (- (v/x p) (v/x q)))
+        y (math/f32 (- (v/y p) (v/y q)))
+        z (math/f32 (- (v/z p) (v/z q)))
+        sq (math/f32 (+ (math/f32 (+ (math/f32 (* x x)) (math/f32 (* y y))))
+                       (math/f32 (* z z))))]
+    (math/f32 (Math/sqrt sq))))
 
 (defn- bearing
   "Returns the angle at which r sees s, a float."
   ^double [s r]
   (let [p (:pos r) q (:pos s)]
-    (num/f32 (num/atan2 (- (v/x p) (v/x q)) (- (- (v/z p) (v/z q)))))))
+    (math/f32 (math/atan2 (- (v/x p) (v/x q)) (- (- (v/z p) (v/z q)))))))
 
 (defn- transmit ^double [s]
   (if (:crouched? (:waypoint s))
@@ -102,7 +102,7 @@
 
 (defn- moved? [kind at at']
   (if (= :azimuth kind)
-    (> (abs (num/f32 (- (double at') (double at)))) turn)
+    (> (abs (math/f32 (- (double at') (double at)))) turn)
     (not= at at')))
 
 (defn- sent [st rid op uuid kind at color]

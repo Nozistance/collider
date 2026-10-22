@@ -2,7 +2,7 @@
   "Daylight detectors and the signal they read off the sky."
   (:require [collider.game.changes :as changes]
             [collider.game.clock :as clock]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.dimension :as dimension]
@@ -34,11 +34,11 @@
   ^long [lv ^long lit]
   (let [deg (double (or (clock/sampled lv (:dim lv) sun)
                         (base lv :visual/sun-angle 0.0)))
-        a (num/f32 (* deg (num/f32 (/ Math/PI 180.0))))
-        to (if (< a (num/f32 Math/PI)) 0.0 (num/f32 (* Math/PI 2.0)))
-        a (num/f32 (+ a (num/f32 (* (num/f32 (- to a))
-                                    (num/f32 0.2)))))]
-    (Math/round (unchecked-float (* (double lit) (num/cos a))))))
+        a (math/f32 (* deg (math/f32 (/ Math/PI 180.0))))
+        to (if (< a (math/f32 Math/PI)) 0.0 (math/f32 (* Math/PI 2.0)))
+        a (math/f32 (+ a (math/f32 (* (math/f32 (- to a))
+                                    (math/f32 0.2)))))]
+    (Math/round (unchecked-float (* (double lit) (math/cos a))))))
 
 (defn target
   "Returns the power of a detector in level lv under sky light sky."

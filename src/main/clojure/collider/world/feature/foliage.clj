@@ -1,7 +1,7 @@
 (ns collider.world.feature.foliage
   "The foliage placers of trees, with the leaves around each place
   where foliage grows."
-  (:require [collider.num :as num]
+  (:require [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.feature.level :as lv :refer [off]]))
@@ -160,7 +160,7 @@
   (let [[x y0 z] (:pos a)
         yo (- (long y0) (long yy))
         part (float (/ (float yo) (float h)))
-        smooth (+ base (num/floor (float (* part (float 3.5)))))
+        smooth (+ base (math/floor (float (* part (float 3.5)))))
         r (if (and (pos? yo) (= smooth prev) (even? yy))
             (inc smooth)
             smooth)]

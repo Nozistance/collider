@@ -3,7 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.stack :as stack]
-            [collider.num :as num]))
+            [collider.math :as math]))
 
 (set! *warn-on-reflection* true)
 
@@ -24,15 +24,15 @@
   {:base (get v "base" 0)
    :per-level (get v "per_level_above_first" 0)})
 
-(defn- f [v k] (num/f32 (double (get v k))))
+(defn- f [v k] (math/f32 (double (get v k))))
 
 (defn- linear [v]
   (let [b (f v "base") p (f v "per_level_above_first")]
-    (fn [l] (num/f32 (+ b (* p (double (dec (long l)))))))))
+    (fn [l] (math/f32 (+ b (* p (double (dec (long l)))))))))
 
 (defn- squared [v]
   (let [a (f v "added")]
-    (fn [l] (num/f32 (+ (double (* (long l) (long l))) a)))))
+    (fn [l] (math/f32 (+ (double (* (long l) (long l))) a)))))
 
 (declare by-level)
 
@@ -41,13 +41,13 @@
         d (by-level (get v "denominator"))]
     (fn [l]
       (let [q (double (d l))]
-        (if (zero? q) 0.0 (num/f32 (/ (double (n l)) q)))))))
+        (if (zero? q) 0.0 (math/f32 (/ (double (n l)) q)))))))
 
 (defn- by-level
   "Returns level-based value v as a function of the level."
   [v]
   (if (number? v)
-    (constantly (num/f32 (double v)))
+    (constantly (math/f32 (double v)))
     (case (get v "type")
       "minecraft:constant" (constantly (f v "value"))
       "minecraft:linear" (linear v)
@@ -181,8 +181,8 @@
        (Math/cos (* 2.0 Math/PI (double (roll :gauss-b)))))))
 
 (defn- normal-drop ^long [^double n ^double p roll]
-  (let [miu (Math/floor (num/f32 (* n p)))
-        sigma (Math/sqrt (num/f32 (* (num/f32 (* n p)) (- 1.0 p))))
+  (let [miu (Math/floor (math/f32 (* n p)))
+        sigma (Math/sqrt (math/f32 (* (math/f32 (* n p)) (- 1.0 p))))
         drop (Math/round (+ miu (* (gaussian roll) sigma)))]
     (max 0 (min (long n) drop))))
 
@@ -190,9 +190,9 @@
   "Returns n less the points that each go with chance p, the way
   vanilla removes them as a binomial."
   ^double [^double n ^double p roll]
-  (let [q (num/f32 (- 1.0 p))]
-    (- n (if (and (> n 128.0) (>= (num/f32 (* n p)) 20.0)
-                  (>= (num/f32 (* n q)) 20.0))
+  (let [q (math/f32 (- 1.0 p))]
+    (- n (if (and (> n 128.0) (>= (math/f32 (* n p)) 20.0)
+                  (>= (math/f32 (* n q)) 20.0))
            (normal-drop n p roll)
            (count (filter #(< (double (roll %)) p) (range (long n))))))))
 
@@ -225,7 +225,7 @@
     (fn [^double acc k level]
       (reduce (fn [^double a {:keys [value tags]}]
                 (if (every? (fn [[t want]] (= want (tagged? t))) tags)
-                  (num/f32 (+ a (double (value level))))
+                  (math/f32 (+ a (double (value level))))
                   a))
               acc (:protection (info k))))
     0.0 (or m {})))
@@ -233,7 +233,7 @@
 (defn- summed ^double [stack k f]
   (reduce-kv (fn [^double acc ench level]
                (reduce (fn [^double a e]
-                         (if-let [x (f e level)] (num/f32 (+ a x)) a))
+                         (if-let [x (f e level)] (math/f32 (+ a x)) a))
                        acc (k (info ench))))
              0.0 (or (get-in stack [:components :enchantments]) {})))
 

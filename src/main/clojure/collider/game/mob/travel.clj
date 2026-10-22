@@ -9,7 +9,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.mob.spec :as spec]
             [collider.game.turn.landing :as landing]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.climb :as climb]
@@ -21,10 +21,10 @@
 (set! *warn-on-reflection* true)
 
 (defn- yaw-radians ^double [^double yaw]
-  (double (float (* (double (float yaw)) num/deg->rad))))
+  (double (float (* (double (float yaw)) math/deg->rad))))
 
 (defn- modified-friction ^double [^double f]
-  (Math/clamp (num/fsub 1.0 (num/fsub 1.0 f)) 0.0 1.0))
+  (Math/clamp (math/fsub 1.0 (math/fsub 1.0 f)) 0.0 1.0))
 
 (def ^:private ^:const gravity 0.08)
 
@@ -134,17 +134,17 @@
       vel
       (let [f (* (if (> l 1.0) (Math/signum zza) zza) speed)
             r (yaw-radians (double (:yaw e)))]
-        (v/v3 (- (v/x vel) (* f (num/sin r)))
+        (v/v3 (- (v/x vel) (* f (math/sin r)))
               (v/y vel)
-              (+ (v/z vel) (* f (num/cos r))))))))
+              (+ (v/z vel) (* f (math/cos r))))))))
 
 (defn- cubed ^double [^double f]
-  (num/fmul (num/fmul f f) f))
+  (math/fmul (math/fmul f f) f))
 
 (defn- friction-speed ^double [og? ^double bf ^double speed]
   (if og?
     (if (> bf 0.6)
-      (num/fmul speed (num/fdiv walk-drive (cubed bf)))
+      (math/fmul speed (math/fdiv walk-drive (cubed bf)))
       speed)
     flying-speed))
 
@@ -210,8 +210,8 @@
 
 (defn- any-liquid? [world lo hi]
   (phys/some-cell? (:chunks world) @wet-marks
-                   (num/floor (v/x lo)) (num/floor (v/y lo))
-                   (num/floor (v/z lo))
+                   (math/floor (v/x lo)) (math/floor (v/y lo))
+                   (math/floor (v/z lo))
                    (ceil (v/x hi)) (ceil (v/y hi)) (ceil (v/z hi))))
 
 (defn- climb-free? [world e pos vel half height oy]
@@ -330,7 +330,7 @@
         [sup nb?] (supported world e mv half c)
         sf (if (:flying e) 1.0 (speed-factor world (phys/pos mv) sup))
         free? (:discard-friction? e)
-        k (if free? 1.0 (num/fmul bf air-drag))
+        k (if free? 1.0 (math/fmul bf air-drag))
         [h u] (moved-fluid world e d mv half height f)
         u (climbed world e d mv (bounced world e d mv sup u) true)]
     [(phys/pos mv)
@@ -353,7 +353,7 @@
   flat speed for height."
   [[x y z :as v] lx lz n lean speed]
   (if (and (< lean 0.0) (> n 0.0))
-    (let [k (* (* speed (- (num/sin (double lean)))) 0.04)]
+    (let [k (* (* speed (- (math/sin (double lean)))) 0.04)]
       [(- x (/ (* lx k) n)) (+ y (* k 3.2)) (- z (/ (* lz k) n))])
     v))
 
@@ -372,7 +372,7 @@
   (let [pitch (double (:pitch e 0.0))
         [lx _ lz] (glide/look pitch (double (:yaw e 0.0)))
         n (Math/sqrt (+ (* lx lx) (* lz lz)))
-        lean (num/fmul (num/f32 pitch) num/deg->rad)
+        lean (math/fmul (math/f32 pitch) math/deg->rad)
         c (Math/cos lean) lift (* c c)
         x (v/x vel) z (v/z vel)
         speed (Math/sqrt (+ (* x x) (* z z)))
@@ -459,8 +459,8 @@
   and jump boost change it."
   ^double [world e]
   (let [f (jump-factor world (:pos e) (:support e))
-        s (num/fmul jump-strength (jump-share e))]
-    (double (float (+ (num/fmul s f) (mobs/jump-boost-power e))))))
+        s (math/fmul jump-strength (jump-share e))]
+    (double (float (+ (math/fmul s f) (mobs/jump-boost-power e))))))
 
 (defn- jump-off [vel ^double p]
   (if (<= p min-jump)
@@ -659,7 +659,7 @@
 (defn- shoved-move
   [world index eid e tr box fall ls [look prev cram live? st]]
   (let [[half height pos] box
-        h (num/f32 half) ht (num/f32 height)
+        h (math/f32 half) ht (math/f32 height)
         [v shoves hit?] (pushed-back world index eid e box cram live?)
         g (or (:fluid-after tr) (fluid-after world e pos h ht v))
         hd (body-of-move world e pos look)
@@ -685,7 +685,7 @@
   [from to d] this tick. The look it turns to, its start state, its
   cram and the bodies alive now come in more."
   [world index eid e half height more]
-  (let [h (num/f32 half) ht (num/f32 height)
+  (let [h (math/f32 half) ht (math/f32 height)
         tr (travel-of world index eid e h ht)
         e (if-let [y (:yaw tr)] (assoc e :yaw y) e)
         falls? (not (mobs/flag? e :no-fall?))
@@ -715,8 +715,8 @@
   "Returns speed vel of body e with the push of the current it stands
   in, as its tick begins."
   [world e vel half height]
-  (v/add vel (:push (fluid-after world e (:pos e) (num/f32 half)
-                                 (num/f32 height) vel))))
+  (v/add vel (:push (fluid-after world e (:pos e) (math/f32 half)
+                                 (math/f32 height) vel))))
 
 (defn body-moved
   "Returns the move of living body e with no will of its own after
@@ -726,7 +726,7 @@
   block sideways, :holds-on? when it held on to a climbable block
   and :snowed? when it touched powder snow."
   [world e half height moves]
-  (let [h (num/f32 half) ht (num/f32 height)
+  (let [h (math/f32 half) ht (math/f32 height)
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
         tr (physics-move world e (:vel e) h ht f)

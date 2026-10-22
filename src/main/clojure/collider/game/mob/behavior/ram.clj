@@ -13,7 +13,7 @@
             [collider.game.mob.sensor :as sensor]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -94,9 +94,9 @@
   (out/all (out/entity-sound sound eid (:pos e) 1.0 pitch nil)))
 
 (defn- voice-pitch [e t eid i]
-  (let [r #(num/f32 (c/roll t eid i %))
-        d (num/f32 (- (r :pitch-a) (r :pitch-b)))]
-    (num/f32 (+ (num/f32 (* d (num/f32 0.2)))
+  (let [r #(math/f32 (c/roll t eid i %))
+        d (math/f32 (- (r :pitch-a) (r :pitch-b)))]
+    (math/f32 (+ (math/f32 (* d (math/f32 0.2)))
                 (if (mobs/baby? e) 1.5 1.0)))))
 
 (defn- toward ^double [a b]
@@ -170,11 +170,11 @@
   (if-let [x (get (:effects e) k)] (inc (long (:amplifier x))) 0))
 
 (defn- speed-factor ^double [e]
-  (let [v (num/f32 (:speed (:move e) 0.0))
-        s (num/f32 (* v (num/f32 1.65)))
+  (let [v (math/f32 (:speed (:move e) 0.0))
+        s (math/f32 (* v (math/f32 1.65)))
         n (- (level-of e :speed) (level-of e :slowness))
-        boost (num/f32 (* 0.25 n))]
-    (num/f32 (+ (Math/max (num/f32 0.2) (Math/min 3.0 s)) boost))))
+        boost (math/f32 (* 0.25 n))]
+    (math/f32 (+ (Math/max (math/f32 0.2) (Math/min 3.0 s)) boost))))
 
 (defn- body-box [o]
   (let [[h ht] (entity/box o) p (:pos o) h (double h)]
@@ -197,7 +197,7 @@
 
 (defn- hit [world eid e t i [oid o] m]
   (let [{:keys [damage force impact]} m
-        n (num/f32 (damage e))
+        n (math/f32 (damage e))
         src {:type :mob-attack-no-aggro :cause eid :direct eid
              :from (:pos e) :attacker e}
         k (* (speed-factor e) (double (force e)))

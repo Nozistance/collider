@@ -17,7 +17,7 @@
             [collider.game.reach :as reach]
             [collider.game.stack :as stack]
             [collider.game.using :as using]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -92,10 +92,10 @@
 
 (defn- landing [world [x y z]]
   (let [chunks (:chunks world) lo (chunk/level-min-y world)
-        bx (num/floor x) bz (num/floor z)
+        bx (math/floor x) bz (math/floor z)
         solid? #(block/blocks-motion?
                   (long (chunk/block-state chunks bx % bz)))]
-    (loop [by (num/floor y) y (double y)]
+    (loop [by (math/floor y) y (double y)]
       (cond
         (<= by lo) nil
         (solid? (dec by)) [x y z]
@@ -108,7 +108,7 @@
 
 (defn- wet? [chunks [x0 y0 z0 x1 y1 z1]]
   (phys/some-cell? chunks @liquid-marks
-                   (num/floor x0) (num/floor y0) (num/floor z0)
+                   (math/floor x0) (math/floor y0) (math/floor z0)
                    (ceil x1) (ceil y1) (ceil z1)))
 
 (defn- fits? [world e [x y z :as p]]

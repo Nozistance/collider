@@ -2,7 +2,7 @@
   "Gliding on elytra, or on any glider worn where it is made to go."
   (:require [collider.data :as data]
             [collider.game.stack :as stack]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -11,11 +11,11 @@
   "Returns the unit vector a body looks along at pitch and yaw in
   degrees, at the precision of the game."
   [^double pitch ^double yaw]
-  (let [xr (num/fmul (num/f32 pitch) num/deg->rad)
-        yr (num/fmul (- (num/f32 yaw)) num/deg->rad)
-        xc (num/cos xr)]
-    [(num/fmul (num/sin yr) xc) (- (num/sin xr))
-     (num/fmul (num/cos yr) xc)]))
+  (let [xr (math/fmul (math/f32 pitch) math/deg->rad)
+        yr (math/fmul (- (math/f32 yaw)) math/deg->rad)
+        xc (math/cos xr)]
+    [(math/fmul (math/sin yr) xc) (- (math/sin xr))
+     (math/fmul (math/cos yr) xc)]))
 
 (defn- boosted-axis ^double [^double m ^double l]
   (+ m (+ (* l 0.1) (* (- (* l 1.5) m) 0.5))))

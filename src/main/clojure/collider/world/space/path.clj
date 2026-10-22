@@ -1,7 +1,7 @@
 (ns collider.world.space.path
   "Ground paths of mobs, the types of cells and the search over them."
   (:require [collider.data :as data]
-            [collider.num :as num]
+            [collider.math :as math]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys])
@@ -278,7 +278,7 @@
   (let [t (type-of-mob ctx x y z)]
     (and (not= :open t) (>= (path-type-malus (:mob ctx) t) 0.0))))
 
-(defn- cell-of ^long [c] (num/floor (double c)))
+(defn- cell-of ^long [c] (math/floor (double c)))
 
 (defn- corners [mob]
   (let [[px _ pz] (:pos mob) w (/ (double (:width mob)) 2.0)
