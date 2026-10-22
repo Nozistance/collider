@@ -147,10 +147,12 @@
     (when (= :potent-sulfur (:kind e))
       [[:set-block-entity pos (assoc e :countdown -1)]])))
 
-(declare entities-changed-deltas)
+(declare change-deltas entities-changed-deltas)
 
 (defn- dispensed [world pos]
-  (let [ds (vec (dispenser/fired-deltas world pos))
+  (let [[raw edits] (dispenser/fired world pos)
+        ds (into (vec raw) (when (seq edits)
+                             (change-deltas world edits)))
         set? #(= :set-block-entity (first %))
         sets (filterv set? ds)]
     (if (empty? sets)
