@@ -13,7 +13,8 @@
             [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.world.block :as block]
-            [collider.world.blocks.chest :as chest]))
+            [collider.world.blocks.chest :as chest]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -309,9 +310,19 @@
                              :with [(:title m)]}))
    (out/all (out/sound :chest/locked (centre (:cells m)) 1.0 1.0))])
 
+(defn- born [world pos]
+  (let [st (chunk/at (:chunks world) pos)
+        k (be/kind st)]
+    (when (and k (contains? be/menu-kinds k) (nil? (be/at world pos)))
+      (be/fresh k nil))))
+
 (defn open-deltas
   [world eid pos]
-  (if-let [m (container/menu-at world pos)]
+  (if-let [e (born world pos)]
+    (let [world (assoc-in world [:block-entities
+                                 (chunk/block-chunk pos) pos] e)]
+      (concat [[:set-block-entity pos e]] (open-deltas world eid pos)))
+    (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
           stat (open-stat world pos m)]
       (if (locked? world e m)
@@ -320,7 +331,7 @@
           (open-menu-deltas world eid e m)
           (when stat [[:award eid stat 1]])
           (opener-deltas world e m 1))))
-    []))
+    [])))
 
 (defn spectator-open-deltas
   "Returns the deltas of a spectator using a block with a menu.

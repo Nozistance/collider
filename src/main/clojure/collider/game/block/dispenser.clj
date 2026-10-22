@@ -71,10 +71,6 @@
   (concat [(out/all (out/level-event :sound-dispenser-fail pos 0))]
           (signal/game-event :block-activate pos nil)))
 
-(defn- held [world pos]
-  (or (be/at world pos)
-      (throw (ex-info "a dispenser has no block entity" {:pos pos}))))
-
 (defn- shot-deltas [world pos facing e items i]
   (let [s (nth items i)
         left (shrink s)
@@ -221,11 +217,16 @@
   "Returns [deltas edits] of dispenser at pos firing once.
   edits are the block changes of a bucket it pours or fills."
   [world pos]
-  (let [e (held world pos)
+  (let [found (be/at world pos)
+        e (or found (be/fresh :dispenser nil))
         items (vec (:items e))
         facing (block/facing-of (chunk/at (:chunks world) pos))
-        i (slot-of items (:tick world) pos)]
-    (if (neg? i)
-      [(vec (empty-shot pos)) []]
-      (or (liquid-fired world pos facing e items i (nth items i))
-          [(shot-deltas world pos facing e items i) []]))))
+        i (slot-of items (:tick world) pos)
+        [ds edits]
+        (if (neg? i)
+          [(vec (empty-shot pos)) []]
+          (or (liquid-fired world pos facing e items i (nth items i))
+              [(shot-deltas world pos facing e items i) []]))]
+    (if found
+      [ds edits]
+      [(into [[:set-block-entity pos e]] ds) edits])))
