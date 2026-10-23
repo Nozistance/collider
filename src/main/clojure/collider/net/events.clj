@@ -47,6 +47,9 @@
    :move-player-rot (fn [eid m] [:move eid (turn m)])
    :move-player-status-only
    (fn [eid m] [:move eid {:on-ground (on-ground? m)}])
+   :move-vehicle
+   (fn [eid m]
+     [:move-vehicle eid (select-keys m [:pos :yaw :pitch :on-ground])])
    :accept-teleportation
    (fn [eid m] [:teleport-ack eid (:id m)])})
 
@@ -57,7 +60,17 @@
    :player-loaded (fn [eid _] [:player-loaded eid])
    :player-input
    (fn [eid m]
-     [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}])})
+     (let [flags (long (:flags m))]
+       [:input eid {:forward? (bit-test flags 0)
+                    :backward? (bit-test flags 1)
+                    :left? (bit-test flags 2)
+                    :right? (bit-test flags 3)
+                    :jump? (bit-test flags 4)
+                    :sneaking? (bit-test flags 5)
+                    :sprint? (bit-test flags 6)}]))
+   :paddle-boat
+   (fn [eid m]
+     [:paddle-boat eid (select-keys m [:left-paddle? :right-paddle?])])})
 
 (defn- hand-of [m]
   (if (zero? (long (or (:hand m) 0))) :main :off))
@@ -169,7 +182,7 @@
     :cookie-response :custom-click-action :debug-subscription-request
     :pong :block-entity-tag-query
     :entity-tag-query :jigsaw-generate :lock-difficulty
-    :change-difficulty :move-vehicle :paddle-boat :place-recipe
+    :change-difficulty :place-recipe
     :recipe-book-change-settings :recipe-book-seen-recipe
     :resource-pack :seen-advancements :select-trade :set-beacon
     :set-command-block :set-command-minecart :set-jigsaw-block

@@ -2,6 +2,8 @@
   "The packet events of the tick, one after another in the
   order they came."
   (:require [collider.game.apply :as apply]
+            [collider.game.boat :as boat]
+            [collider.game.boat.motion :as boat-motion]
             [collider.game.bow :as bow]
             [collider.game.camera :as camera]
             [collider.game.crossbow :as crossbow]
@@ -69,6 +71,10 @@
   [[#{:release-use} (own bow/release-deltas)]
    [#{:release-use} (own crossbow/release-deltas)]
    [(set (keys player-input)) played]
+   [#{:input} boat/input-deltas]
+   [#{:interact} boat/interact-deltas]
+   [#{:move-vehicle} boat/move-deltas]
+   [#{:paddle-boat} boat-motion/paddle-deltas]
    [#{:use-item :place} (own crossbow/started-deltas)]
    [#{:respawn} respawned]
    [#{:spectate} spectated]
@@ -81,6 +87,7 @@
     containers/event-deltas]
    [chat/tags chat/input-deltas]
    [#{:interact :attack} hanging/input-deltas]
+   [#{:attack} boat/attack-deltas]
    [#{:attack :swing} attacks/input-deltas]
    [#{:interact} interact/input-deltas]])
 

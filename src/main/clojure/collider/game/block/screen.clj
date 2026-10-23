@@ -7,6 +7,7 @@
             [collider.game.block.lectern :as lectern]
             [collider.game.block.lid :as lid]
             [collider.game.block.lock :as lock]
+            [collider.game.entity :as entity]
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -62,6 +63,8 @@
          (lectern/book? (lectern/book-of world m)))
     (container/bench? m) (bench-valid? world m)
     (= :ender (:kind m)) (ender-valid? world m)
+    (= :boat (:kind m))
+    (entity/boat? (:type (get-in world [:entities (:eid m)])))
     :else
     (every? (fn [pos]
               (contains? be/menu-kinds (:kind (be/at world pos))))
@@ -215,12 +218,17 @@
     (when (or (seq deltas) (seq ds))
       (concat [[:merge-entity eid {:menu menu}]] deltas ds))))
 
+(defn- boat-cell [world m]
+  (when-let [b (get-in world [:entities (:eid m)])]
+    (mapv #(Math/floor (double %)) (:pos b))))
+
 (defn- near?
   "Returns true when player e is near enough to keep menu m open. It
   must be within its reach and 4 blocks of each block of m."
-  [e m]
-  (every? #(reach/in-edit-range? e %)
-          (or (seq (:cells m)) [(:pos m)])))
+  [world e m]
+  (let [pos (if (= :boat (:kind m)) (boat-cell world m) (:pos m))]
+    (every? #(reach/in-edit-range? e %)
+            (or (seq (:cells m)) (when pos [pos])))))
 
 (defn menu-deltas
   "Returns the deltas of the menu of player eid in its turn. The
@@ -232,7 +240,7 @@
       (concat
         (when (and ok? (= :block (:kind m)))
           (broadcast-deltas world (long eid) e))
-        (when-not (and ok? (near? e m))
+        (when-not (and ok? (near? world e m))
           (close-deltas world eid e true))))))
 
 (defn- opened [world eid e m id]
@@ -316,6 +324,11 @@
         k (be/kind st)]
     (when (and k (contains? be/menu-kinds k) (nil? (be/at world pos)))
       (be/fresh k nil))))
+
+(defn entity-open-deltas
+  "Returns the deltas of player eid opening menu m of an entity."
+  [world eid m]
+  (open-menu-deltas world eid (get-in world [:entities eid]) m))
 
 (defn open-deltas
   [world eid pos]

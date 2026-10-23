@@ -732,6 +732,10 @@
    [:play :remove-entities]
    {:schema [:map [:eids [:sequential wire/varint]]]
     :write :wire}
+   [:play :set-passengers]
+   {:schema [:map [:eid wire/varint]
+             [:passengers [:sequential wire/varint]]]
+    :write :wire}
    [:play :set-entity-data]
    {:schema [:map [:eid wire/varint] [:data wire/entity-data]]
     :write :wire}
@@ -856,6 +860,17 @@
     :read :wire}
    [:play :move-player-status-only]
    {:schema [:map [:flags wire/unsigned-byte]]
+    :read :wire}
+   [:play :move-vehicle]
+   {:schema [:map [:pos wire/vec3] [:yaw wire/float]
+             [:pitch wire/float] [:on-ground wire/boolean]]
+    :read :wire
+    :out {:schema [:map [:pos wire/vec3] [:yaw wire/float]
+                   [:pitch wire/float]]
+          :write :wire}}
+   [:play :paddle-boat]
+   {:schema [:map [:left-paddle? wire/boolean]
+             [:right-paddle? wire/boolean]]
     :read :wire}
    [:play :player-action]
    {:schema [:map [:action wire/varint] [:pos wire/block-pos]

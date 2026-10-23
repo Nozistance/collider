@@ -360,10 +360,10 @@
   (let [[eid e] (nth es i)
         lw (live world eid)
         [e2 ds shoves]
-        (if (stepping? ticking es i)
+        (if (or (:vehicle e) (not (stepping? ticking es i)))
+          [e nil nil]
           (run-turn lw index t es i
-                    (mind world lw tempters eid e t))
-          [e nil nil])
+                    (mind world lw tempters eid e t)))
         es (assoc! es i [eid e2])
         hs (handing (:chunks lw) ticking vels index es i
                     shoves)

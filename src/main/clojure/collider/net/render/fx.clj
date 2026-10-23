@@ -152,6 +152,9 @@
                       :pos (:pos m) :vel [0.0 0.0 0.0]
                       :yaw (:yaw m) :pitch (:pitch m)
                       :relative (:relative m 0)}])
+   :move-vehicle  (fn [_ m]
+                    [{:packet :move-vehicle :pos (:pos m)
+                      :yaw (:yaw m) :pitch (:pitch m)}])
    :keepalive     (fn [_ m] [{:packet :keep-alive :id (:id m)}])
    :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
    :system-chat   chat-fx
@@ -450,7 +453,11 @@
       [{:packet :set-entity-data :eid (:eid m) :data d}])))
 
 (def ^:private entity-fx
-  {:move      (fn [_ m]
+  {:set-passengers
+   (fn [_ m]
+     [{:packet :set-passengers :eid (:eid m)
+       :passengers (:passengers m)}])
+   :move      (fn [_ m]
                 [{:packet :move-entity-pos :eid (:eid m)
                   :dx (:dx m) :dy (:dy m) :dz (:dz m)
                   :on-ground (:on-ground m)}])

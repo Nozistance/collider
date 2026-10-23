@@ -56,7 +56,19 @@
      (fn [e] {:radius (:radius e) :color (:color e)
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
-    (zipmap entity/boat-types (repeat (constantly {})))
+    (zipmap entity/boat-types
+            (repeat
+             (fn [e]
+               (cond-> {:paddle-left (boolean (:left-paddle? e))
+                        :paddle-right (boolean (:right-paddle? e))}
+                 (pos? (long (:hurt-time e 0)))
+                 (assoc :hurt (long (:hurt-time e)))
+                 (not= 1 (long (:hurt-dir e 1)))
+                 (assoc :hurt-dir (long (:hurt-dir e)))
+                 (pos? (double (:hull e 0.0)))
+                 (assoc :damage (double (:hull e)))
+                 (pos? (long (:bubble-time e 0)))
+                 (assoc :bubble-time (long (:bubble-time e)))))))
     {:wind-charge (constantly {})
      :arrow tipped-metadata
      :spectral-arrow arrow-metadata

@@ -2,6 +2,7 @@
   "The tick of each player after the level. Players go in join order,
   and each step sees the writes of the steps and players before it."
   (:require [collider.game.apply :as apply]
+            [collider.game.boat :as boat]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.level :as level]
@@ -65,7 +66,8 @@
    landing/grace-deltas
    experience/player-deltas
    keepalive/player-deltas
-   snapped])
+   snapped
+   boat/player-deltas])
 
 (defn- stepped [[w :as acc] eid f]
   (if-let [e (get (:entities w) eid)]

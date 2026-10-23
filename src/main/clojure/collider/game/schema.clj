@@ -5,6 +5,7 @@
             [collider.game.block.pois :as pois]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
+            [collider.game.ride :as ride]
             [collider.game.gamerules :as rules]
             [collider.game.schedule :as schedule]
             [collider.game.scoreboard :as scoreboard]
@@ -30,6 +31,14 @@
   (and (not (entity/player? e))
        (= id (chunk/pos-chunk (:pos e)))))
 
+(defn- entity-entries [entities entries-of]
+  (let [skip (ride/withheld-ids entities)]
+    (into {}
+          (comp (remove #(contains? skip (key %)))
+                (filter (comp entity/saveable? val))
+                (entries-of entity/saved))
+          entities)))
+
 (defn payload-of
   "Returns the payload of chunk c at game tick t from its parts.
   Its entities come as [eid entity] entries."
@@ -38,9 +47,7 @@
                      (map (fn [[k v]] [k (stack/saved (f v t))])))]
     {:chunk c
      :block-entities (into {} (entries-of be/saved) block-entities)
-     :entities (into {} (comp (filter (comp entity/saveable? val))
-                              (entries-of entity/saved))
-                     entities)
+     :entities (entity-entries entities entries-of)
      :block-ticks (or block-ticks [])
      :fluid-ticks (or fluid-ticks [])}))
 
@@ -138,11 +145,18 @@
 (defn- named-player? [e]
   (and (entity/player? e) (:name e)))
 
+(defn- with-boat [lv tick eid e dim]
+  (let [parked (ride/carried (:entities lv) tick eid)]
+    [(:name e)
+     (profile-of (cond-> e parked (assoc :root-vehicle parked))
+                 dim)]))
+
 (defn- store-profiles [profiles world]
-  (into profiles
-        (for [[dim lv] (:levels world)
-              [_ e] (:entities lv) :when (named-player? e)]
-          [(:name e) (profile-of e dim)])))
+  (let [tick (long (:tick world 0))]
+    (into profiles
+          (for [[dim lv] (:levels world)
+                [eid e] (:entities lv) :when (named-player? e)]
+            (with-boat lv tick eid e dim)))))
 
 (defn- wet? [world]
   (and (:raining? world) (weather/can-have-weather? (:dim world))))
@@ -344,7 +358,8 @@
    :xp-progress  {:default 0.0}
    :xp-total     {:default 0}
    :score        {:default 0}
-   :dimension    {:default :overworld}})
+   :dimension    {:default :overworld}
+   :root-vehicle {}})
 
 (defn- profile-kept? [player k]
   (or (some? (get player k))

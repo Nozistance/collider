@@ -292,6 +292,109 @@
         b boxes]
     b))
 
+(defn- body-shape-at [chunks x y z bottom ctx]
+  (if (moving? (chunk/at chunks [x y z]))
+    (let [bs (moving-shape chunks [x y z])]
+      (mapv (fn [[a b c d e f]]
+              [(+ x a) (+ y b) (+ z c) (+ x d) (+ y e) (+ z f)])
+            (partition 6 (or bs []))))
+    (shape-at chunks x y z bottom ctx)))
+
+(defn- placement-empty? [chunks p placement?]
+  (and placement?
+       (#{:scaffolding :powder-snow}
+        (block/type-of (chunk/at chunks p)))))
+
+(defn- collision-shapes
+  [chunks [x0 y0 z0 x1 y1 z1 :as area] bottom ctx placement?]
+  (let [body (double-array area)
+        meets? #(Collision/meets (double-array %) 0 body)]
+    (for [x (cells x0 x1) y (cells y0 y1) z (cells z0 z1)
+          :when (not (placement-empty? chunks [x y z] placement?))
+          :let [boxes (body-shape-at chunks x y z bottom ctx)]
+          :when (some meets? boxes)]
+      boxes)))
+
+(defn new-collision?
+  "Returns true when after meets a block shape before did not meet.
+  Each shape counts whole. The body has its foot at bottom and its
+  context in ctx. Scaffolding and powder snow do not count."
+  [chunks before after bottom ctx]
+  (let [shapes (collision-shapes chunks after bottom ctx true)
+        met? #(joined? % before)]
+    (boolean (some #(not-any? met? %) shapes))))
+
+(defn- swept-box [box delta]
+  (mapv (fn [i]
+          (let [d (double (nth delta (mod i 3)))]
+            (+ (double (nth box i)) ((if (< i 3) min max) 0.0 d))))
+        (range 6)))
+
+(defn- across? [box other axis]
+  (every? (fn [i]
+            (and (< (+ (double (nth box i)) 1.0E-7)
+                    (double (nth other (+ i 3))))
+                 (>= (- (double (nth box (+ i 3))) 1.0E-7)
+                     (double (nth other i)))))
+          (remove #{axis} [0 1 2])))
+
+(defn- limit-box [box other axis d]
+  (let [d (double d)
+        lo (double (nth box axis)) hi (double (nth box (+ axis 3)))
+        a (double (nth other axis)) b (double (nth other (+ axis 3)))]
+    (cond
+      (< (Math/abs d) 1.0E-7) (reduced 0.0)
+      (not (across? box other axis)) d
+      (and (pos? d) (< (- hi 1.0E-7) a)) (min d (- a hi))
+      (and (neg? d) (>= (+ lo 1.0E-7) b)) (max d (- b lo))
+      :else d)))
+
+(defn- limited [box solids axis delta]
+  (reduce #(limit-box box %2 axis %1) (double delta) solids))
+
+(defn- resolve-axis [solids delta [box moved] axis]
+  (let [d (limited box solids axis (nth delta axis))
+        shifted (-> box (update axis + d) (update (+ axis 3) + d))]
+    [shifted (assoc moved axis d)]))
+
+(defn- resolved [box solids delta]
+  (let [order (if (< (Math/abs (v/x delta)) (Math/abs (v/z delta)))
+                [1 2 0] [1 0 2])
+        step (partial resolve-axis solids delta)]
+    (v/v3 (nth (reduce step [box [0.0 0.0 0.0]] order) 1))))
+
+(defn- kept-axis [delta moved axis]
+  (let [d (double (nth delta axis)) m (double (nth moved axis))
+        same? (if (= axis 1) (== d m)
+                  (< (Math/abs (- d m)) (double (float 1.0E-5))))]
+    (if same? d (* (- d) 0.0))))
+
+(defn- move-of [pos delta moved]
+  (let [distance (v/dot moved moved)
+        kept? (or (> distance 1.0E-7)
+                  (< (- (v/dot delta delta) distance) 1.0E-7))
+        vel (v/v3 (mapv #(kept-axis delta moved %) [0 1 2]))
+        ground? (and (not= (v/y delta) (v/y moved))
+                     (neg? (v/y delta)))]
+    (Move. (if kept? (v/add pos moved) (v/v3 pos))
+           vel ground? (v/y moved))))
+
+(defn move-among
+  "Returns the end of a move from pos by delta among blocks and
+  the extra boxes. The body has half width half, height and context
+  ctx, and does not step up."
+  [chunks pos delta half height ctx boxes]
+  (if (empty? boxes)
+    (move chunks pos delta half height 0.0 ctx)
+    (let [x (v/x pos) y (v/y pos) z (v/z pos)
+          half (double half) height (double height)
+          box [(- x half) y (- z half) (+ x half) (+ y height)
+               (+ z half)]
+          shapes (collision-shapes
+                   chunks (swept-box box delta) y ctx false)
+          solids (into (vec boxes) cat shapes)]
+      (move-of pos delta (resolved box solids delta)))))
+
 (defn- merged
   "Returns the sorted values vs without those within 1e-7 above the
   last one kept."

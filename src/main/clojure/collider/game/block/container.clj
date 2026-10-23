@@ -281,6 +281,11 @@
     (lectern? m) [(lectern/book-of world m)]
     (bench? m) (bench-items m)
     (= :ender (:kind m)) (ender-items world eid)
+    (= :boat (:kind m))
+    (let [n 27
+          xs (vec (or (:cargo (get-in world [:entities (:eid m)]))
+                      []))]
+      (vec (take n (concat xs (repeat nil)))))
     :else (into [] (mapcat #(cell-items world % (cell-size m)))
                 (:cells m))))
 
@@ -359,6 +364,8 @@
     (bench? m) nil
     (= :ender (:kind m))
     [[:merge-entity eid {:ender-items (vec items)}]]
+    (= :boat (:kind m))
+    [[:merge-entity (:eid m) {:cargo (vec items)}]]
     :else
     (let [pos (first (:cells m))
           old (be/at world pos)]

@@ -130,7 +130,8 @@
    :glow-item-frame :item-frame})
 
 (defn- class-of [kind]
-  (cond (= :wind-charge kind) :projectile
+  (cond (entity/boat? kind) :boat
+        (= :wind-charge kind) :projectile
         (#{:firework-rocket :arrow} kind) kind
         (= :spectral-arrow kind) :abstract-arrow
         (entity/thrown-types kind) :throwable-item-projectile
@@ -211,8 +212,24 @@
     (contains? meta :variant)
     (assoc :variant (or (:variant meta) (hanging/default-variant)))))
 
+(defn- boat-fields [meta]
+  (cond-> {}
+    (contains? meta :paddle-left)
+    (assoc :paddle-left (boolean (:paddle-left meta)))
+    (contains? meta :paddle-right)
+    (assoc :paddle-right (boolean (:paddle-right meta)))
+    (contains? meta :bubble-time)
+    (assoc :bubble-time (long (:bubble-time meta)))
+    (contains? meta :hurt) (assoc :hurt (long (:hurt meta)))
+    (contains? meta :hurt-dir)
+    (assoc :hurt-dir (long (:hurt-dir meta)))
+    (contains? meta :damage)
+    (assoc :damage (double (:damage meta)))))
+
 (defn- entity-fields [kind meta]
-  (case kind
+  (if (entity/boat? kind)
+    (boat-fields meta)
+    (case kind
     :player (merge (player-fields meta) (living-fields meta))
     (:cow :pig :chicken)
     (merge (coat-fields kind meta) (living-fields meta))
@@ -233,7 +250,7 @@
     :area-effect-cloud (cloud-fields meta)
     :experience-orb (orb-fields meta)
     (:painting :item-frame :glow-item-frame) (hanging-fields meta)
-    (stack-fields meta)))
+    (stack-fields meta))))
 
 (defn entity-data
   "Returns the entity data entries of meta for an entity of kind."
@@ -315,8 +332,22 @@
           [{:packet :set-equipment :eid eid :slots equip}])
         [{:packet :bundle-delimiter}]))))
 
+(defn- passenger-vehicles [world eid]
+  (let [e (get-in world [:entities eid])]
+    (cond-> []
+      (seq (:passengers e)) (conj eid)
+      (:vehicle e) (conj (:vehicle e)))))
+
+(defn- passenger-packets [world add]
+  (let [vehicles (distinct (mapcat #(passenger-vehicles world %) add))]
+    (for [eid vehicles
+          :let [passengers (get-in world [:entities eid :passengers])]
+          :when (seq passengers)]
+      {:packet :set-passengers :eid eid :passengers passengers})))
+
 (defn tracking-packets
   "Returns the packets that spawn the new entities of a :tracking
-  delta, one bundle each."
+  delta, one bundle each, followed by their passenger relations."
   [world [_ _ add _]]
-  (mapcat #(spawn-packets world %) add))
+  (concat (mapcat #(spawn-packets world %) add)
+          (passenger-packets world add)))

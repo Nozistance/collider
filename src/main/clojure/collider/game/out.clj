@@ -174,6 +174,13 @@
 (defn disconnect [text]
   {:msg :disconnect :text text})
 
+(defn set-passengers [eid passengers riders]
+  {:msg :set-passengers :eid eid
+   :passengers passengers :riders riders})
+
+(defn move-vehicle [pos yaw pitch]
+  {:msg :move-vehicle :pos pos :yaw yaw :pitch pitch})
+
 (defn close []
   {:msg :close})
 

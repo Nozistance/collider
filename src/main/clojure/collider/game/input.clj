@@ -21,7 +21,8 @@
   [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) (:pos changes) (:pos e) e'
-               (not (:tp-target e)) (not (:sleeping e)))
+               (not (:tp-target e)) (not (:sleeping e))
+               (not (:vehicle e)))
       (assoc (select-keys e' move-keys)
              :eid eid :from (:pos e) :to (:pos e')
              :jump? (jump? e e')

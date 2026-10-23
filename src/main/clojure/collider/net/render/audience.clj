@@ -132,6 +132,18 @@
           :else (into [] (mapcat #(level-audience sight % m))
                       schema/dims))))
 
+(defn- entity-dimension [sight eid]
+  (some (fn [dim]
+          (when (get-in sight [:levels dim :entities eid]) dim))
+        schema/dims))
+
+(defn- passenger-recipients [sight viewers m]
+  (let [eid (:eid m)
+        dim (or (:dim m) (entity-dimension sight eid))
+        players (set (get (:by-dim sight) dim))]
+    (into [] (comp (filter players) (remove #{(:except m)}) (distinct))
+          (concat (get @viewers eid) (:passengers m) (:riders m)))))
+
 (defn recipients
   "Returns the players that get effect m. A :to player gets it alone,
   and an :except player never gets it."
@@ -146,6 +158,8 @@
     (let [t (team/named (:teams sight) (:to-others-of m))
           in (set (keep #(get (:named sight) %) (:players t)))]
       (remove in (:ps sight)))
+    (= :set-passengers (:msg m))
+    (passenger-recipients sight viewers m)
     (entity-msgs (:msg m))
     (get @viewers (long (or (:via m) (:eid m))) [])
     :else

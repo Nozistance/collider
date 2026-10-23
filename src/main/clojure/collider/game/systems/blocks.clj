@@ -2,7 +2,9 @@
   "Player block actions such as digging, placing and using."
   (:require [collider.data :as data]
             [collider.game.apply :as apply]
+            [collider.game.boat :as boat]
             [collider.game.book :as book]
+            [collider.game.entity :as entity]
             [collider.game.changes :as changes]
             [collider.game.crossbow :as crossbow]
             [collider.game.inventory :as inventory]
@@ -121,6 +123,7 @@
    [(comp nil? :item) (constantly nil)]
    [(item-in thrown/throwables)
     (when-use (on-at thrown/throw-deltas))]
+   [(item-in entity/boat-types) (when-use (on-at boat/place-deltas))]
    [:pour (when-use pour-deltas)]
    [(item-in data/mob-bucket) (when-use (on-item bucket/mob-deltas))]
    [(item-is :flint-and-steel)

@@ -12,7 +12,9 @@
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.level :as level :refer [update-entity]]
+            [collider.game.level.writes :as writes]
             [collider.game.out :as out]
+            [collider.game.ride :as ride]
             [collider.game.schema :as schema]
             [collider.game.slots :as slots]
             [collider.game.stack :as stack]
@@ -143,20 +145,28 @@
         fresh (merge (new-player name (:tick w) pos)
                      {:yaw yaw :pitch pitch}
                      (get-in w [:spawning eid :settings]))
-        saved (dissoc (get-in w [:profiles name]) :dimension)
+        saved (dissoc (get-in w [:profiles name])
+                      :dimension :root-vehicle)
         e (entity/of (moded w (merge fresh saved)))
         tick (:tick w)]
     (-> e (awaiting-join tick) (load-awaited tick)
         (assoc :born tick :xp-sent (:xp-total e 0)
                :hud-sent (food/hud e)))))
 
+(defn- born [w spec]
+  (let [id (long (:next-eid w schema/first-eid))]
+    [(writes/spawn-entity w [:spawn-entity spec]) id]))
+
 (defn placed
   "Returns level w after the delta [:player-placed eid name pos]."
   [w [_ eid name pos]]
-  (-> w
-      (assoc-in [:entities eid] (joining w eid name pos))
-      (assoc-in [:players name] eid)
-      (update :spawning dissoc eid)))
+  (let [parked (get-in w [:profiles name :root-vehicle])
+        player (joining w eid name pos)
+        [w player] (ride/mount w eid player parked born)]
+    (-> w
+        (assoc-in [:entities eid] player)
+        (assoc-in [:players name] eid)
+        (update :spawning dissoc eid))))
 
 (defn respawn
   "Returns w after the event [:respawn eid] of a dead player."
@@ -195,13 +205,19 @@
       (seq (:teams w)) (update :teams team/left [nm])
       held? (update :scoreboard scoreboard/forgotten nm))))
 
+(defn- parked [w eid e]
+  (let [boat (when e (ride/carried (:entities w) (:tick w) eid))
+        w (if boat (ride/drop-carried w eid) w)]
+    [w (cond-> e boat (assoc :root-vehicle boat))]))
+
 (defn quit
   "Returns level w without entity eid. A player keeps its profile,
   and any other entity that goes for good, not moved to another
   level, leaves its team and its scores."
   ([w eid] (quit w eid nil))
   ([w eid why]
-   (let [{:keys [name] :as e} (get-in w [:entities eid])]
+   (let [{:keys [name] :as e} (get-in w [:entities eid])
+         [w e] (parked w eid e)]
      (cond-> (-> w
                  (update :spawning dissoc eid)
                  (update :entities dissoc eid)
@@ -587,6 +603,8 @@
 (defn- apply-move [w eid changes client?]
   (let [e (get-in w [:entities eid])]
     (cond
+      (and (:vehicle e) client?)
+      (update-entity w eid merge (select-keys changes [:yaw :pitch]))
       (:tp-target e)
       (update-entity w eid merge (dissoc changes :pos :on-ground))
       (and (:sleeping e) client?) (sent-back w eid e changes)

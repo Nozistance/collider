@@ -102,7 +102,15 @@
    {:parent :entity
     :fields [[:radius :float 3.0]
              [:waiting :boolean false]
-             [:particle :particle :entity-effect]]}})
+             [:particle :particle :entity-effect]]}
+   :vehicle
+   {:parent :entity
+    :fields [[:hurt :int 0] [:hurt-dir :int 1] [:damage :float 0.0]]}
+   :boat
+   {:parent :vehicle
+    :fields [[:paddle-left :boolean false]
+             [:paddle-right :boolean false]
+             [:bubble-time :int 0]]}})
 
 (defn- chain [cls]
   (if-let [p (:parent (classes cls))] (conj (chain p) cls) [cls]))

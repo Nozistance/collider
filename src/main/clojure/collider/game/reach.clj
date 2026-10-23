@@ -168,7 +168,10 @@
       (let [hit (when (chunk/in-range? (cell 1))
                   (cell-hit world from d cell fluids))]
         (cond
-          hit {:pos cell :face (second hit)}
+          hit (let [t (double (first hit))]
+                {:pos cell :face (second hit)
+                 :at (mapv #(+ (double %1) (* t (double %2)))
+                           from d)})
           (stop? t n) nil
           :else (let [[cell' t'] (advance cell d t (step-axis t))]
                   (recur cell' t' (inc n))))))))
